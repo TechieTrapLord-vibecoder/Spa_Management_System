@@ -1,0 +1,486 @@
+@page "/roles"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@using Spa_Management_System.Services
+@inject AppDbContext DbContext
+@inject NavigationManager Navigation
+@inject IAuthStateService AuthState
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Roles - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated || !AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+{
+    <div class="card">
+        <div class="alert alert-danger">
+            <span class="bi bi-shield-x"></span>
+            <div>
+                <h4 style="margin: 0 0 0.5rem 0;">Access Denied</h4>
+                <p style="margin: 0;">SuperAdmin access required to manage roles.</p>
+            </div>
+        </div>
+        <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/login")'>
+            <span class="bi bi-box-arrow-in-right"></span> Go to Login
+        </button>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <h3 class="card-title" style="margin: 0;"><span class="bi bi-shield-check"></span> User Roles</h3>
+            <button class="btn btn-primary" @onclick="ShowAddDialog">
+                <span class="bi bi-plus-circle"></span> Add Role
+            </button>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="display: flex; align-items: center; gap: 1rem; padding: 2rem;">
+                <div class="loading"></div>
+                <p style="margin: 0;">Loading roles...</p>
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">
+                <span class="bi bi-x-circle-fill"></span>
+                <div>@errorMessage</div>
+            </div>
+        }
+
+        <div style="margin-bottom: 1rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 500;">
+                <input type="checkbox" @bind="showArchived" @bind:after="LoadRoles" />
+                <span class="bi bi-archive"></span> Show Archived Roles
+            </label>
+        </div>
+
+        @if (!roles.Any())
+        {
+            <div class="alert alert-info">
+                <span class="bi bi-info-circle-fill"></span>
+                <div>No roles found. Click "Add Role" to create your first role.</div>
+            </div>
+        }
+        else
+        {
+            <div class="table-search">
+                <input type="text" placeholder="Search roles..." @bind="searchTerm" @bind:event="oninput" @bind:after="ApplyFilter" />
+            </div>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="cursor: pointer;" @onclick='() => SortBy("id")'>Role ID @GetSortIcon("id")</th>
+                        <th style="cursor: pointer;" @onclick='() => SortBy("name")'>Role Name @GetSortIcon("name")</th>
+                        <th style="cursor: pointer;" @onclick='() => SortBy("status")'>Status @GetSortIcon("status")</th>
+                        <th style="cursor: pointer;" @onclick='() => SortBy("employees")'>Employees @GetSortIcon("employees")</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var role in GetPagedRoles())
+                    {
+                        <tr style="@(role.IsArchived ? "opacity: 0.7; background: #f5f5f5;" : "")">
+                            <td>@role.RoleId</td>
+                            <td>
+                                <strong>@role.Name</strong>
+                            </td>
+                            <td>
+                                @if (role.IsArchived)
+                                {
+                                    <span class="badge" style="background: var(--spa-text-light);">Archived</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-success">Active</span>
+                                }
+                            </td>
+                            <td>
+                                <span class="badge badge-info">@role.Employees.Count</span>
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    @if (role.IsArchived)
+                                    {
+                                        <button class="btn btn-sm btn-success" @onclick="() => RestoreRole(role.RoleId)">
+                                            Restore
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-light" @onclick="() => EditRole(role)">
+                                            Edit
+                                        </button>
+                                        @if (role.Employees.Count == 0)
+                                        {
+                                            <button class="btn btn-sm btn-warning" @onclick="() => ConfirmArchiveRole(role.RoleId)">
+                                                Archive
+                                            </button>
+                                        }
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div class="table-pagination">
+                <span>Showing @(Math.Min((currentPage - 1) * pageSize + 1, filteredRoles.Count))-@(Math.Min(currentPage * pageSize, filteredRoles.Count)) of @filteredRoles.Count entries</span>
+                <div class="pagination-buttons">
+                    <button class="btn btn-sm btn-light" disabled="@(currentPage <= 1)" @onclick="PreviousPage">Previous</button>
+                    @for (int i = 1; i <= TotalPages; i++)
+                    {
+                        var pageNum = i;
+                        <button class="btn btn-sm @(pageNum == currentPage ? "btn-primary" : "btn-light")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                    }
+                    <button class="btn btn-sm btn-light" disabled="@(currentPage >= TotalPages)" @onclick="NextPage">Next</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (showDialog)
+    {
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div class="card" style="width: 500px; max-width: 90vw;">
+                <h4 class="card-title">@(selectedRole == null ? "Add New Role" : "Edit Role")</h4>
+                
+                <div style="margin-bottom: 1rem;">
+                    <label class="form-label">Role Name <span style="color: var(--spa-danger);">*</span></label>
+                    <input class="form-control" type="text" @bind="roleName" placeholder="e.g., Manager, Therapist, Receptionist" />
+                </div>
+
+                @if (!string.IsNullOrEmpty(dialogError))
+                {
+                    <div class="alert alert-danger">
+                        <span class="bi bi-x-circle-fill"></span>
+                        <div>@dialogError</div>
+                    </div>
+                }
+
+                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                    <button class="btn btn-primary" @onclick="SaveRole" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <div class="loading" style="width: 1rem; height: 1rem;"></div>
+                        }
+                        else
+                        {
+                            <span class="bi bi-check-circle"></span>
+                        }
+                        Save Role
+                    </button>
+                    <button class="btn btn-outline" @onclick="CloseDialog" disabled="@isSaving">Cancel</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Archive Confirmation Dialog -->
+    @if (showArchiveConfirm)
+    {
+        <div class="modal-overlay" @onclick="CancelArchive">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 400px;">
+                <div class="modal-header" style="background: var(--spa-warning); color: white;">
+                    <h4 style="margin: 0;"><span class="bi bi-archive"></span> Confirm Archive</h4>
+                </div>
+                <div class="modal-body" style="text-align: center; padding: 2rem;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;"><span class="bi bi-archive"></span></div>
+                    <p style="font-size: 1.1rem;">Are you sure you want to archive this role?</p>
+                    <p style="color: var(--spa-text-light);">Archived roles can be restored later if needed.</p>
+                </div>
+                <div class="modal-footer" style="justify-content: center; gap: 1rem;">
+                    <button class="btn btn-secondary" @onclick="CancelArchive">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-warning" @onclick="() => ArchiveRole(archiveRoleId!.Value)">
+                        <span class="bi bi-archive"></span> Yes, Archive
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<Role> roles = new();
+    private List<Role> filteredRoles = new();
+    private bool isLoading = true;
+    private string? errorMessage;
+    private bool showDialog = false;
+    private bool isSaving = false;
+    private string? dialogError;
+    private Role? selectedRole;
+    private string roleName = "";
+    private bool showArchived = false;
+    
+    // Archive confirmation
+    private bool showArchiveConfirm = false;
+    private short? archiveRoleId = null;
+
+    // Pagination and sorting
+    private string searchTerm = "";
+    private string sortColumn = "name";
+    private bool sortAscending = true;
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int TotalPages => (int)Math.Ceiling((double)filteredRoles.Count / pageSize);
+
+    protected override void OnInitialized()
+    {
+        // Check authentication and authorization
+        if (!AuthState.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+        {
+            // Not authorized - the UI will show access denied message
+            return;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRoles();
+    }
+
+    private async Task LoadRoles()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            if (showArchived)
+            {
+                roles = await DbContext.Roles
+                    .Include(r => r.Employees)
+                    .OrderBy(r => r.IsArchived)
+                    .ThenBy(r => r.Name)
+                    .ToListAsync();
+            }
+            else
+            {
+                roles = await DbContext.Roles
+                    .Include(r => r.Employees)
+                    .Where(r => !r.IsArchived)
+                    .OrderBy(r => r.Name)
+                    .ToListAsync();
+            }
+
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading roles: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        filteredRoles = roles;
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var search = searchTerm.ToLower();
+            filteredRoles = filteredRoles.Where(r => 
+                r.Name.ToLower().Contains(search)
+            ).ToList();
+        }
+
+        // Apply sorting
+        filteredRoles = sortColumn switch
+        {
+            "id" => sortAscending 
+                ? filteredRoles.OrderBy(r => r.RoleId).ToList()
+                : filteredRoles.OrderByDescending(r => r.RoleId).ToList(),
+            "name" => sortAscending 
+                ? filteredRoles.OrderBy(r => r.Name).ToList()
+                : filteredRoles.OrderByDescending(r => r.Name).ToList(),
+            "status" => sortAscending 
+                ? filteredRoles.OrderBy(r => r.IsArchived).ToList()
+                : filteredRoles.OrderByDescending(r => r.IsArchived).ToList(),
+            "employees" => sortAscending 
+                ? filteredRoles.OrderBy(r => r.Employees.Count).ToList()
+                : filteredRoles.OrderByDescending(r => r.Employees.Count).ToList(),
+            _ => filteredRoles
+        };
+
+        currentPage = 1;
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+        ApplyFilter();
+    }
+
+    private string GetSortIcon(string column)
+    {
+        if (sortColumn != column) return "";
+        return sortAscending ? "▲" : "▼";
+    }
+
+    private List<Role> GetPagedRoles()
+    {
+        return filteredRoles
+            .Skip((currentPage - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+    }
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+        }
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < TotalPages)
+        {
+            currentPage++;
+        }
+    }
+
+    private void GoToPage(int page)
+    {
+        currentPage = page;
+    }
+
+    private void ShowAddDialog()
+    {
+        selectedRole = null;
+        roleName = "";
+        dialogError = null;
+        showDialog = true;
+    }
+
+    private void EditRole(Role role)
+    {
+        selectedRole = role;
+        roleName = role.Name;
+        dialogError = null;
+        showDialog = true;
+    }
+
+    private async Task SaveRole()
+    {
+        dialogError = null;
+
+        if (string.IsNullOrWhiteSpace(roleName))
+        {
+            dialogError = "Role name is required";
+            return;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            if (selectedRole == null)
+            {
+                // Add new role
+                var role = new Role { Name = roleName.Trim() };
+                DbContext.Roles.Add(role);
+            }
+            else
+            {
+                // Update existing role
+                selectedRole.Name = roleName.Trim();
+                DbContext.Roles.Update(selectedRole);
+            }
+
+            await DbContext.SaveChangesAsync();
+            await LoadRoles();
+            CloseDialog();
+        }
+        catch (Exception ex)
+        {
+            dialogError = $"Error saving role: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ArchiveRole(short roleId)
+    {
+        showArchiveConfirm = false;
+        try
+        {
+            var role = await DbContext.Roles.FindAsync(roleId);
+            if (role != null)
+            {
+                role.IsArchived = true;
+                await DbContext.SaveChangesAsync();
+                await LoadRoles();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error archiving role: {ex.Message}";
+        }
+        archiveRoleId = null;
+    }
+
+    private async Task RestoreRole(short roleId)
+    {
+        try
+        {
+            var role = await DbContext.Roles.FindAsync(roleId);
+            if (role != null)
+            {
+                role.IsArchived = false;
+                await DbContext.SaveChangesAsync();
+                await LoadRoles();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error restoring role: {ex.Message}";
+        }
+    }
+
+    private void ConfirmArchiveRole(short roleId)
+    {
+        archiveRoleId = roleId;
+        showArchiveConfirm = true;
+    }
+
+    private void CancelArchive()
+    {
+        showArchiveConfirm = false;
+        archiveRoleId = null;
+    }
+
+    private void CloseDialog()
+    {
+        showDialog = false;
+        selectedRole = null;
+        roleName = "";
+        dialogError = null;
+    }
+}

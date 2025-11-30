@@ -1,0 +1,726 @@
+@page "/reports"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Reports & Analytics - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-bar-chart-line"></span> Reports & Analytics</h3>
+                <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">Business intelligence dashboard</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                <input type="date" @bind="startDate" class="form-control" style="width: auto;" />
+                <input type="date" @bind="endDate" class="form-control" style="width: auto;" />
+                <button class="btn btn-primary" @onclick="LoadAllReports">
+                    <span class="bi bi-arrow-clockwise"></span> Refresh
+                </button>
+                <div style="border-left: 1px solid #ddd; height: 30px; margin: 0 0.5rem;"></div>
+                <button class="btn btn-outline-secondary" @onclick="PrintReport" title="Print">
+                    <span class="bi bi-printer"></span>
+                </button>
+                <button class="btn btn-outline-danger" @onclick="ExportToPdf" title="Export PDF">
+                    <span class="bi bi-file-pdf"></span>
+                </button>
+                <button class="btn btn-outline-success" @onclick="ExportToExcel" title="Export Excel">
+                    <span class="bi bi-file-excel"></span>
+                </button>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="text-align: center; padding: 3rem;">
+                <div class="spinner-border" style="color: var(--spa-primary);"></div>
+                <p style="color: var(--spa-text-light); margin-top: 1rem;">Loading reports...</p>
+            </div>
+        }
+        else
+        {
+            <!-- Report Tabs -->
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; border-bottom: 2px solid var(--spa-secondary); padding-bottom: 1rem;">
+                <button class="btn @(activeReport == "overview" ? "btn-primary" : "btn-outline-primary")" @onclick='() => activeReport = "overview"'><span class="bi bi-graph-up"></span> Overview</button>
+                <button class="btn @(activeReport == "appointments" ? "btn-primary" : "btn-outline-primary")" @onclick='() => activeReport = "appointments"'><span class="bi bi-calendar-check"></span> Appointments</button>
+                <button class="btn @(activeReport == "revenue" ? "btn-primary" : "btn-outline-primary")" @onclick='() => activeReport = "revenue"'><span class="bi bi-cash-coin"></span> Revenue</button>
+                <button class="btn @(activeReport == "customers" ? "btn-primary" : "btn-outline-primary")" @onclick='() => activeReport = "customers"'><span class="bi bi-people"></span> Customers</button>
+                <button class="btn @(activeReport == "services" ? "btn-primary" : "btn-outline-primary")" @onclick='() => activeReport = "services"'><span class="bi bi-heart"></span> Services</button>
+                <button class="btn @(activeReport == "staff" ? "btn-primary" : "btn-outline-primary")" @onclick='() => activeReport = "staff"'><span class="bi bi-person-badge"></span> Staff</button>
+                <button class="btn @(activeReport == "inventory" ? "btn-primary" : "btn-outline-primary")" @onclick='() => activeReport = "inventory"'><span class="bi bi-box-seam"></span> Inventory</button>
+                <button class="btn @(activeReport == "payments" ? "btn-primary" : "btn-outline-primary")" @onclick='() => activeReport = "payments"'><span class="bi bi-credit-card"></span> Payments</button>
+            </div>
+
+            @if (activeReport == "overview")
+            {
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div style="padding: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Total Revenue</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">₱@totalRevenue.ToString("N0")</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 12px; color: white;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Appointments</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@totalAppointments</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 12px; color: white;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">New Customers</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@newCustomers</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); border-radius: 12px; color: white;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Avg. Transaction</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">₱@avgTransaction.ToString("N0")</h2>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+                    <div style="padding: 1.5rem; border: 1px solid var(--spa-secondary); border-radius: 12px;">
+                        <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-trophy"></span> Top Services</h5>
+                        @foreach (var svc in topServices.Take(5))
+                        {
+                            <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #eee;">
+                                <span>@svc.Name</span>
+                                <span style="font-weight: 600;">@svc.Count bookings</span>
+                            </div>
+                        }
+                    </div>
+                    <div style="padding: 1.5rem; border: 1px solid var(--spa-secondary); border-radius: 12px;">
+                        <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-star-fill"></span> Top Customers</h5>
+                        @foreach (var cust in topCustomers.Take(5))
+                        {
+                            <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #eee;">
+                                <span>@cust.Name</span>
+                                <span style="font-weight: 600;">₱@cust.TotalSpent.ToString("N0")</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (activeReport == "appointments")
+            {
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div style="padding: 1rem; background: var(--spa-background); border-radius: 10px; text-align: center;">
+                        <p style="margin: 0; color: var(--spa-text-light); font-size: 0.85rem;">Total</p>
+                        <h3 style="margin: 0.25rem 0 0 0; color: var(--spa-primary);">@totalAppointments</h3>
+                    </div>
+                    <div style="padding: 1rem; background: #d4edda; border-radius: 10px; text-align: center;">
+                        <p style="margin: 0; color: #155724; font-size: 0.85rem;">Completed</p>
+                        <h3 style="margin: 0.25rem 0 0 0; color: #155724;">@completedAppointments</h3>
+                    </div>
+                    <div style="padding: 1rem; background: #fff3cd; border-radius: 10px; text-align: center;">
+                        <p style="margin: 0; color: #856404; font-size: 0.85rem;">Scheduled</p>
+                        <h3 style="margin: 0.25rem 0 0 0; color: #856404;">@scheduledAppointments</h3>
+                    </div>
+                    <div style="padding: 1rem; background: #f8d7da; border-radius: 10px; text-align: center;">
+                        <p style="margin: 0; color: #721c24; font-size: 0.85rem;">Cancelled</p>
+                        <h3 style="margin: 0.25rem 0 0 0; color: #721c24;">@cancelledAppointments</h3>
+                    </div>
+                </div>
+                <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-calendar3"></span> Appointments by Day</h5>
+                <table class="data-table">
+                    <thead><tr>
+                        <th @onclick='() => SortApptsBy("Date")' style="cursor: pointer;">Date @GetApptsSortIcon("Date")</th>
+                        <th @onclick='() => SortApptsBy("Total")' style="cursor: pointer;">Total @GetApptsSortIcon("Total")</th>
+                        <th @onclick='() => SortApptsBy("Completed")' style="cursor: pointer;">Completed @GetApptsSortIcon("Completed")</th>
+                        <th @onclick='() => SortApptsBy("Cancelled")' style="cursor: pointer;">Cancelled @GetApptsSortIcon("Cancelled")</th>
+                        <th @onclick='() => SortApptsBy("Revenue")' style="cursor: pointer;">Revenue @GetApptsSortIcon("Revenue")</th>
+                    </tr></thead>
+                    <tbody>
+                        @foreach (var day in GetPagedApptsByDay())
+                        {
+                            <tr>
+                                <td>@day.Date.ToString("ddd, MMM dd")</td>
+                                <td>@day.Total</td>
+                                <td style="color: green;">@day.Completed</td>
+                                <td style="color: red;">@day.Cancelled</td>
+                                <td style="font-weight: 600;">₱@day.Revenue.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (ApptsTotalPages > 1)
+                {
+                    <div class="table-pagination">
+                        <span>@(((apptsPage - 1) * rptPageSize) + 1)-@(Math.Min(apptsPage * rptPageSize, appointmentsByDay.Count)) of @appointmentsByDay.Count</span>
+                        <div style="display: flex; gap: 0.25rem;">
+                            <button class="btn btn-sm btn-outline" @onclick="() => { if (apptsPage > 1) apptsPage--; }" disabled="@(apptsPage == 1)">‹</button>
+                            @for (int i = 1; i <= Math.Min(5, ApptsTotalPages); i++) { var p = i; <button class="btn btn-sm @(apptsPage == p ? "btn-primary" : "btn-outline")" @onclick="() => apptsPage = p">@p</button> }
+                            <button class="btn btn-sm btn-outline" @onclick="() => { if (apptsPage < ApptsTotalPages) apptsPage++; }" disabled="@(apptsPage == ApptsTotalPages)">›</button>
+                        </div>
+                    </div>
+                }
+            }
+
+            @if (activeReport == "revenue")
+            {
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Total Revenue</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@totalRevenue.ToString("N2")</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Service Revenue</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@serviceRevenue.ToString("N2")</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Product Revenue</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@productRevenue.ToString("N2")</h2>
+                    </div>
+                </div>
+                <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-cash-coin"></span> Daily Revenue</h5>
+                <table class="data-table">
+                    <thead><tr>
+                        <th @onclick='() => SortRevBy("Date")' style="cursor: pointer;">Date @GetRevSortIcon("Date")</th>
+                        <th @onclick='() => SortRevBy("Sales")' style="cursor: pointer;">Sales @GetRevSortIcon("Sales")</th>
+                        <th @onclick='() => SortRevBy("Services")' style="cursor: pointer;">Services @GetRevSortIcon("Services")</th>
+                        <th @onclick='() => SortRevBy("Products")' style="cursor: pointer;">Products @GetRevSortIcon("Products")</th>
+                        <th @onclick='() => SortRevBy("Total")' style="cursor: pointer;">Total @GetRevSortIcon("Total")</th>
+                    </tr></thead>
+                    <tbody>
+                        @foreach (var day in GetPagedRevenueByDay())
+                        {
+                            <tr>
+                                <td>@day.Date.ToString("ddd, MMM dd")</td>
+                                <td>@day.SalesCount</td>
+                                <td>₱@day.ServiceRevenue.ToString("N0")</td>
+                                <td>₱@day.ProductRevenue.ToString("N0")</td>
+                                <td style="font-weight: 600;">₱@day.TotalRevenue.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (RevTotalPages > 1)
+                {
+                    <div class="table-pagination">
+                        <span>@(((revPage - 1) * rptPageSize) + 1)-@(Math.Min(revPage * rptPageSize, revenueByDay.Count)) of @revenueByDay.Count</span>
+                        <div style="display: flex; gap: 0.25rem;">
+                            <button class="btn btn-sm btn-outline" @onclick="() => { if (revPage > 1) revPage--; }" disabled="@(revPage == 1)">‹</button>
+                            @for (int i = 1; i <= Math.Min(5, RevTotalPages); i++) { var p = i; <button class="btn btn-sm @(revPage == p ? "btn-primary" : "btn-outline")" @onclick="() => revPage = p">@p</button> }
+                            <button class="btn btn-sm btn-outline" @onclick="() => { if (revPage < RevTotalPages) revPage++; }" disabled="@(revPage == RevTotalPages)">›</button>
+                        </div>
+                    </div>
+                }
+            }
+
+            @if (activeReport == "customers")
+            {
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Total Customers</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@totalCustomers</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">New This Period</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@newCustomers</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Total Loyalty Points</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@totalLoyaltyPoints.ToString("N0")</h2>
+                    </div>
+                </div>
+                <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-people"></span> Top Customers</h5>
+                <table class="data-table">
+                    <thead><tr>
+                        <th @onclick='() => SortCustBy("Name")' style="cursor: pointer;">Customer @GetCustSortIcon("Name")</th>
+                        <th @onclick='() => SortCustBy("Visits")' style="cursor: pointer;">Visits @GetCustSortIcon("Visits")</th>
+                        <th @onclick='() => SortCustBy("Spent")' style="cursor: pointer;">Total Spent @GetCustSortIcon("Spent")</th>
+                        <th @onclick='() => SortCustBy("Points")' style="cursor: pointer;">Loyalty Points @GetCustSortIcon("Points")</th>
+                    </tr></thead>
+                    <tbody>
+                        @foreach (var cust in GetPagedCustomers())
+                        {
+                            <tr>
+                                <td>@cust.Name</td>
+                                <td>@cust.Visits</td>
+                                <td style="font-weight: 600;">₱@cust.TotalSpent.ToString("N0")</td>
+                                <td>@cust.LoyaltyPoints</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (CustTotalPages > 1)
+                {
+                    <div class="table-pagination">
+                        <span>@(((custPage - 1) * rptPageSize) + 1)-@(Math.Min(custPage * rptPageSize, topCustomers.Count)) of @topCustomers.Count</span>
+                        <div style="display: flex; gap: 0.25rem;">
+                            <button class="btn btn-sm btn-outline" @onclick="() => { if (custPage > 1) custPage--; }" disabled="@(custPage == 1)">‹</button>
+                            @for (int i = 1; i <= Math.Min(5, CustTotalPages); i++) { var p = i; <button class="btn btn-sm @(custPage == p ? "btn-primary" : "btn-outline")" @onclick="() => custPage = p">@p</button> }
+                            <button class="btn btn-sm btn-outline" @onclick="() => { if (custPage < CustTotalPages) custPage++; }" disabled="@(custPage == CustTotalPages)">›</button>
+                        </div>
+                    </div>
+                }
+            }
+
+            @if (activeReport == "services")
+            {
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Total Services</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@totalServicesCount</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Bookings</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@totalServiceBookings</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Revenue</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@serviceRevenue.ToString("N0")</h2>
+                    </div>
+                </div>
+                <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-heart"></span> Service Performance</h5>
+                <table class="data-table">
+                    <thead><tr>
+                        <th @onclick='() => SortSvcBy("Service")' style="cursor: pointer;">Service @GetSvcSortIcon("Service")</th>
+                        <th @onclick='() => SortSvcBy("Category")' style="cursor: pointer;">Category @GetSvcSortIcon("Category")</th>
+                        <th @onclick='() => SortSvcBy("Price")' style="cursor: pointer;">Price @GetSvcSortIcon("Price")</th>
+                        <th @onclick='() => SortSvcBy("Bookings")' style="cursor: pointer;">Bookings @GetSvcSortIcon("Bookings")</th>
+                        <th @onclick='() => SortSvcBy("Revenue")' style="cursor: pointer;">Revenue @GetSvcSortIcon("Revenue")</th>
+                    </tr></thead>
+                    <tbody>
+                        @foreach (var svc in GetPagedServicePerf())
+                        {
+                            <tr>
+                                <td>@svc.Name</td>
+                                <td>@svc.Category</td>
+                                <td>₱@svc.Price.ToString("N0")</td>
+                                <td>@svc.Count</td>
+                                <td style="font-weight: 600;">₱@svc.Revenue.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (SvcTotalPages > 1)
+                {
+                    <div class="table-pagination">
+                        <span>@(((svcPage - 1) * rptPageSize) + 1)-@(Math.Min(svcPage * rptPageSize, servicePerformance.Count)) of @servicePerformance.Count</span>
+                        <div style="display: flex; gap: 0.25rem;">
+                            <button class="btn btn-sm btn-outline" @onclick="() => { if (svcPage > 1) svcPage--; }" disabled="@(svcPage == 1)">‹</button>
+                            @for (int i = 1; i <= Math.Min(5, SvcTotalPages); i++) { var p = i; <button class="btn btn-sm @(svcPage == p ? "btn-primary" : "btn-outline")" @onclick="() => svcPage = p">@p</button> }
+                            <button class="btn btn-sm btn-outline" @onclick="() => { if (svcPage < SvcTotalPages) svcPage++; }" disabled="@(svcPage == SvcTotalPages)">›</button>
+                        </div>
+                    </div>
+                }
+            }
+
+            @if (activeReport == "staff")
+            {
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Total Employees</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@totalEmployees</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Active Therapists</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@activeTherapists</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Total Commissions</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@totalCommissions.ToString("N0")</h2>
+                    </div>
+                </div>
+                <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-person-badge"></span> Staff Performance</h5>
+                <table class="data-table">
+                    <thead><tr>
+                        <th @onclick='() => SortStaffBy("Employee")' style="cursor: pointer;">Employee @GetStaffSortIcon("Employee")</th>
+                        <th @onclick='() => SortStaffBy("Role")' style="cursor: pointer;">Role @GetStaffSortIcon("Role")</th>
+                        <th @onclick='() => SortStaffBy("Appointments")' style="cursor: pointer;">Appointments @GetStaffSortIcon("Appointments")</th>
+                        <th @onclick='() => SortStaffBy("Services")' style="cursor: pointer;">Services @GetStaffSortIcon("Services")</th>
+                        <th @onclick='() => SortStaffBy("Commission")' style="cursor: pointer;">Commission @GetStaffSortIcon("Commission")</th>
+                    </tr></thead>
+                    <tbody>
+                        @foreach (var emp in GetPagedStaff())
+                        {
+                            <tr>
+                                <td>@emp.Name</td>
+                                <td>@emp.Role</td>
+                                <td>@emp.AppointmentCount</td>
+                                <td>@emp.ServicesRendered</td>
+                                <td style="font-weight: 600;">₱@emp.CommissionEarned.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (StaffTotalPages > 1)
+                {
+                    <div class="table-pagination">
+                        <span>@(((staffPage - 1) * rptPageSize) + 1)-@(Math.Min(staffPage * rptPageSize, staffPerformance.Count)) of @staffPerformance.Count</span>
+                        <div style="display: flex; gap: 0.25rem;">
+                            <button class="btn btn-sm btn-outline" @onclick="() => { if (staffPage > 1) staffPage--; }" disabled="@(staffPage == 1)">‹</button>
+                            @for (int i = 1; i <= Math.Min(5, StaffTotalPages); i++) { var p = i; <button class="btn btn-sm @(staffPage == p ? "btn-primary" : "btn-outline")" @onclick="() => staffPage = p">@p</button> }
+                            <button class="btn btn-sm btn-outline" @onclick="() => { if (staffPage < StaffTotalPages) staffPage++; }" disabled="@(staffPage == StaffTotalPages)">›</button>
+                        </div>
+                    </div>
+                }
+            }
+
+            @if (activeReport == "inventory")
+            {
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Total Products</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@totalProducts</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: #f8d7da; border-radius: 12px;">
+                        <p style="margin: 0; color: #721c24;">Low Stock</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: #721c24;">@lowStockItems</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Inventory Value</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@inventoryValue.ToString("N0")</h2>
+                    </div>
+                </div>
+                <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-box-seam"></span> Inventory Status</h5>
+                <table class="data-table">
+                    <thead><tr>
+                        <th @onclick='() => SortInvBy("Product")' style="cursor: pointer;">Product @GetInvSortIcon("Product")</th>
+                        <th>SKU</th>
+                        <th @onclick='() => SortInvBy("Stock")' style="cursor: pointer;">Stock @GetInvSortIcon("Stock")</th>
+                        <th @onclick='() => SortInvBy("Reorder")' style="cursor: pointer;">Reorder @GetInvSortIcon("Reorder")</th>
+                        <th>Status</th>
+                    </tr></thead>
+                    <tbody>
+                        @foreach (var inv in GetPagedInventory())
+                        {
+                            <tr>
+                                <td>@inv.ProductName</td>
+                                <td>@inv.SKU</td>
+                                <td>@inv.CurrentStock</td>
+                                <td>@inv.ReorderLevel</td>
+                                <td>
+                                    @if (inv.CurrentStock <= inv.ReorderLevel)
+                                    {
+                                        <span style="padding: 0.25rem 0.5rem; background: #f8d7da; color: #721c24; border-radius: 4px; font-size: 0.8rem;">Low</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="padding: 0.25rem 0.5rem; background: #d4edda; color: #155724; border-radius: 4px; font-size: 0.8rem;">OK</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (InvTotalPages > 1)
+                {
+                    <div class="table-pagination">
+                        <span>@(((invPage - 1) * rptPageSize) + 1)-@(Math.Min(invPage * rptPageSize, inventoryStatus.Count)) of @inventoryStatus.Count</span>
+                        <div style="display: flex; gap: 0.25rem;">
+                            <button class="btn btn-sm btn-outline" @onclick="() => { if (invPage > 1) invPage--; }" disabled="@(invPage == 1)">‹</button>
+                            @for (int i = 1; i <= Math.Min(5, InvTotalPages); i++) { var p = i; <button class="btn btn-sm @(invPage == p ? "btn-primary" : "btn-outline")" @onclick="() => invPage = p">@p</button> }
+                            <button class="btn btn-sm btn-outline" @onclick="() => { if (invPage < InvTotalPages) invPage++; }" disabled="@(invPage == InvTotalPages)">›</button>
+                        </div>
+                    </div>
+                }
+            }
+
+            @if (activeReport == "payments")
+            {
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
+                        <p style="margin: 0; color: var(--spa-text-light);">Total Payments</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@totalPayments.ToString("N0")</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: #d4edda; border-radius: 12px;">
+                        <p style="margin: 0; color: #155724;">Cash</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: #155724;">₱@cashPayments.ToString("N0")</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: #cce5ff; border-radius: 12px;">
+                        <p style="margin: 0; color: #004085;">Card</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: #004085;">₱@cardPayments.ToString("N0")</h2>
+                    </div>
+                    <div style="padding: 1.5rem; background: #e2e3e5; border-radius: 12px;">
+                        <p style="margin: 0; color: #383d41;">Other</p>
+                        <h2 style="margin: 0.5rem 0 0 0; color: #383d41;">₱@otherPayments.ToString("N0")</h2>
+                    </div>
+                </div>
+                <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-credit-card"></span> Payment Methods</h5>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+                    @foreach (var pm in paymentMethodBreakdown)
+                    {
+                        <div style="padding: 1rem; border: 1px solid var(--spa-secondary); border-radius: 8px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="font-weight: 600;">@pm.Method</span>
+                                <span>@pm.Count transactions</span>
+                            </div>
+                            <div style="margin-top: 0.5rem; height: 8px; background: #eee; border-radius: 4px; overflow: hidden;">
+                                <div style="height: 100%; width: @(totalPayments > 0 ? (pm.Amount / totalPayments * 100) : 0)%; background: var(--spa-primary);"></div>
+                            </div>
+                            <p style="margin: 0.5rem 0 0 0; font-weight: 600; color: var(--spa-primary);">₱@pm.Amount.ToString("N0")</p>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+}
+
+@code {
+    private string activeReport = "overview";
+    private bool isLoading = true;
+    private DateTime startDate = DateTime.Today.AddDays(-30);
+    private DateTime endDate = DateTime.Today;
+
+    // Pagination settings
+    private int rptPageSize = 10;
+    private int apptsPage = 1, revPage = 1, custPage = 1, svcPage = 1, staffPage = 1, invPage = 1;
+    
+    // Sorting settings
+    private string apptsSortCol = "Date"; private bool apptsSortAsc = false;
+    private string revSortCol = "Date"; private bool revSortAsc = false;
+    private string custSortCol = "Spent"; private bool custSortAsc = false;
+    private string svcSortCol = "Revenue"; private bool svcSortAsc = false;
+    private string staffSortCol = "Commission"; private bool staffSortAsc = false;
+    private string invSortCol = "Stock"; private bool invSortAsc = true;
+
+    // Total pages
+    private int ApptsTotalPages => (int)Math.Ceiling(appointmentsByDay.Count / (double)rptPageSize);
+    private int RevTotalPages => (int)Math.Ceiling(revenueByDay.Count / (double)rptPageSize);
+    private int CustTotalPages => (int)Math.Ceiling(topCustomers.Count / (double)rptPageSize);
+    private int SvcTotalPages => (int)Math.Ceiling(servicePerformance.Count / (double)rptPageSize);
+    private int StaffTotalPages => (int)Math.Ceiling(staffPerformance.Count / (double)rptPageSize);
+    private int InvTotalPages => (int)Math.Ceiling(inventoryStatus.Count / (double)rptPageSize);
+
+    // Paged data getters
+    private IEnumerable<DayReport> GetPagedApptsByDay()
+    {
+        var sorted = apptsSortCol switch
+        {
+            "Date" => apptsSortAsc ? appointmentsByDay.OrderBy(d => d.Date) : appointmentsByDay.OrderByDescending(d => d.Date),
+            "Total" => apptsSortAsc ? appointmentsByDay.OrderBy(d => d.Total) : appointmentsByDay.OrderByDescending(d => d.Total),
+            "Completed" => apptsSortAsc ? appointmentsByDay.OrderBy(d => d.Completed) : appointmentsByDay.OrderByDescending(d => d.Completed),
+            "Cancelled" => apptsSortAsc ? appointmentsByDay.OrderBy(d => d.Cancelled) : appointmentsByDay.OrderByDescending(d => d.Cancelled),
+            "Revenue" => apptsSortAsc ? appointmentsByDay.OrderBy(d => d.Revenue) : appointmentsByDay.OrderByDescending(d => d.Revenue),
+            _ => appointmentsByDay.OrderByDescending(d => d.Date)
+        };
+        return sorted.Skip((apptsPage - 1) * rptPageSize).Take(rptPageSize);
+    }
+
+    private IEnumerable<DayReport> GetPagedRevenueByDay()
+    {
+        var sorted = revSortCol switch
+        {
+            "Date" => revSortAsc ? revenueByDay.OrderBy(d => d.Date) : revenueByDay.OrderByDescending(d => d.Date),
+            "Sales" => revSortAsc ? revenueByDay.OrderBy(d => d.SalesCount) : revenueByDay.OrderByDescending(d => d.SalesCount),
+            "Services" => revSortAsc ? revenueByDay.OrderBy(d => d.ServiceRevenue) : revenueByDay.OrderByDescending(d => d.ServiceRevenue),
+            "Products" => revSortAsc ? revenueByDay.OrderBy(d => d.ProductRevenue) : revenueByDay.OrderByDescending(d => d.ProductRevenue),
+            "Total" => revSortAsc ? revenueByDay.OrderBy(d => d.TotalRevenue) : revenueByDay.OrderByDescending(d => d.TotalRevenue),
+            _ => revenueByDay.OrderByDescending(d => d.Date)
+        };
+        return sorted.Skip((revPage - 1) * rptPageSize).Take(rptPageSize);
+    }
+
+    private IEnumerable<CustomerRpt> GetPagedCustomers()
+    {
+        var sorted = custSortCol switch
+        {
+            "Name" => custSortAsc ? topCustomers.OrderBy(c => c.Name) : topCustomers.OrderByDescending(c => c.Name),
+            "Visits" => custSortAsc ? topCustomers.OrderBy(c => c.Visits) : topCustomers.OrderByDescending(c => c.Visits),
+            "Spent" => custSortAsc ? topCustomers.OrderBy(c => c.TotalSpent) : topCustomers.OrderByDescending(c => c.TotalSpent),
+            "Points" => custSortAsc ? topCustomers.OrderBy(c => c.LoyaltyPoints) : topCustomers.OrderByDescending(c => c.LoyaltyPoints),
+            _ => topCustomers.OrderByDescending(c => c.TotalSpent)
+        };
+        return sorted.Skip((custPage - 1) * rptPageSize).Take(rptPageSize);
+    }
+
+    private IEnumerable<ServiceRpt> GetPagedServicePerf()
+    {
+        var sorted = svcSortCol switch
+        {
+            "Service" => svcSortAsc ? servicePerformance.OrderBy(s => s.Name) : servicePerformance.OrderByDescending(s => s.Name),
+            "Category" => svcSortAsc ? servicePerformance.OrderBy(s => s.Category) : servicePerformance.OrderByDescending(s => s.Category),
+            "Price" => svcSortAsc ? servicePerformance.OrderBy(s => s.Price) : servicePerformance.OrderByDescending(s => s.Price),
+            "Bookings" => svcSortAsc ? servicePerformance.OrderBy(s => s.Count) : servicePerformance.OrderByDescending(s => s.Count),
+            "Revenue" => svcSortAsc ? servicePerformance.OrderBy(s => s.Revenue) : servicePerformance.OrderByDescending(s => s.Revenue),
+            _ => servicePerformance.OrderByDescending(s => s.Revenue)
+        };
+        return sorted.Skip((svcPage - 1) * rptPageSize).Take(rptPageSize);
+    }
+
+    private IEnumerable<StaffRpt> GetPagedStaff()
+    {
+        var sorted = staffSortCol switch
+        {
+            "Employee" => staffSortAsc ? staffPerformance.OrderBy(s => s.Name) : staffPerformance.OrderByDescending(s => s.Name),
+            "Role" => staffSortAsc ? staffPerformance.OrderBy(s => s.Role) : staffPerformance.OrderByDescending(s => s.Role),
+            "Appointments" => staffSortAsc ? staffPerformance.OrderBy(s => s.AppointmentCount) : staffPerformance.OrderByDescending(s => s.AppointmentCount),
+            "Services" => staffSortAsc ? staffPerformance.OrderBy(s => s.ServicesRendered) : staffPerformance.OrderByDescending(s => s.ServicesRendered),
+            "Commission" => staffSortAsc ? staffPerformance.OrderBy(s => s.CommissionEarned) : staffPerformance.OrderByDescending(s => s.CommissionEarned),
+            _ => staffPerformance.OrderByDescending(s => s.CommissionEarned)
+        };
+        return sorted.Skip((staffPage - 1) * rptPageSize).Take(rptPageSize);
+    }
+
+    private IEnumerable<InvRpt> GetPagedInventory()
+    {
+        var sorted = invSortCol switch
+        {
+            "Product" => invSortAsc ? inventoryStatus.OrderBy(i => i.ProductName) : inventoryStatus.OrderByDescending(i => i.ProductName),
+            "Stock" => invSortAsc ? inventoryStatus.OrderBy(i => i.CurrentStock) : inventoryStatus.OrderByDescending(i => i.CurrentStock),
+            "Reorder" => invSortAsc ? inventoryStatus.OrderBy(i => i.ReorderLevel) : inventoryStatus.OrderByDescending(i => i.ReorderLevel),
+            _ => inventoryStatus.OrderBy(i => i.CurrentStock - i.ReorderLevel)
+        };
+        return sorted.Skip((invPage - 1) * rptPageSize).Take(rptPageSize);
+    }
+
+    // Sort handlers
+    private void SortApptsBy(string col) { if (apptsSortCol == col) apptsSortAsc = !apptsSortAsc; else { apptsSortCol = col; apptsSortAsc = true; } apptsPage = 1; }
+    private void SortRevBy(string col) { if (revSortCol == col) revSortAsc = !revSortAsc; else { revSortCol = col; revSortAsc = true; } revPage = 1; }
+    private void SortCustBy(string col) { if (custSortCol == col) custSortAsc = !custSortAsc; else { custSortCol = col; custSortAsc = true; } custPage = 1; }
+    private void SortSvcBy(string col) { if (svcSortCol == col) svcSortAsc = !svcSortAsc; else { svcSortCol = col; svcSortAsc = true; } svcPage = 1; }
+    private void SortStaffBy(string col) { if (staffSortCol == col) staffSortAsc = !staffSortAsc; else { staffSortCol = col; staffSortAsc = true; } staffPage = 1; }
+    private void SortInvBy(string col) { if (invSortCol == col) invSortAsc = !invSortAsc; else { invSortCol = col; invSortAsc = true; } invPage = 1; }
+
+    // Sort icons
+    private string GetApptsSortIcon(string col) => apptsSortCol == col ? (apptsSortAsc ? "▲" : "▼") : "";
+    private string GetRevSortIcon(string col) => revSortCol == col ? (revSortAsc ? "▲" : "▼") : "";
+    private string GetCustSortIcon(string col) => custSortCol == col ? (custSortAsc ? "▲" : "▼") : "";
+    private string GetSvcSortIcon(string col) => svcSortCol == col ? (svcSortAsc ? "▲" : "▼") : "";
+    private string GetStaffSortIcon(string col) => staffSortCol == col ? (staffSortAsc ? "▲" : "▼") : "";
+    private string GetInvSortIcon(string col) => invSortCol == col ? (invSortAsc ? "▲" : "▼") : "";
+
+    private decimal totalRevenue; private int totalAppointments; private int newCustomers; private decimal avgTransaction;
+    private int completedAppointments; private int scheduledAppointments; private int cancelledAppointments;
+    private List<DayReport> appointmentsByDay = new();
+    private decimal serviceRevenue; private decimal productRevenue; private int totalSalesCount;
+    private List<DayReport> revenueByDay = new();
+    private int totalCustomers; private int totalLoyaltyPoints;
+    private List<CustomerRpt> topCustomers = new();
+    private int totalServicesCount; private int totalServiceBookings;
+    private List<ServiceRpt> topServices = new(); private List<ServiceRpt> servicePerformance = new();
+    private int totalEmployees; private int activeTherapists; private decimal totalCommissions;
+    private List<StaffRpt> staffPerformance = new();
+    private int totalProducts; private int lowStockItems; private decimal inventoryValue;
+    private List<InvRpt> inventoryStatus = new();
+    private decimal totalPayments; private decimal cashPayments; private decimal cardPayments; private decimal otherPayments;
+    private List<PayRpt> paymentMethodBreakdown = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAllReports();
+
+    private async Task LoadAllReports()
+    {
+        isLoading = true;
+        try
+        {
+            var endDatePlus = endDate.AddDays(1);
+            
+            // Sales & Revenue
+            var sales = await DbContext.Sales.Where(s => s.CreatedAt >= startDate && s.CreatedAt <= endDatePlus).ToListAsync();
+            totalRevenue = sales.Sum(s => s.TotalAmount);
+            totalSalesCount = sales.Count;
+            avgTransaction = totalSalesCount > 0 ? totalRevenue / totalSalesCount : 0;
+
+            var saleItems = await DbContext.SaleItems.Include(si => si.Sale).Where(si => si.Sale.CreatedAt >= startDate && si.Sale.CreatedAt <= endDatePlus).ToListAsync();
+            serviceRevenue = saleItems.Where(si => si.ItemType == "service").Sum(si => si.LineTotal);
+            productRevenue = saleItems.Where(si => si.ItemType == "product").Sum(si => si.LineTotal);
+
+            revenueByDay = sales.GroupBy(s => s.CreatedAt.Date).Select(g => new DayReport {
+                Date = g.Key, SalesCount = g.Count(), TotalRevenue = g.Sum(s => s.TotalAmount),
+                ServiceRevenue = saleItems.Where(si => si.Sale.CreatedAt.Date == g.Key && si.ItemType == "service").Sum(si => si.LineTotal),
+                ProductRevenue = saleItems.Where(si => si.Sale.CreatedAt.Date == g.Key && si.ItemType == "product").Sum(si => si.LineTotal)
+            }).OrderByDescending(d => d.Date).ToList();
+
+            // Appointments
+            var appts = await DbContext.Appointments.Include(a => a.AppointmentServices).Where(a => a.ScheduledStart >= startDate && a.ScheduledStart <= endDatePlus).ToListAsync();
+            totalAppointments = appts.Count;
+            completedAppointments = appts.Count(a => a.Status == "completed");
+            scheduledAppointments = appts.Count(a => a.Status == "scheduled" || a.Status == "confirmed");
+            cancelledAppointments = appts.Count(a => a.Status == "cancelled");
+
+            appointmentsByDay = appts.GroupBy(a => a.ScheduledStart.Date).Select(g => new DayReport {
+                Date = g.Key, Total = g.Count(), Completed = g.Count(a => a.Status == "completed"),
+                Cancelled = g.Count(a => a.Status == "cancelled"),
+                Revenue = g.Sum(a => a.AppointmentServices?.Sum(s => s.Price) ?? 0)
+            }).OrderByDescending(d => d.Date).ToList();
+
+            // Customers
+            var customers = await DbContext.Customers.Include(c => c.Person).Include(c => c.Sales).Include(c => c.Appointments).ToListAsync();
+            totalCustomers = customers.Count;
+            newCustomers = customers.Count(c => c.CreatedAt >= startDate && c.CreatedAt <= endDatePlus);
+            totalLoyaltyPoints = (int)customers.Sum(c => (decimal)c.LoyaltyPoints);
+
+            topCustomers = customers.Select(c => new CustomerRpt {
+                Name = $"{c.Person?.FirstName} {c.Person?.LastName}", Visits = c.Appointments?.Count ?? 0,
+                TotalSpent = c.Sales?.Sum(s => s.TotalAmount) ?? 0, LoyaltyPoints = c.LoyaltyPoints
+            }).OrderByDescending(c => c.TotalSpent).ToList();
+
+            // Services
+            var services = await DbContext.Services.Include(s => s.ServiceCategory).ToListAsync();
+            totalServicesCount = services.Count;
+
+            var apptSvcs = await DbContext.AppointmentServices.Include(a => a.Service).ThenInclude(s => s!.ServiceCategory)
+                .Include(a => a.Appointment).Where(a => a.Appointment!.ScheduledStart >= startDate && a.Appointment.ScheduledStart <= endDatePlus).ToListAsync();
+            totalServiceBookings = apptSvcs.Count;
+
+            topServices = apptSvcs.GroupBy(a => a.ServiceId).Select(g => new ServiceRpt {
+                Name = g.First().Service?.Name ?? "Unknown", Category = g.First().Service?.ServiceCategory?.Name ?? "",
+                Price = g.First().Service?.Price ?? 0, Count = g.Count(), Revenue = g.Sum(a => a.Price)
+            }).OrderByDescending(s => s.Count).ToList();
+
+            servicePerformance = services.Select(s => new ServiceRpt {
+                Name = s.Name, Category = s.ServiceCategory?.Name ?? "", Price = s.Price,
+                Count = apptSvcs.Count(a => a.ServiceId == s.ServiceId),
+                Revenue = apptSvcs.Where(a => a.ServiceId == s.ServiceId).Sum(a => a.Price)
+            }).OrderByDescending(s => s.Revenue).ToList();
+
+            // Staff
+            var employees = await DbContext.Employees.Include(e => e.Person).Include(e => e.Role).Where(e => e.Status == "active").ToListAsync();
+            totalEmployees = employees.Count;
+            activeTherapists = employees.Count(e => e.Role?.Name?.ToLower().Contains("therapist") == true);
+
+            var staffSvcs = await DbContext.AppointmentServices.Include(a => a.Appointment).Include(a => a.TherapistEmployee).ThenInclude(e => e!.Person)
+                .Include(a => a.TherapistEmployee).ThenInclude(e => e!.Role)
+                .Where(a => a.Appointment!.ScheduledStart >= startDate && a.Appointment.ScheduledStart <= endDatePlus).ToListAsync();
+            totalCommissions = staffSvcs.Sum(a => a.CommissionAmount);
+
+            staffPerformance = staffSvcs.Where(a => a.TherapistEmployee != null).GroupBy(a => a.TherapistEmployeeId).Select(g => new StaffRpt {
+                Name = $"{g.First().TherapistEmployee?.Person?.FirstName} {g.First().TherapistEmployee?.Person?.LastName}",
+                Role = g.First().TherapistEmployee?.Role?.Name ?? "", AppointmentCount = g.Select(a => a.AppointmentId).Distinct().Count(),
+                ServicesRendered = g.Count(), CommissionEarned = g.Sum(a => a.CommissionAmount)
+            }).OrderByDescending(s => s.CommissionEarned).ToList();
+
+            // Inventory
+            var inventory = await DbContext.Inventories.Include(i => i.Product).ToListAsync();
+            totalProducts = await DbContext.Products.CountAsync();
+            lowStockItems = inventory.Count(i => i.QuantityOnHand <= i.ReorderLevel);
+            inventoryValue = inventory.Sum(i => i.QuantityOnHand * (i.Product?.CostPrice ?? 0));
+
+            inventoryStatus = inventory.Select(i => new InvRpt {
+                ProductName = i.Product?.Name ?? "", SKU = i.Product?.Sku ?? "",
+                CurrentStock = i.QuantityOnHand, ReorderLevel = i.ReorderLevel
+            }).OrderBy(i => i.CurrentStock - i.ReorderLevel).ToList();
+
+            // Payments
+            var payments = await DbContext.Payments.Where(p => p.PaidAt >= startDate && p.PaidAt <= endDatePlus).ToListAsync();
+            totalPayments = payments.Sum(p => p.Amount);
+            cashPayments = payments.Where(p => p.PaymentMethod.ToLower() == "cash").Sum(p => p.Amount);
+            cardPayments = payments.Where(p => p.PaymentMethod.ToLower() == "card").Sum(p => p.Amount);
+            otherPayments = payments.Where(p => p.PaymentMethod.ToLower() != "cash" && p.PaymentMethod.ToLower() != "card").Sum(p => p.Amount);
+
+            paymentMethodBreakdown = payments.GroupBy(p => p.PaymentMethod).Select(g => new PayRpt {
+                Method = g.Key, Count = g.Count(), Amount = g.Sum(p => p.Amount)
+            }).OrderByDescending(p => p.Amount).ToList();
+        }
+        finally { isLoading = false; }
+    }
+
+    private async Task PrintReport() => await JSRuntime.InvokeVoidAsync("exportUtils.printElement", ".card");
+    private async Task ExportToPdf() => await JSRuntime.InvokeVoidAsync("exportUtils.exportToPdf", ".card", $"Reports_{activeReport}_{startDate:yyyyMMdd}-{endDate:yyyyMMdd}");
+    private async Task ExportToExcel() => await JSRuntime.InvokeVoidAsync("exportUtils.exportTableToExcel", ".card table", $"Report_{activeReport}_{startDate:yyyyMMdd}");
+
+    private class DayReport { public DateTime Date; public int Total; public int Completed; public int Cancelled; public decimal Revenue; public int SalesCount; public decimal TotalRevenue; public decimal ServiceRevenue; public decimal ProductRevenue; }
+    private class CustomerRpt { public string Name = ""; public int Visits; public decimal TotalSpent; public int LoyaltyPoints; }
+    private class ServiceRpt { public string Name = ""; public string Category = ""; public decimal Price; public int Count; public decimal Revenue; }
+    private class StaffRpt { public string Name = ""; public string Role = ""; public int AppointmentCount; public int ServicesRendered; public decimal CommissionEarned; }
+    private class InvRpt { public string ProductName = ""; public string SKU = ""; public decimal CurrentStock; public decimal ReorderLevel; }
+    private class PayRpt { public string Method = ""; public int Count; public decimal Amount; }
+}

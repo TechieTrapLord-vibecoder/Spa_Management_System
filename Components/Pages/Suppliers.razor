@@ -1,0 +1,438 @@
+@page "/suppliers"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+
+<PageTitle>Suppliers - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-truck"></span> Supplier Management</h3>
+                <p style="color: var(--spa-text-light); margin: 0.5rem 0 0 0;">Manage your vendor relationships</p>
+            </div>
+            <button class="btn btn-primary" @onclick="OpenAddDialog">
+                <span class="bi bi-plus-circle"></span> Add Supplier
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success">
+                <span class="bi bi-check-circle-fill"></span>
+                <div>@successMessage</div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">
+                <span class="bi bi-exclamation-triangle-fill"></span>
+                <div>@errorMessage</div>
+            </div>
+        }
+
+        <div style="margin-bottom: 1rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 500;">
+                <input type="checkbox" @bind="showArchived" @bind:after="LoadSuppliers" />
+                <span class="bi bi-archive"></span> Show Archived Suppliers
+            </label>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="display: flex; align-items: center; gap: 1rem; padding: 2rem;">
+                <div class="loading"></div>
+                <p style="margin: 0;">Loading suppliers...</p>
+            </div>
+        }
+        else if (!suppliers.Any())
+        {
+            <div class="alert alert-info">
+                <span class="bi bi-info-circle-fill"></span>
+                <div>
+                    <strong>No Suppliers Yet</strong><br />
+                    Add suppliers to track your vendors and manage purchase orders.
+                </div>
+            </div>
+        }
+        else
+        {
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem;">
+                @foreach (var supplier in suppliers)
+                {
+                    <div style="padding: 1.25rem; border: 2px solid @(supplier.IsArchived ? "var(--spa-text-light)" : "var(--spa-secondary)"); border-radius: 12px; @(supplier.IsArchived ? "opacity: 0.7; background: #f5f5f5;" : "") display: flex; flex-direction: column;">
+                        <div style="margin-bottom: 0.75rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <h5 style="color: var(--spa-primary); margin: 0; font-size: 1.1rem;">@supplier.Name</h5>
+                                @if (supplier.IsArchived)
+                                {
+                                    <span class="badge" style="background: var(--spa-text-light); font-size: 0.7rem;">Archived</span>
+                                }
+                            </div>
+                        </div>
+                        
+                        <div style="display: grid; gap: 0.4rem; margin-bottom: 0.75rem; flex: 1;">
+                            @if (!string.IsNullOrEmpty(supplier.ContactPerson))
+                            {
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <span class="bi bi-person" style="color: var(--spa-accent); font-size: 0.85rem;"></span>
+                                    <span style="font-size: 0.85rem;">@supplier.ContactPerson</span>
+                                </div>
+                            }
+                            
+                            @if (!string.IsNullOrEmpty(supplier.Phone))
+                            {
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <span class="bi bi-telephone" style="color: var(--spa-accent); font-size: 0.85rem;"></span>
+                                    <span style="font-size: 0.85rem;">@supplier.Phone</span>
+                                </div>
+                            }
+                            
+                            @if (!string.IsNullOrEmpty(supplier.Email))
+                            {
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <span class="bi bi-envelope" style="color: var(--spa-accent); font-size: 0.85rem;"></span>
+                                    <span style="font-size: 0.85rem; word-break: break-all;">@supplier.Email</span>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(supplier.Address))
+                            {
+                                <div style="display: flex; gap: 0.5rem; align-items: start;">
+                                    <span class="bi bi-geo-alt" style="color: var(--spa-accent); font-size: 0.85rem;"></span>
+                                    <span style="font-size: 0.85rem;">@supplier.Address</span>
+                                </div>
+                            }
+                        </div>
+
+                        <div style="display: flex; gap: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--spa-secondary);">
+                            @if (supplier.IsArchived)
+                            {
+                                <button class="btn btn-sm btn-success" @onclick="() => RestoreSupplier(supplier.SupplierId)" style="flex: 1; padding: 0.5rem;">
+                                    <span class="bi bi-arrow-counterclockwise"></span> Restore
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-light" @onclick="() => OpenEditDialog(supplier)" style="flex: 1; padding: 0.5rem;">
+                                    <span class="bi bi-pencil"></span> Edit
+                                </button>
+                                <button class="btn btn-sm btn-warning" @onclick="() => ConfirmArchiveSupplier(supplier.SupplierId)" style="flex: 1; padding: 0.5rem;">
+                                    <span class="bi bi-archive"></span> Archive
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (showDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseDialog">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);">
+                        @(isEditMode ? "Edit Supplier" : "Add New Supplier")
+                    </h4>
+                    <button class="btn-close" @onclick="CloseDialog">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Supplier Name *</label>
+                        <input type="text" class="form-control" @bind="currentSupplier.Name" 
+                               placeholder="e.g., Beauty Products Inc." maxlength="200" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Contact Person</label>
+                        <input type="text" class="form-control" @bind="currentSupplier.ContactPerson" 
+                               placeholder="Name of contact person" maxlength="200" />
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label>Phone</label>
+                            <input type="tel" class="form-control" @bind="currentSupplier.Phone" 
+                                   placeholder="Contact number" maxlength="50" />
+                        </div>
+
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" class="form-control" @bind="currentSupplier.Email" 
+                                   placeholder="email@example.com" maxlength="150" />
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Address</label>
+                        <textarea class="form-control" @bind="currentSupplier.Address" 
+                                  rows="2" placeholder="Full address"></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseDialog">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-primary" @onclick="SaveSupplier" 
+                            disabled="@(string.IsNullOrWhiteSpace(currentSupplier.Name))">
+                        <span class="bi bi-check-circle"></span> @(isEditMode ? "Update" : "Create")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Archive Confirmation Dialog -->
+    @if (showArchiveConfirm)
+    {
+        <div class="modal-overlay" @onclick="CancelArchive">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 400px;">
+                <div class="modal-header" style="background: var(--spa-warning); color: white;">
+                    <h4 style="margin: 0;"><span class="bi bi-archive"></span> Confirm Archive</h4>
+                </div>
+                <div class="modal-body" style="text-align: center; padding: 2rem;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;"><span class="bi bi-archive"></span></div>
+                    <p style="font-size: 1.1rem;">Are you sure you want to archive this supplier?</p>
+                    <p style="color: var(--spa-text-light);">Archived suppliers can be restored later if needed.</p>
+                </div>
+                <div class="modal-footer" style="justify-content: center; gap: 1rem;">
+                    <button class="btn btn-secondary" @onclick="CancelArchive">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-warning" @onclick="ArchiveSupplier">
+                        <span class="bi bi-archive"></span> Yes, Archive
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<Supplier> suppliers = new();
+    private Supplier currentSupplier = new();
+    private bool isLoading = true;
+    private bool showDialog = false;
+    private bool isEditMode = false;
+    private bool showArchived = false;
+    private string? successMessage;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSuppliers();
+    }
+
+    private async Task LoadSuppliers()
+    {
+        isLoading = true;
+
+        try
+        {
+            if (showArchived)
+            {
+                suppliers = await DbContext.Suppliers
+                    .OrderBy(s => s.IsArchived)
+                    .ThenBy(s => s.Name)
+                    .ToListAsync();
+            }
+            else
+            {
+                suppliers = await DbContext.Suppliers
+                    .Where(s => !s.IsArchived)
+                    .OrderBy(s => s.Name)
+                    .ToListAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading suppliers: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void OpenAddDialog()
+    {
+        currentSupplier = new Supplier();
+        isEditMode = false;
+        showDialog = true;
+        ClearMessages();
+    }
+
+    private void OpenEditDialog(Supplier supplier)
+    {
+        currentSupplier = new Supplier
+        {
+            SupplierId = supplier.SupplierId,
+            Name = supplier.Name,
+            ContactPerson = supplier.ContactPerson,
+            Phone = supplier.Phone,
+            Email = supplier.Email,
+            Address = supplier.Address
+        };
+        isEditMode = true;
+        showDialog = true;
+        ClearMessages();
+    }
+
+    private void CloseDialog()
+    {
+        showDialog = false;
+        currentSupplier = new();
+        isEditMode = false;
+    }
+
+    private async Task SaveSupplier()
+    {
+        try
+        {
+            ClearMessages();
+
+            if (string.IsNullOrWhiteSpace(currentSupplier.Name))
+            {
+                errorMessage = "Supplier name is required.";
+                return;
+            }
+
+            if (isEditMode)
+            {
+                var existing = await DbContext.Suppliers.FindAsync(currentSupplier.SupplierId);
+                if (existing != null)
+                {
+                    existing.Name = currentSupplier.Name.Trim();
+                    existing.ContactPerson = currentSupplier.ContactPerson?.Trim();
+                    existing.Phone = currentSupplier.Phone?.Trim();
+                    existing.Email = currentSupplier.Email?.Trim();
+                    existing.Address = currentSupplier.Address?.Trim();
+                    await DbContext.SaveChangesAsync();
+                    successMessage = "Supplier updated successfully!";
+                }
+            }
+            else
+            {
+                var newSupplier = new Supplier
+                {
+                    Name = currentSupplier.Name.Trim(),
+                    ContactPerson = currentSupplier.ContactPerson?.Trim(),
+                    Phone = currentSupplier.Phone?.Trim(),
+                    Email = currentSupplier.Email?.Trim(),
+                    Address = currentSupplier.Address?.Trim()
+                };
+                DbContext.Suppliers.Add(newSupplier);
+                await DbContext.SaveChangesAsync();
+                successMessage = "Supplier created successfully!";
+            }
+
+            CloseDialog();
+            await LoadSuppliers();
+            _ = AutoDismissSuccess();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving supplier: {ex.Message}";
+        }
+    }
+
+    private long? archiveSupplierId = null;
+    private bool showArchiveConfirm = false;
+
+    private void ConfirmArchiveSupplier(long supplierId)
+    {
+        archiveSupplierId = supplierId;
+        showArchiveConfirm = true;
+    }
+
+    private void CancelArchive()
+    {
+        archiveSupplierId = null;
+        showArchiveConfirm = false;
+    }
+
+    private async Task ArchiveSupplier()
+    {
+        if (archiveSupplierId == null) return;
+        
+        try
+        {
+            ClearMessages();
+            var supplier = await DbContext.Suppliers.FindAsync(archiveSupplierId.Value);
+            if (supplier == null)
+            {
+                errorMessage = "Supplier not found.";
+                return;
+            }
+
+            supplier.IsArchived = true;
+            await DbContext.SaveChangesAsync();
+            successMessage = "Supplier archived successfully!";
+            showArchiveConfirm = false;
+            archiveSupplierId = null;
+            await LoadSuppliers();
+            _ = AutoDismissSuccess();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error archiving supplier: {ex.Message}";
+        }
+    }
+
+    private async Task RestoreSupplier(long supplierId)
+    {
+        try
+        {
+            ClearMessages();
+            var supplier = await DbContext.Suppliers.FindAsync(supplierId);
+            if (supplier == null)
+            {
+                errorMessage = "Supplier not found.";
+                return;
+            }
+
+            supplier.IsArchived = false;
+            await DbContext.SaveChangesAsync();
+            successMessage = "Supplier restored successfully!";
+            await LoadSuppliers();
+            _ = AutoDismissSuccess();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error restoring supplier: {ex.Message}";
+        }
+    }
+
+    private async Task AutoDismissSuccess()
+    {
+        await Task.Delay(3000);
+        await InvokeAsync(() =>
+        {
+            successMessage = null;
+            StateHasChanged();
+        });
+    }
+
+    private void ClearMessages()
+    {
+        successMessage = null;
+        errorMessage = null;
+    }
+}

@@ -1,0 +1,618 @@
+@page "/customers"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@inject ICustomerService CustomerService
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Customers - Serenity Spa</PageTitle>
+
+<style>
+    /* Customer-specific styles only - table uses global .data-table class */
+    .customer-name {
+        font-weight: 500;
+        color: var(--spa-text);
+    }
+    
+    .customer-code {
+        font-family: 'Consolas', monospace;
+        font-size: 0.85rem;
+        color: var(--spa-text-light);
+    }
+    
+    .contact-info {
+        font-size: 0.85rem;
+        color: var(--spa-text-light);
+    }
+    
+    .contact-info div {
+        margin-bottom: 0.15rem;
+    }
+    
+    .loyalty-badge {
+        display: inline-block;
+        padding: 0.25rem 0.6rem;
+        background: #e8f5e9;
+        color: #2e7d32;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 0.25rem 0.6rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: uppercase;
+    }
+    
+    .status-active {
+        background: #e8f5e9;
+        color: #2e7d32;
+    }
+    
+    .status-archived {
+        background: #fff3e0;
+        color: #e65100;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .action-buttons .btn {
+        padding: 0.35rem 0.75rem;
+        font-size: 0.8rem;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 3rem 2rem;
+        color: var(--spa-text-light);
+    }
+    
+    .empty-state h4 {
+        margin: 0.5rem 0;
+        color: var(--spa-text);
+    }
+    
+    .table-wrapper {
+        overflow-x: auto;
+        margin: 0 -1.5rem;
+        padding: 0 1.5rem;
+    }
+</style>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-people"></span> Customer Management</h3>
+                <p style="color: var(--spa-text-light); margin: 0.5rem 0 0 0;">Manage your customer relationships and loyalty programs</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem;">
+                    <input type="checkbox" @bind="showArchived" @bind:after="LoadCustomers" style="width: 16px; height: 16px;" />
+                    <span>Show Archived</span>
+                </label>
+                <button class="btn btn-primary" @onclick="ShowAddDialog">
+                    + Add Customer
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success">
+                @successMessage
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">
+                @errorMessage
+            </div>
+        }
+
+        @if (isLoading)
+        {
+            <div style="display: flex; align-items: center; gap: 1rem; padding: 2rem;">
+                <div class="loading"></div>
+                <p style="margin: 0;">Loading customers...</p>
+            </div>
+        }
+        else if (!customers.Any())
+        {
+            <div class="empty-state">
+                <div style="font-size: 3rem; margin-bottom: 0.5rem;"><span class="bi bi-people"></span></div>
+                <h4>No Customers Yet</h4>
+                <p>Click "Add Customer" to create your first customer profile.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-search">
+                <input type="text" placeholder="Search customers..." @bind="searchTerm" @bind:event="oninput" @bind:after="ApplyFilter" />
+            </div>
+
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("code")'>
+                                Customer Code @GetSortIcon("code")
+                            </th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("name")'>
+                                Name @GetSortIcon("name")
+                            </th>
+                            <th>Contact</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("points")'>
+                                Loyalty Points @GetSortIcon("points")
+                            </th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("joined")'>
+                                Joined @GetSortIcon("joined")
+                            </th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var customer in GetPagedCustomers())
+                        {
+                            <tr style="cursor: pointer;" @onclick="() => ViewCustomer(customer.CustomerId)">
+                                <td><span class="customer-code">@customer.CustomerCode</span></td>
+                                <td><span class="customer-name">@customer.Person.FirstName @customer.Person.LastName</span></td>
+                                <td class="contact-info">
+                                    @if (!string.IsNullOrEmpty(customer.Person.Email))
+                                    {
+                                        <div>@customer.Person.Email</div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(customer.Person.Phone))
+                                    {
+                                        <div>@customer.Person.Phone</div>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="loyalty-badge">@customer.LoyaltyPoints PTS</span>
+                                </td>
+                                <td>@customer.CreatedAt.ToString("MMM dd, yyyy")</td>
+                                <td>
+                                    @if (customer.IsArchived)
+                                    {
+                                        <span class="status-badge status-archived">Archived</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="status-badge status-active">Active</span>
+                                    }
+                                </td>
+                                <td @onclick:stopPropagation="true">
+                                    <div class="action-buttons">
+                                        <button class="btn btn-sm btn-primary" @onclick="() => ViewCustomer(customer.CustomerId)">
+                                            View
+                                        </button>
+                                        <button class="btn btn-sm btn-info" @onclick="() => CreateAppointment(customer.CustomerId)">
+                                            Book
+                                        </button>
+                                        @if (customer.IsArchived)
+                                        {
+                                            <button class="btn btn-sm btn-success" @onclick="() => RestoreCustomer(customer.CustomerId)">
+                                                Restore
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-warning" @onclick="() => ArchiveCustomer(customer.CustomerId)">
+                                                Archive
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-pagination">
+                <div class="pagination-info">
+                    Showing @(Math.Min((currentPage - 1) * pageSize + 1, filteredCustomers.Count)) to @(Math.Min(currentPage * pageSize, filteredCustomers.Count)) of @filteredCustomers.Count entries
+                </div>
+                <div class="pagination-controls">
+                    <button class="page-btn" @onclick="PreviousPage" disabled="@(currentPage <= 1)">‹ Prev</button>
+                    @for (int i = 1; i <= TotalPages; i++)
+                    {
+                        var pageNum = i;
+                        <button class="page-btn @(currentPage == pageNum ? "active" : "")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                    }
+                    <button class="page-btn" @onclick="NextPage" disabled="@(currentPage >= TotalPages)">Next ›</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (showDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseDialog">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);">Add New Customer</h4>
+                    <button class="btn-close" @onclick="CloseDialog">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+                
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>First Name <span style="color: var(--spa-danger);">*</span></label>
+                        <input class="form-control" type="text" @bind="firstName" placeholder="Enter first name" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Last Name <span style="color: var(--spa-danger);">*</span></label>
+                        <input class="form-control" type="text" @bind="lastName" placeholder="Enter last name" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input class="form-control" type="email" @bind="email" placeholder="customer@example.com" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input class="form-control" type="tel" @bind="phone" placeholder="+63 XXX XXX XXXX" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Date of Birth</label>
+                        <input class="form-control" type="date" value="@dob" @onchange="@((e) => dob = e.Value?.ToString())" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Address</label>
+                        <textarea class="form-control" rows="3" @bind="address" placeholder="Complete address"></textarea>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(dialogError))
+                    {
+                        <div class="alert alert-danger">
+                            <span class="bi bi-x-circle-fill"></span>
+                            <div>@dialogError</div>
+                        </div>
+                    }
+
+                    @if (saveSuccess)
+                    {
+                        <div class="alert alert-success">
+                            <span class="bi bi-check-circle-fill"></span>
+                            <div>Customer created successfully!</div>
+                        </div>
+                    }
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseDialog" disabled="@isSaving">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-primary" @onclick="SaveCustomer" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <div class="loading" style="width: 1rem; height: 1rem; display: inline-block;"></div>
+                        }
+                        else
+                        {
+                            <span class="bi bi-check-circle"></span>
+                        }
+                        Save Customer
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<Customer> customers = new();
+    private List<Customer> filteredCustomers = new();
+    private bool isLoading = true;
+    private string? errorMessage;
+    private string? successMessage;
+    private bool showDialog = false;
+    private bool isSaving = false;
+    private bool saveSuccess = false;
+    private string? dialogError;
+    private bool showArchived = false;
+
+    // Pagination & Sorting
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private string searchTerm = "";
+    private string sortColumn = "name";
+    private bool sortAscending = true;
+
+    private int TotalPages => (int)Math.Ceiling((double)filteredCustomers.Count / pageSize);
+
+    // Form fields
+    private string firstName = "";
+    private string lastName = "";
+    private string? email;
+    private string? phone;
+    private string? address;
+    private string? dob;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomers();
+    }
+
+    private async Task LoadCustomers()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            if (showArchived)
+            {
+                customers = (await CustomerService.GetAllWithArchivedAsync()).ToList();
+            }
+            else
+            {
+                customers = (await CustomerService.GetAllCustomersAsync()).ToList();
+            }
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading customers: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        var query = customers.AsEnumerable();
+
+        // Search filter
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.ToLower();
+            query = query.Where(c =>
+                c.CustomerCode.ToLower().Contains(term) ||
+                c.Person.FirstName.ToLower().Contains(term) ||
+                c.Person.LastName.ToLower().Contains(term) ||
+                (c.Person.Email?.ToLower().Contains(term) ?? false) ||
+                (c.Person.Phone?.ToLower().Contains(term) ?? false)
+            );
+        }
+
+        // Sorting
+        query = sortColumn switch
+        {
+            "code" => sortAscending ? query.OrderBy(c => c.CustomerCode) : query.OrderByDescending(c => c.CustomerCode),
+            "name" => sortAscending ? query.OrderBy(c => c.Person.FirstName).ThenBy(c => c.Person.LastName) : query.OrderByDescending(c => c.Person.FirstName).ThenByDescending(c => c.Person.LastName),
+            "points" => sortAscending ? query.OrderBy(c => c.LoyaltyPoints) : query.OrderByDescending(c => c.LoyaltyPoints),
+            "joined" => sortAscending ? query.OrderBy(c => c.CreatedAt) : query.OrderByDescending(c => c.CreatedAt),
+            _ => query.OrderBy(c => c.Person.FirstName)
+        };
+
+        filteredCustomers = query.ToList();
+        currentPage = 1; // Reset to first page on filter change
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+        ApplyFilter();
+    }
+
+    private string GetSortIcon(string column)
+    {
+        if (sortColumn != column) return "";
+        return sortAscending ? "▲" : "▼";
+    }
+
+    private List<Customer> GetPagedCustomers()
+    {
+        return filteredCustomers
+            .Skip((currentPage - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+    }
+
+    private void GoToPage(int page)
+    {
+        currentPage = page;
+    }
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1) currentPage--;
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < TotalPages) currentPage++;
+    }
+
+    private void ShowAddDialog()
+    {
+        ClearForm();
+        showDialog = true;
+        ClearMessages();
+    }
+
+    private async Task SaveCustomer()
+    {
+        dialogError = null;
+        saveSuccess = false;
+
+        if (string.IsNullOrWhiteSpace(firstName))
+        {
+            dialogError = "First name is required";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(lastName))
+        {
+            dialogError = "Last name is required";
+            return;
+        }
+
+        // Email validation
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            var emailPattern = @"^[^@\s]+@[^@\s]+\.[^@\s]+$";
+            if (!System.Text.RegularExpressions.Regex.IsMatch(email.Trim(), emailPattern))
+            {
+                dialogError = "Please enter a valid email address (e.g., name@example.com)";
+                return;
+            }
+        }
+
+        // Phone validation - Philippine format
+        if (!string.IsNullOrWhiteSpace(phone))
+        {
+            var cleanPhone = phone.Replace(" ", "").Replace("-", "").Replace("+", "");
+            if (cleanPhone.Length < 10 || cleanPhone.Length > 13 || !cleanPhone.All(char.IsDigit))
+            {
+                dialogError = "Please enter a valid phone number (10-13 digits)";
+                return;
+            }
+        }
+
+        isSaving = true;
+
+        try
+        {
+            var newCustomer = await CustomerService.CreateCustomerAsync(
+                firstName.Trim(),
+                lastName.Trim(),
+                email?.Trim(),
+                phone?.Trim(),
+                address?.Trim()
+            );
+
+            saveSuccess = true;
+            successMessage = $"Customer {firstName} {lastName} created successfully with code {newCustomer.CustomerCode}!";
+            await LoadCustomers();
+            
+            await Task.Delay(1500);
+            CloseDialog();
+
+            // Navigate to the new customer's detail page
+            Navigation.NavigateTo($"/customers/{newCustomer.CustomerId}");
+        }
+        catch (Exception ex)
+        {
+            dialogError = $"Error saving customer: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ViewCustomer(long customerId)
+    {
+        Navigation.NavigateTo($"/customers/{customerId}");
+    }
+
+    private void CreateAppointment(long customerId)
+    {
+        Navigation.NavigateTo($"/appointments/new?customerId={customerId}");
+    }
+
+    private void CloseDialog()
+    {
+        showDialog = false;
+        ClearForm();
+    }
+
+    private void ClearForm()
+    {
+        firstName = "";
+        lastName = "";
+        email = null;
+        phone = null;
+        address = null;
+        dob = null;
+        dialogError = null;
+        saveSuccess = false;
+    }
+
+    private void ClearMessages()
+    {
+        successMessage = null;
+        errorMessage = null;
+    }
+
+    private async Task ArchiveCustomer(long customerId)
+    {
+        try
+        {
+            ClearMessages();
+            var customer = await CustomerService.GetCustomerByIdAsync(customerId);
+            if (customer == null)
+            {
+                errorMessage = "Customer not found.";
+                return;
+            }
+
+            customer.IsArchived = true;
+            await CustomerService.UpdateCustomerAsync(customer);
+            successMessage = "Customer archived successfully!";
+            await LoadCustomers();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error archiving customer: {ex.Message}";
+        }
+    }
+
+    private async Task RestoreCustomer(long customerId)
+    {
+        try
+        {
+            ClearMessages();
+            var customer = await CustomerService.GetCustomerByIdAsync(customerId);
+            if (customer == null)
+            {
+                errorMessage = "Customer not found.";
+                return;
+            }
+
+            customer.IsArchived = false;
+            await CustomerService.UpdateCustomerAsync(customer);
+            successMessage = "Customer restored successfully!";
+            await LoadCustomers();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error restoring customer: {ex.Message}";
+        }
+    }
+}

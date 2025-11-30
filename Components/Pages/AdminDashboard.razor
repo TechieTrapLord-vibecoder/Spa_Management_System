@@ -1,0 +1,291 @@
+@page "/admin"
+@using Spa_Management_System.Services
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+
+<PageTitle>Admin Dashboard - Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated || !AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+{
+    <div class="card">
+        <div class="alert alert-danger">
+            <span class="bi bi-shield-x"></span>
+            <div>
+                <h4 style="margin: 0 0 0.5rem 0;">Access Denied</h4>
+                <p style="margin: 0;">You do not have permission to access this page. SuperAdmin access required.</p>
+            </div>
+        </div>
+        <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/login")'>
+            <span class="bi bi-box-arrow-in-right"></span> Go to Login
+        </button>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #454F4A, #5A6560); display: flex; align-items: center; justify-content: center; color: white; font-size: 1.5rem;">
+                <span class="bi bi-shield-lock"></span>
+            </div>
+            <div>
+                <h3 style="color: var(--spa-primary); margin: 0; font-size: 1.8rem;">SuperAdmin Control Panel</h3>
+                <p style="color: var(--spa-text-light); margin: 0;">Welcome, @AuthState.GetUserDisplayName() • @DateTime.Now.ToString("dddd, MMMM d, yyyy")</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerts Section -->
+    @if (!isLoading && (lowStockItems.Any() || todayAppointments > 0 || pendingPOs > 0))
+    {
+        <div class="card">
+            <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-bell-fill"></span> Alerts & Notifications</h4>
+            <div style="display: grid; gap: 0.75rem;">
+                @if (lowStockItems.Any())
+                {
+                    <a href="/inventory" style="text-decoration: none;">
+                        <div class="alert alert-warning" style="margin: 0; cursor: pointer;">
+                            <span class="bi bi-exclamation-triangle-fill"></span>
+                            <div>
+                                <strong>Low Stock Alert:</strong> @lowStockItems.Count product(s) are below reorder level
+                                @foreach (var item in lowStockItems.Take(3))
+                                {
+                                    <div style="font-size: 0.85rem;">• @item.Product?.Name - @item.QuantityOnHand.ToString("N0") left</div>
+                                }
+                                @if (lowStockItems.Count > 3)
+                                {
+                                    <div style="font-size: 0.85rem; font-style: italic;">...and @(lowStockItems.Count - 3) more</div>
+                                }
+                            </div>
+                        </div>
+                    </a>
+                }
+                @if (outOfStockItems > 0)
+                {
+                    <a href="/inventory" style="text-decoration: none;">
+                        <div class="alert alert-danger" style="margin: 0; cursor: pointer;">
+                            <span class="bi bi-x-circle-fill"></span>
+                            <div>
+                                <strong>Out of Stock:</strong> @outOfStockItems product(s) have zero stock
+                            </div>
+                        </div>
+                    </a>
+                }
+                @if (todayAppointments > 0)
+                {
+                    <a href="/appointments" style="text-decoration: none;">
+                        <div class="alert alert-info" style="margin: 0; cursor: pointer;">
+                            <span class="bi bi-calendar-check-fill"></span>
+                            <div>
+                                <strong>Today's Schedule:</strong> @todayAppointments appointment(s) scheduled for today
+                            </div>
+                        </div>
+                    </a>
+                }
+                @if (pendingPOs > 0)
+                {
+                    <a href="/purchase-orders" style="text-decoration: none;">
+                        <div class="alert alert-info" style="margin: 0; cursor: pointer;">
+                            <span class="bi bi-truck"></span>
+                            <div>
+                                <strong>Pending Orders:</strong> @pendingPOs purchase order(s) awaiting processing
+                            </div>
+                        </div>
+                    </a>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="card">
+        <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-sliders"></span> Administration Modules</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;">
+            
+            <a href="/roles" style="text-decoration: none; color: inherit;">
+                <div style="padding: 1.5rem; border: 2px solid var(--spa-secondary); border-radius: 12px; transition: all 0.2s; cursor: pointer; height: 100%;" onmouseover="this.style.borderColor='var(--spa-accent)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--spa-secondary)'; this.style.transform='translateY(0)'">
+                    <div style="font-size: 2rem; margin-bottom: 0.75rem;"><span class="bi bi-people"></span></div>
+                    <h5 style="color: var(--spa-primary); margin-bottom: 0.5rem;">User Roles</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">Manage system roles and permissions</p>
+                </div>
+            </a>
+
+            <a href="/employees" style="text-decoration: none; color: inherit;">
+                <div style="padding: 1.5rem; border: 2px solid var(--spa-secondary); border-radius: 12px; transition: all 0.2s; cursor: pointer; height: 100%;" onmouseover="this.style.borderColor='var(--spa-accent)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--spa-secondary)'; this.style.transform='translateY(0)'">
+                    <div style="font-size: 2rem, margin-bottom: 0.75rem;"><span class="bi bi-person-badge"></span></div>
+                    <h5 style="color: var(--spa-primary); margin-bottom: 0.5rem;">Employees</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">Manage employee records and information</p>
+                </div>
+            </a>
+
+            <a href="/users" style="text-decoration: none; color: inherit;">
+                <div style="padding: 1.5rem; border: 2px solid var(--spa-secondary); border-radius: 12px; transition: all 0.2s; cursor: pointer; height: 100%;" onmouseover="this.style.borderColor='var(--spa-accent)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--spa-secondary)'; this.style.transform='translateY(0)'">
+                    <div style="font-size: 2rem, margin-bottom: 0.75rem;"><span class="bi bi-person-lock"></span></div>
+                    <h5 style="color: var(--spa-primary); margin-bottom: 0.5rem;">User Accounts</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">Manage login credentials and access</p>
+                </div>
+            </a>
+
+            <a href="/db-test" style="text-decoration: none; color: inherit;">
+                <div style="padding: 1.5rem; border: 2px solid var(--spa-secondary); border-radius: 12px; transition: all 0.2s; cursor: pointer; height: 100%;" onmouseover="this.style.borderColor='var(--spa-accent)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--spa-secondary)'; this.style.transform='translateY(0)'">
+                    <div style="font-size: 2rem, margin-bottom: 0.75rem;"><span class="bi bi-database"></span></div>
+                    <h5 style="color: var(--spa-primary); margin-bottom: 0.5rem;">Database</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">Check database connection and status</p>
+                </div>
+            </a>
+
+        </div>
+    </div>
+
+    <div class="card">
+        <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-briefcase"></span> Master Data - Phase 2</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;">
+            
+            <a href="/service-categories" style="text-decoration: none; color: inherit;">
+                <div style="padding: 1.5rem; border: 2px solid var(--spa-secondary); border-radius: 12px; transition: all 0.2s; cursor: pointer; height: 100%;" onmouseover="this.style.borderColor='var(--spa-accent)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--spa-secondary)'; this.style.transform='translateY(0)'">
+                    <div style="font-size: 2rem, margin-bottom: 0.75rem;"><span class="bi bi-tags"></span></div>
+                    <h5 style="color: var(--spa-primary); margin-bottom: 0.5rem;">Service Categories</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">Organize services by type (Massage, Facial, etc.)</p>
+                </div>
+            </a>
+
+            <a href="/services" style="text-decoration: none; color: inherit;">
+                <div style="padding: 1.5rem; border: 2px solid var(--spa-secondary); border-radius: 12px; transition: all 0.2s; cursor: pointer; height: 100%;" onmouseover="this.style.borderColor='var(--spa-accent)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--spa-secondary)'; this.style.transform='translateY(0)'">
+                    <div style="font-size: 2rem, margin-bottom: 0.75rem;"><span class="bi bi-heart"></span></div>
+                    <h5 style="color: var(--spa-primary); margin-bottom: 0.5rem;">Services Menu</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">Manage spa services and treatments</p>
+                </div>
+            </a>
+
+            <a href="/service-commissions" style="text-decoration: none; color: inherit;">
+                <div style="padding: 1.5rem; border: 2px solid var(--spa-secondary); border-radius: 12px; transition: all 0.2s; cursor: pointer; height: 100%;" onmouseover="this.style.borderColor='var(--spa-accent)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--spa-secondary)'; this.style.transform='translateY(0)'">
+                    <div style="font-size: 2rem, margin-bottom: 0.75rem;"><span class="bi bi-cash-stack"></span></div>
+                    <h5 style="color: var(--spa-primary); margin-bottom: 0.5rem;">Service Commissions</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">Set up employee commission rates</p>
+                </div>
+            </a>
+
+            <a href="/suppliers" style="text-decoration: none; color: inherit;">
+                <div style="padding: 1.5rem; border: 2px solid var(--spa-secondary); border-radius: 12px; transition: all 0.2s; cursor: pointer; height: 100%;" onmouseover="this.style.borderColor='var(--spa-accent)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--spa-secondary)'; this.style.transform='translateY(0)'">
+                    <div style="font-size: 2rem, margin-bottom: 0.75rem;"><span class="bi bi-truck"></span></div>
+                    <h5 style="color: var(--spa-primary); margin-bottom: 0.5rem;">Suppliers</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">Manage vendor relationships</p>
+                </div>
+            </a>
+
+            <a href="/products" style="text-decoration: none; color: inherit;">
+                <div style="padding: 1.5rem; border: 2px solid var(--spa-secondary); border-radius: 12px; transition: all 0.2s; cursor: pointer; height: 100%;" onmouseover="this.style.borderColor='var(--spa-accent)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--spa-secondary)'; this.style.transform='translateY(0)'">
+                    <div style="font-size: 2rem, margin-bottom: 0.75rem;"><span class="bi bi-box"></span></div>
+                    <h5 style="color: var(--spa-primary); margin-bottom: 0.5rem;">Products</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">Define inventory items and products</p>
+                </div>
+            </a>
+
+            <a href="/inventory" style="text-decoration: none; color: inherit;">
+                <div style="padding: 1.5rem; border: 2px solid var(--spa-secondary); border-radius: 12px; transition: all 0.2s; cursor: pointer; height: 100%;" onmouseover="this.style.borderColor='var(--spa-accent)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--spa-secondary)'; this.style.transform='translateY(0)'">
+                    <div style="font-size: 2rem, margin-bottom: 0.75rem;"><span class="bi bi-box-seam"></span></div>
+                    <h5 style="color: var(--spa-primary); margin-bottom: 0.5rem;">Inventory</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">Set and manage stock levels</p>
+                </div>
+            </a>
+
+        </div>
+    </div>
+
+    <div class="card">
+        <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-gear"></span> System Settings</h4>
+        <div style="display: grid; gap: 1rem;">
+            <div style="padding: 1rem; border: 1px solid var(--spa-secondary); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h5 style="color: var(--spa-primary); margin: 0 0 0.25rem 0;">System Version</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">Version 1.0.0 - Phase 2 Complete</p>
+                </div>
+                <span class="badge badge-success">Active</span>
+            </div>
+
+            <div style="padding: 1rem; border: 1px solid var(--spa-secondary); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h5 style="color: var(--spa-primary); margin: 0 0 0.25rem 0;">Database</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">SQL Server - spa_erp</p>
+                </div>
+                <span class="badge badge-success">Connected</span>
+            </div>
+
+            <div style="padding: 1rem; border: 1px solid var(--spa-secondary); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h5 style="color: var(--spa-primary); margin: 0 0 0.25rem 0;">Session Timeout</h5>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem; margin: 0;">No timeout (development mode)</p>
+                </div>
+                <span class="badge badge-info">Dev Mode</span>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    
+    // Alert data
+    private int todayAppointments = 0;
+    private int pendingPOs = 0;
+    private List<Models.Inventory> lowStockItems = new();
+    private int outOfStockItems = 0;
+
+    protected override void OnInitialized()
+    {
+        // Redirect if not authenticated or not SuperAdmin
+        if (!AuthState.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) &&
+            !AuthState.GetUserRole().Equals("Manager", StringComparison.OrdinalIgnoreCase))
+        {
+            // Redirect to employee dashboard for non-admin roles
+            Navigation.NavigateTo("/employee-dashboard");
+            return;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStats();
+    }
+
+    private async Task LoadStats()
+    {
+        isLoading = true;
+
+        try
+        {
+            // Load alerts data
+            var today = DateTime.Today;
+            todayAppointments = await DbContext.Appointments
+                .CountAsync(a => a.ScheduledStart.Date == today && a.Status != "cancelled");
+            
+            pendingPOs = await DbContext.PurchaseOrders
+                .CountAsync(p => p.Status == "pending" || p.Status == "ordered");
+            
+            lowStockItems = await DbContext.Inventories
+                .Include(i => i.Product)
+                .Where(i => i.QuantityOnHand > 0 && i.QuantityOnHand <= i.ReorderLevel)
+                .ToListAsync();
+            
+            outOfStockItems = await DbContext.Inventories
+                .CountAsync(i => i.QuantityOnHand <= 0);
+        }
+        catch (Exception ex)
+        {
+            // Handle error silently for now
+            Console.WriteLine($"Error loading stats: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

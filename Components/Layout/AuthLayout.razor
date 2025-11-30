@@ -1,0 +1,214 @@
+@inherits LayoutComponentBase
+
+<div class="auth-container">
+    @Body
+</div>
+
+<style>
+    .auth-container {
+        display: flex;
+        min-height: 100vh;
+        width: 100%;
+    }
+
+    .auth-left-panel {
+        flex: 1;
+        background-color: #454F4A;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        color: white;
+    }
+
+    .auth-left-panel .logo-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .auth-left-panel .logo-image {
+        width: 450px;
+        height: auto;
+        object-fit: contain;
+    }
+
+    .auth-left-panel .system-title {
+        font-size: 2rem;
+        font-weight: 600;
+        letter-spacing: 1px;
+        text-align: center;
+        color: #DCD8CE;
+        margin-top: 1.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .auth-left-panel .welcome-text {
+        font-size: 1.5rem;
+        font-weight: 300;
+        letter-spacing: 2px;
+        text-align: center;
+        color: rgba(255, 255, 255, 0.8);
+        margin: 0;
+    }
+
+    .auth-right-panel {
+        flex: 1;
+        background-color: #DCD8CE;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+    }
+
+    .auth-card {
+        background: white;
+        border-radius: 16px;
+        padding: 3rem;
+        width: 100%;
+        max-width: 420px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    }
+
+    .auth-card h2 {
+        text-align: center;
+        color: #454F4A;
+        font-size: 1.8rem;
+        font-weight: 600;
+        margin-bottom: 2rem;
+    }
+
+    .auth-card .form-label {
+        color: #454F4A;
+        font-weight: 500;
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+        display: block;
+    }
+
+    .auth-card .form-control {
+        width: 100%;
+        padding: 0.875rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        background-color: #fafafa;
+    }
+
+    .auth-card .form-control:focus {
+        outline: none;
+        border-color: #454F4A;
+        box-shadow: 0 0 0 3px rgba(69, 79, 74, 0.1);
+        background-color: white;
+    }
+
+    .auth-card .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .auth-card .password-wrapper {
+        position: relative;
+    }
+
+    .auth-card .password-toggle {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        padding: 0.25rem;
+    }
+
+    .auth-card .password-toggle:hover {
+        color: #454F4A;
+    }
+
+    .auth-card .btn-signin {
+        width: 100%;
+        padding: 1rem;
+        background-color: #454F4A;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s, transform 0.1s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .auth-card .btn-signin:hover {
+        background-color: #3a4340;
+    }
+
+    .auth-card .btn-signin:active {
+        transform: scale(0.98);
+    }
+
+    .auth-card .btn-signin:disabled {
+        background-color: #888;
+        cursor: not-allowed;
+    }
+
+    .auth-alert {
+        padding: 0.875rem 1rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .auth-alert.error {
+        background-color: #fef2f2;
+        color: #c97064;
+        border: 1px solid #fecaca;
+    }
+
+    .auth-alert.success {
+        background-color: #f0fdf4;
+        color: #6b9b7e;
+        border: 1px solid #bbf7d0;
+    }
+
+    @@media (max-width: 900px) {
+        .auth-container {
+            flex-direction: column;
+        }
+
+        .auth-left-panel {
+            padding: 2rem 1rem;
+            min-height: auto;
+        }
+
+        .auth-left-panel .logo-image {
+            width: 350px;
+        }
+
+        .auth-left-panel .system-title {
+            font-size: 1.4rem;
+        }
+
+        .auth-left-panel .welcome-text {
+            font-size: 1.1rem;
+        }
+
+        .auth-right-panel {
+            flex: 2;
+        }
+
+        .auth-card {
+            padding: 2rem;
+        }
+    }
+</style>

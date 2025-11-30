@@ -1,0 +1,637 @@
+@page "/ledger"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@using Spa_Management_System.Services
+@inject AppDbContext DbContext
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+
+<PageTitle>General Ledger - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <h3 class="card-title" style="margin: 0;">📖 General Ledger</h3>
+            <button class="btn btn-primary" @onclick="ShowNewAccountDialog">
+                <span class="bi bi-plus-circle"></span> New Account
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success" style="margin-bottom: 1rem;">
+                <span class="bi bi-check-circle-fill"></span> @successMessage
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger" style="margin-bottom: 1rem;">
+                <span class="bi bi-exclamation-circle-fill"></span> @errorMessage
+            </div>
+        }
+
+        <!-- Summary Cards by Account Type -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+            @foreach (var type in accountTypes)
+            {
+                var accounts = ledgerAccounts.Where(a => a.AccountType == type.Key).ToList();
+                var balance = GetAccountTypeBalance(accounts);
+                <div style="padding: 1rem; background: @type.Value.Color; border-radius: 12px; text-align: center;">
+                    <span style="font-size: 1.5rem;"><span class="bi @type.Value.Icon"></span></span>
+                    <h5 style="color: var(--spa-primary); margin: 0.5rem 0 0.25rem 0;">@type.Value.Name</h5>
+                    <p style="font-size: 0.85rem; color: var(--spa-text-light); margin: 0;">@accounts.Count accounts</p>
+                    <p style="font-size: 1.1rem; font-weight: 600; margin: 0.25rem 0 0 0; color: @(balance >= 0 ? "#28a745" : "#dc3545");">
+                        ₱@Math.Abs(balance).ToString("N2")
+                    </p>
+                </div>
+            }
+        </div>
+
+        <!-- Filter by account type -->
+        <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: end;">
+            <div style="flex: 1; min-width: 200px;">
+                <label class="form-label">Account Type</label>
+                <select class="form-control" @bind="filterAccountType" @bind:after="ApplyFilters">
+                    <option value="">All Types</option>
+                    @foreach (var type in accountTypes)
+                    {
+                        <option value="@type.Key">@type.Value.Name</option>
+                    }
+                </select>
+            </div>
+            <div style="flex: 2; min-width: 200px;">
+                <label class="form-label">Search</label>
+                <input type="text" class="form-control" placeholder="Search by code or name..." @bind="searchTerm" @bind:event="oninput" @bind:after="ApplyFilters" />
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="text-align: center; padding: 3rem;">
+                <div class="spinner-border" style="color: var(--spa-primary);"></div>
+                <p style="color: var(--spa-text-light); margin-top: 1rem;">Loading accounts...</p>
+            </div>
+        }
+        else if (!filteredAccounts.Any())
+        {
+            <div class="alert alert-info">
+                <span class="bi bi-info-circle-fill"></span>
+                No accounts found. Click "New Account" to create one.
+            </div>
+        }
+        else
+        {
+            <!-- Accounts List -->
+            <div style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("code")'>Code @GetSortIcon("code")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("name")'>Account Name @GetSortIcon("name")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("type")'>Type @GetSortIcon("type")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("normalbalance")'>Normal Balance @GetSortIcon("normalbalance")</th>
+                            <th style="cursor: pointer; text-align: right;" @onclick='() => SortBy("balance")'>Current Balance @GetSortIcon("balance")</th>
+                            <th style="text-align: center;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var account in GetPagedAccounts())
+                        {
+                            var balance = CalculateAccountBalance(account);
+                            var typeInfo = accountTypes.GetValueOrDefault(account.AccountType, new AccountTypeInfo { Name = account.AccountType, Icon = "bi-folder", Color = "#f5f5f5" });
+                            <tr>
+                                <td><strong style="font-family: monospace;">@account.Code</strong></td>
+                                <td>@account.Name</td>
+                                <td>
+                                    <span style="padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.8rem; background: @typeInfo.Color;">
+                                        <span class="bi @typeInfo.Icon"></span> @typeInfo.Name
+                                    </span>
+                                </td>
+                                <td>
+                                    <span style="padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; background: @(account.NormalBalance == "debit" ? "#e3f2fd" : "#fce4ec"); color: @(account.NormalBalance == "debit" ? "#1565c0" : "#c62828");">
+                                        @account.NormalBalance.ToUpper()
+                                    </span>
+                                </td>
+                                <td style="text-align: right; font-weight: 600; color: @(balance >= 0 ? "#28a745" : "#dc3545");">
+                                    ₱@Math.Abs(balance).ToString("N2")
+                                    @if (balance < 0)
+                                    {
+                                        <span style="font-size: 0.75rem; color: var(--spa-text-light);"> CR</span>
+                                    }
+                                </td>
+                                <td style="text-align: center;">
+                                    <button class="btn btn-outline-primary btn-sm" @onclick="() => ViewAccountDetails(account)" title="View Transactions">
+                                        <span class="bi bi-list-ul"></span> View
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm" @onclick="() => EditAccount(account)" title="Edit" style="margin-left: 0.25rem;">
+                                        <span class="bi bi-pencil"></span> Edit
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-pagination">
+                <span>Showing @(Math.Min((currentPage - 1) * pageSize + 1, filteredAccounts.Count))-@(Math.Min(currentPage * pageSize, filteredAccounts.Count)) of @filteredAccounts.Count entries</span>
+                <div class="pagination-buttons">
+                    <button class="btn btn-sm btn-light" disabled="@(currentPage <= 1)" @onclick="PreviousPage">Previous</button>
+                    @for (int i = 1; i <= TotalPages; i++)
+                    {
+                        var pageNum = i;
+                        <button class="btn btn-sm @(pageNum == currentPage ? "btn-primary" : "btn-light")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                    }
+                    <button class="btn btn-sm btn-light" disabled="@(currentPage >= TotalPages)" @onclick="NextPage">Next</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- New/Edit Account Dialog -->
+    @if (showAccountDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseAccountDialog">
+            <div class="modal-content" style="max-width: 500px;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h4>@(isEditing ? "Edit Account" : "New Ledger Account")</h4>
+                    <button class="btn-close" @onclick="CloseAccountDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 1rem;">
+                        <label class="form-label">Account Code *</label>
+                        <input type="text" class="form-control" @bind="currentAccount.Code" placeholder="e.g., 1000, 2100, 4000" maxlength="50" />
+                        <small style="color: var(--spa-text-light);">Unique identifier for the account</small>
+                    </div>
+
+                    <div style="margin-bottom: 1rem;">
+                        <label class="form-label">Account Name *</label>
+                        <input type="text" class="form-control" @bind="currentAccount.Name" placeholder="e.g., Cash, Accounts Payable, Service Revenue" maxlength="200" />
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                        <div>
+                            <label class="form-label">Account Type *</label>
+                            <select class="form-control" @bind="currentAccount.AccountType">
+                                <option value="">-- Select Type --</option>
+                                @foreach (var type in accountTypes)
+                                {
+                                    <option value="@type.Key">@type.Value.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Normal Balance *</label>
+                            <select class="form-control" @bind="currentAccount.NormalBalance">
+                                <option value="">-- Select --</option>
+                                <option value="debit">Debit</option>
+                                <option value="credit">Credit</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="padding: 1rem; background: var(--spa-background); border-radius: 8px; margin-top: 1rem;">
+                        <strong>💡 Normal Balance Guide:</strong>
+                        <ul style="margin: 0.5rem 0 0 0; padding-left: 1.5rem; color: var(--spa-text-light); font-size: 0.9rem;">
+                            <li>Assets & Expenses → <strong>Debit</strong></li>
+                            <li>Liabilities, Equity & Revenue → <strong>Credit</strong></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" @onclick="CloseAccountDialog">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveAccount" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                        else
+                        {
+                            <span class="bi bi-check-circle"></span>
+                        }
+                        Save Account
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Account Details/Transactions Dialog -->
+    @if (showDetailsDialog && viewingAccount != null)
+    {
+        <div class="modal-overlay" @onclick="CloseDetailsDialog">
+            <div class="modal-content" style="max-width: 900px;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h4><span class="bi bi-bar-chart-line"></span> @viewingAccount.Code - @viewingAccount.Name</h4>
+                    <button class="btn-close" @onclick="CloseDetailsDialog"></button>
+                </div>
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                    <!-- Account Info -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; padding: 1rem; background: var(--spa-background); border-radius: 8px;">
+                        <div>
+                            <span style="color: var(--spa-text-light); font-size: 0.85rem;">Account Type</span>
+                            <p style="font-weight: 600; margin: 0;">@(accountTypes.GetValueOrDefault(viewingAccount.AccountType)?.Name ?? viewingAccount.AccountType)</p>
+                        </div>
+                        <div>
+                            <span style="color: var(--spa-text-light); font-size: 0.85rem;">Normal Balance</span>
+                            <p style="font-weight: 600; margin: 0;">@viewingAccount.NormalBalance.ToUpper()</p>
+                        </div>
+                        <div>
+                            <span style="color: var(--spa-text-light); font-size: 0.85rem;">Current Balance</span>
+                            @{
+                                var currentBalance = CalculateAccountBalance(viewingAccount);
+                            }
+                            <p style="font-weight: 600; margin: 0; color: @(currentBalance >= 0 ? "#28a745" : "#dc3545");">
+                                ₱@Math.Abs(currentBalance).ToString("N2") @(currentBalance < 0 ? "CR" : "")
+                            </p>
+                        </div>
+                    </div>
+
+                    <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-journal-text"></span> Transaction History</h5>
+
+                    @if (!accountTransactions.Any())
+                    {
+                        <div class="alert alert-info">
+                            <span class="bi bi-info-circle-fill"></span>
+                            No transactions found for this account.
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Journal #</th>
+                                    <th>Description</th>
+                                    <th style="text-align: right;">Debit</th>
+                                    <th style="text-align: right;">Credit</th>
+                                    <th style="text-align: right;">Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{
+                                    decimal runningBalance = 0;
+                                }
+                                @foreach (var tx in accountTransactions)
+                                {
+                                    if (viewingAccount.NormalBalance == "debit")
+                                    {
+                                        runningBalance += tx.Debit - tx.Credit;
+                                    }
+                                    else
+                                    {
+                                        runningBalance += tx.Credit - tx.Debit;
+                                    }
+                                    <tr>
+                                        <td>@tx.JournalEntry.Date.ToString("MMM dd, yyyy")</td>
+                                        <td><strong>@tx.JournalEntry.JournalNo</strong></td>
+                                        <td>@(tx.LineMemo ?? tx.JournalEntry.Description ?? "-")</td>
+                                        <td style="text-align: right; color: @(tx.Debit > 0 ? "#28a745" : "inherit");">
+                                            @(tx.Debit > 0 ? $"₱{tx.Debit:N2}" : "-")
+                                        </td>
+                                        <td style="text-align: right; color: @(tx.Credit > 0 ? "#dc3545" : "inherit");">
+                                            @(tx.Credit > 0 ? $"₱{tx.Credit:N2}" : "-")
+                                        </td>
+                                        <td style="text-align: right; font-weight: 600;">
+                                            ₱@Math.Abs(runningBalance).ToString("N2")
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr style="background: var(--spa-background); font-weight: 600;">
+                                    <td colspan="3" style="text-align: right;">Totals:</td>
+                                    <td style="text-align: right; color: #28a745;">₱@accountTransactions.Sum(t => t.Debit).ToString("N2")</td>
+                                    <td style="text-align: right; color: #dc3545;">₱@accountTransactions.Sum(t => t.Credit).ToString("N2")</td>
+                                    <td style="text-align: right;">₱@Math.Abs(runningBalance).ToString("N2")</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" @onclick="CloseDetailsDialog">Close</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    // Data
+    private List<LedgerAccount> ledgerAccounts = new();
+    private List<LedgerAccount> filteredAccounts = new();
+    private List<JournalEntryLine> accountTransactions = new();
+    
+    // Current account being edited
+    private LedgerAccount currentAccount = new();
+    private LedgerAccount? viewingAccount;
+    
+    // Filters
+    private string filterAccountType = "";
+    private string searchTerm = "";
+    
+    // UI State
+    private bool isLoading = true;
+    private bool showAccountDialog = false;
+    private bool showDetailsDialog = false;
+    private bool isEditing = false;
+    private bool isSaving = false;
+    private string? successMessage;
+    private string? errorMessage;
+
+    // Pagination and sorting
+    private string sortColumn = "code";
+    private bool sortAscending = true;
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int TotalPages => (int)Math.Ceiling((double)filteredAccounts.Count / pageSize);
+
+    // Account type metadata
+    private Dictionary<string, AccountTypeInfo> accountTypes = new()
+    {
+        { "asset", new AccountTypeInfo { Name = "Assets", Icon = "bi-cash-coin", Color = "rgba(40, 167, 69, 0.1)" } },
+        { "liability", new AccountTypeInfo { Name = "Liabilities", Icon = "bi-clipboard", Color = "rgba(220, 53, 69, 0.1)" } },
+        { "equity", new AccountTypeInfo { Name = "Equity", Icon = "bi-bank", Color = "rgba(23, 162, 184, 0.1)" } },
+        { "revenue", new AccountTypeInfo { Name = "Revenue", Icon = "bi-graph-up", Color = "rgba(40, 167, 69, 0.15)" } },
+        { "expense", new AccountTypeInfo { Name = "Expenses", Icon = "bi-graph-down", Color = "rgba(255, 193, 7, 0.15)" } }
+    };
+
+    private class AccountTypeInfo
+    {
+        public string Name { get; set; } = "";
+        public string Icon { get; set; } = "";
+        public string Color { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAccounts();
+    }
+
+    private async Task LoadAccounts()
+    {
+        isLoading = true;
+        try
+        {
+            ledgerAccounts = await DbContext.LedgerAccounts
+                .Include(a => a.JournalEntryLines)
+                    .ThenInclude(l => l.JournalEntry)
+                .OrderBy(a => a.Code)
+                .ToListAsync();
+            
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading accounts: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        filteredAccounts = ledgerAccounts
+            .Where(a => string.IsNullOrEmpty(filterAccountType) || a.AccountType == filterAccountType)
+            .Where(a => string.IsNullOrEmpty(searchTerm) || 
+                        a.Code.ToLower().Contains(searchTerm.ToLower()) ||
+                        a.Name.ToLower().Contains(searchTerm.ToLower()))
+            .ToList();
+
+        // Apply sorting
+        filteredAccounts = sortColumn switch
+        {
+            "code" => sortAscending 
+                ? filteredAccounts.OrderBy(a => a.Code).ToList()
+                : filteredAccounts.OrderByDescending(a => a.Code).ToList(),
+            "name" => sortAscending 
+                ? filteredAccounts.OrderBy(a => a.Name).ToList()
+                : filteredAccounts.OrderByDescending(a => a.Name).ToList(),
+            "type" => sortAscending 
+                ? filteredAccounts.OrderBy(a => a.AccountType).ToList()
+                : filteredAccounts.OrderByDescending(a => a.AccountType).ToList(),
+            "normalbalance" => sortAscending 
+                ? filteredAccounts.OrderBy(a => a.NormalBalance).ToList()
+                : filteredAccounts.OrderByDescending(a => a.NormalBalance).ToList(),
+            "balance" => sortAscending 
+                ? filteredAccounts.OrderBy(a => CalculateAccountBalance(a)).ToList()
+                : filteredAccounts.OrderByDescending(a => CalculateAccountBalance(a)).ToList(),
+            _ => filteredAccounts
+        };
+
+        currentPage = 1;
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+        ApplyFilters();
+    }
+
+    private string GetSortIcon(string column)
+    {
+        if (sortColumn != column) return "";
+        return sortAscending ? "▲" : "▼";
+    }
+
+    private List<LedgerAccount> GetPagedAccounts()
+    {
+        return filteredAccounts
+            .Skip((currentPage - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+    }
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+        }
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < TotalPages)
+        {
+            currentPage++;
+        }
+    }
+
+    private void GoToPage(int page)
+    {
+        currentPage = page;
+    }
+
+    private decimal CalculateAccountBalance(LedgerAccount account)
+    {
+        var totalDebits = account.JournalEntryLines?.Sum(l => l.Debit) ?? 0;
+        var totalCredits = account.JournalEntryLines?.Sum(l => l.Credit) ?? 0;
+        
+        // Return balance based on normal balance type
+        if (account.NormalBalance == "debit")
+        {
+            return totalDebits - totalCredits;
+        }
+        else
+        {
+            return totalCredits - totalDebits;
+        }
+    }
+
+    private decimal GetAccountTypeBalance(List<LedgerAccount> accounts)
+    {
+        return accounts.Sum(a => CalculateAccountBalance(a));
+    }
+
+    private void ShowNewAccountDialog()
+    {
+        currentAccount = new LedgerAccount();
+        isEditing = false;
+        errorMessage = null;
+        showAccountDialog = true;
+    }
+
+    private void EditAccount(LedgerAccount account)
+    {
+        currentAccount = new LedgerAccount
+        {
+            LedgerAccountId = account.LedgerAccountId,
+            Code = account.Code,
+            Name = account.Name,
+            AccountType = account.AccountType,
+            NormalBalance = account.NormalBalance
+        };
+        isEditing = true;
+        errorMessage = null;
+        showAccountDialog = true;
+    }
+
+    private void CloseAccountDialog()
+    {
+        showAccountDialog = false;
+        currentAccount = new LedgerAccount();
+    }
+
+    private async Task SaveAccount()
+    {
+        errorMessage = null;
+
+        // Validate
+        if (string.IsNullOrWhiteSpace(currentAccount.Code))
+        {
+            errorMessage = "Account code is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentAccount.Name))
+        {
+            errorMessage = "Account name is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentAccount.AccountType))
+        {
+            errorMessage = "Account type is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentAccount.NormalBalance))
+        {
+            errorMessage = "Normal balance is required.";
+            return;
+        }
+
+        // Check for duplicate code
+        var existingCode = await DbContext.LedgerAccounts
+            .AnyAsync(a => a.Code == currentAccount.Code && a.LedgerAccountId != currentAccount.LedgerAccountId);
+        if (existingCode)
+        {
+            errorMessage = "An account with this code already exists.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            if (isEditing)
+            {
+                var account = await DbContext.LedgerAccounts.FindAsync(currentAccount.LedgerAccountId);
+                if (account != null)
+                {
+                    account.Code = currentAccount.Code;
+                    account.Name = currentAccount.Name;
+                    account.AccountType = currentAccount.AccountType;
+                    account.NormalBalance = currentAccount.NormalBalance;
+                }
+            }
+            else
+            {
+                DbContext.LedgerAccounts.Add(currentAccount);
+            }
+
+            await DbContext.SaveChangesAsync();
+
+            successMessage = isEditing ? "Account updated successfully!" : "Account created successfully!";
+            showAccountDialog = false;
+            await LoadAccounts();
+            _ = ClearSuccessMessage();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving account: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ViewAccountDetails(LedgerAccount account)
+    {
+        viewingAccount = account;
+        
+        // Load transactions for this account
+        accountTransactions = await DbContext.JournalEntryLines
+            .Include(l => l.JournalEntry)
+            .Where(l => l.LedgerAccountId == account.LedgerAccountId)
+            .OrderBy(l => l.JournalEntry.Date)
+            .ThenBy(l => l.JournalEntry.JournalId)
+            .ToListAsync();
+
+        showDetailsDialog = true;
+    }
+
+    private void CloseDetailsDialog()
+    {
+        showDetailsDialog = false;
+        viewingAccount = null;
+        accountTransactions.Clear();
+    }
+
+    private async Task ClearSuccessMessage()
+    {
+        await Task.Delay(4000);
+        successMessage = null;
+        await InvokeAsync(StateHasChanged);
+    }
+}

@@ -1,0 +1,599 @@
+@page "/products"
+@using Spa_Management_System.Services
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@using Microsoft.EntityFrameworkCore
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Products - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-box"></span> Product Catalog</h3>
+                <p style="color: var(--spa-text-light); margin: 0.5rem 0 0 0;">Manage your inventory items and products</p>
+            </div>
+            <button class="btn btn-primary" @onclick="OpenAddDialog">
+                <span class="bi bi-plus-circle"></span> Add Product
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success">
+                <span class="bi bi-check-circle-fill"></span>
+                <div>@successMessage</div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">
+                <span class="bi bi-exclamation-triangle-fill"></span>
+                <div>@errorMessage</div>
+            </div>
+        }
+
+        <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Filter:</label>
+            <div style="display: flex; gap: 1rem;">
+                <select class="form-control" @onchange="OnStatusFilterChanged" style="max-width: 200px;">
+                    <option value="">All Products</option>
+                    <option value="true">Active Only</option>
+                    <option value="false">Inactive Only</option>
+                </select>
+                <input type="text" class="form-control" @bind-value="searchText" @bind-value:event="oninput" 
+                       @onkeyup="ApplyFilter" placeholder="Search by name or SKU..." style="max-width: 300px;" />
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="padding: 2rem; text-align: center;">
+                <div class="loading"></div>
+                <p style="margin-top: 1rem; color: var(--spa-text-light);">Loading products...</p>
+            </div>
+        }
+        else if (!filteredProducts.Any())
+        {
+            <div class="alert alert-info">
+                <span class="bi bi-info-circle-fill"></span>
+                <div>
+                    <strong>No Products Found</strong><br />
+                    Start by adding products like massage oils, towels, or retail items.
+                </div>
+            </div>
+        }
+        else
+        {
+            <div style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("sku")'>SKU @GetSortIcon("sku")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("name")'>Product Name @GetSortIcon("name")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("unitprice")'>Unit Price @GetSortIcon("unitprice")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("costprice")'>Cost Price @GetSortIcon("costprice")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("unit")'>Unit @GetSortIcon("unit")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("status")'>Status @GetSortIcon("status")</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var product in GetPagedProducts())
+                        {
+                            <tr>
+                                <td><code>@product.Sku</code></td>
+                                <td>
+                                    <strong>@product.Name</strong>
+                                    @if (!string.IsNullOrEmpty(product.Description))
+                                    {
+                                        <br /><small style="color: var(--spa-text-light);">@product.Description</small>
+                                    }
+                                </td>
+                                <td><strong>₱@product.UnitPrice.ToString("N2")</strong></td>
+                                <td>₱@product.CostPrice.ToString("N2")</td>
+                                <td>@product.Unit</td>
+                                <td>
+                                    @if (product.Active)
+                                    {
+                                        <span class="badge badge-success">Active</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge" style="background: #6c757d;">Inactive</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="btn-group">
+                                        <button class="btn btn-sm btn-light" @onclick="() => OpenEditDialog(product)">
+                                            Edit
+                                        </button>
+                                        @if (product.Active)
+                                        {
+                                            <button class="btn btn-sm btn-warning" @onclick="() => ConfirmArchiveProduct(product.ProductId)">
+                                                Archive
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-success" @onclick="() => RestoreProduct(product.ProductId)">
+                                                Restore
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-pagination">
+                <span>Showing @(Math.Min((currentPage - 1) * pageSize + 1, filteredProducts.Count))-@(Math.Min(currentPage * pageSize, filteredProducts.Count)) of @filteredProducts.Count entries</span>
+                <div class="pagination-buttons">
+                    <button class="btn btn-sm btn-light" disabled="@(currentPage <= 1)" @onclick="PreviousPage">Previous</button>
+                    @for (int i = 1; i <= TotalPages; i++)
+                    {
+                        var pageNum = i;
+                        <button class="btn btn-sm @(pageNum == currentPage ? "btn-primary" : "btn-light")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                    }
+                    <button class="btn btn-sm btn-light" disabled="@(currentPage >= TotalPages)" @onclick="NextPage">Next</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (showDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseDialog">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);">
+                        @(isEditMode ? "Edit Product" : "Add New Product")
+                    </h4>
+                    <button class="btn-close" @onclick="CloseDialog">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>SKU (Stock Keeping Unit)</label>
+                        <input type="text" class="form-control" @bind="currentProduct.Sku" 
+                               placeholder="e.g., OIL-LAV-500ML" maxlength="80" />
+                        <small style="color: var(--spa-text-light);">Unique identifier for inventory tracking</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Product Name *</label>
+                        <input type="text" class="form-control" @bind="currentProduct.Name" 
+                               placeholder="e.g., Lavender Massage Oil" maxlength="200" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea class="form-control" @bind="currentProduct.Description" 
+                                  rows="3" placeholder="Product details and specifications"></textarea>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label>Unit Price (₱) *</label>
+                            <input type="number" class="form-control" @bind="currentProduct.UnitPrice" 
+                                   step="0.01" min="0" placeholder="0.00" />
+                            <small style="color: var(--spa-text-light);">Selling price</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Cost Price (₱) *</label>
+                            <input type="number" class="form-control" @bind="currentProduct.CostPrice" 
+                                   step="0.01" min="0" placeholder="0.00" />
+                            <small style="color: var(--spa-text-light);">Your cost</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Unit</label>
+                            <select class="form-control" @bind="currentProduct.Unit">
+                                <option value="">-- Select Unit --</option>
+                                <option value="pcs">pcs (Pieces)</option>
+                                <option value="bottle">bottle</option>
+                                <option value="box">box</option>
+                                <option value="pack">pack</option>
+                                <option value="set">set</option>
+                                <option value="tube">tube</option>
+                                <option value="jar">jar</option>
+                                <option value="sachet">sachet</option>
+                                <option value="ml">ml (Milliliter)</option>
+                                <option value="L">L (Liter)</option>
+                                <option value="g">g (Gram)</option>
+                                <option value="kg">kg (Kilogram)</option>
+                                <option value="oz">oz (Ounce)</option>
+                                <option value="roll">roll</option>
+                                <option value="sheet">sheet</option>
+                                <option value="pair">pair</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" @bind="currentProduct.Active" />
+                            <span>Active (available for use)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseDialog">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-primary" @onclick="SaveProduct" 
+                            disabled="@(string.IsNullOrWhiteSpace(currentProduct.Name))">
+                        <span class="bi bi-check-circle"></span> @(isEditMode ? "Update" : "Create")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Archive Confirmation Dialog -->
+    @if (showArchiveConfirm)
+    {
+        <div class="modal-overlay" @onclick="CancelArchive">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 400px;">
+                <div class="modal-header" style="background: var(--spa-warning); color: white;">
+                    <h4 style="margin: 0;"><span class="bi bi-archive"></span> Confirm Archive</h4>
+                </div>
+                <div class="modal-body" style="text-align: center; padding: 2rem;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;"><span class="bi bi-archive"></span></div>
+                    <p style="font-size: 1.1rem;">Are you sure you want to archive this product?</p>
+                    <p style="color: var(--spa-text-light);">Archived products will be marked as inactive and can be restored later.</p>
+                </div>
+                <div class="modal-footer" style="justify-content: center; gap: 1rem;">
+                    <button class="btn btn-secondary" @onclick="CancelArchive">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-warning" @onclick="ArchiveProduct">
+                        <span class="bi bi-archive"></span> Yes, Archive
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<Product> products = new();
+    private List<Product> filteredProducts = new();
+    private Product currentProduct = new();
+    private bool isLoading = true;
+    private bool showDialog = false;
+    private bool isEditMode = false;
+    private string? successMessage;
+    private string? errorMessage;
+    private string searchText = "";
+    private bool? statusFilter = null;
+
+    // Pagination and sorting
+    private string sortColumn = "name";
+    private bool sortAscending = true;
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int TotalPages => (int)Math.Ceiling((double)filteredProducts.Count / pageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProducts();
+    }
+
+    private async Task LoadProducts()
+    {
+        isLoading = true;
+        
+        try
+        {
+            products = await DbContext.Products
+                .OrderBy(p => p.Name)
+                .ToListAsync();
+
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading products: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        filteredProducts = products;
+
+        if (statusFilter.HasValue)
+        {
+            filteredProducts = filteredProducts.Where(p => p.Active == statusFilter.Value).ToList();
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            var search = searchText.ToLower();
+            filteredProducts = filteredProducts.Where(p => 
+                p.Name.ToLower().Contains(search) || 
+                (p.Sku != null && p.Sku.ToLower().Contains(search)) ||
+                (p.Description != null && p.Description.ToLower().Contains(search))
+            ).ToList();
+        }
+
+        // Apply sorting
+        filteredProducts = sortColumn switch
+        {
+            "sku" => sortAscending 
+                ? filteredProducts.OrderBy(p => p.Sku).ToList()
+                : filteredProducts.OrderByDescending(p => p.Sku).ToList(),
+            "name" => sortAscending 
+                ? filteredProducts.OrderBy(p => p.Name).ToList()
+                : filteredProducts.OrderByDescending(p => p.Name).ToList(),
+            "unitprice" => sortAscending 
+                ? filteredProducts.OrderBy(p => p.UnitPrice).ToList()
+                : filteredProducts.OrderByDescending(p => p.UnitPrice).ToList(),
+            "costprice" => sortAscending 
+                ? filteredProducts.OrderBy(p => p.CostPrice).ToList()
+                : filteredProducts.OrderByDescending(p => p.CostPrice).ToList(),
+            "unit" => sortAscending 
+                ? filteredProducts.OrderBy(p => p.Unit).ToList()
+                : filteredProducts.OrderByDescending(p => p.Unit).ToList(),
+            "status" => sortAscending 
+                ? filteredProducts.OrderBy(p => p.Active).ToList()
+                : filteredProducts.OrderByDescending(p => p.Active).ToList(),
+            _ => filteredProducts
+        };
+
+        currentPage = 1;
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+        ApplyFilter();
+    }
+
+    private string GetSortIcon(string column)
+    {
+        if (sortColumn != column) return "";
+        return sortAscending ? "▲" : "▼";
+    }
+
+    private List<Product> GetPagedProducts()
+    {
+        return filteredProducts
+            .Skip((currentPage - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+    }
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+        }
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < TotalPages)
+        {
+            currentPage++;
+        }
+    }
+
+    private void GoToPage(int page)
+    {
+        currentPage = page;
+    }
+
+    private void OnStatusFilterChanged(ChangeEventArgs e)
+    {
+        if (bool.TryParse(e.Value?.ToString(), out bool status))
+        {
+            statusFilter = status;
+        }
+        else
+        {
+            statusFilter = null;
+        }
+        ApplyFilter();
+    }
+
+    private void OpenAddDialog()
+    {
+        currentProduct = new Product { Active = true, UnitPrice = 0, CostPrice = 0 };
+        isEditMode = false;
+        showDialog = true;
+        ClearMessages();
+    }
+
+    private void OpenEditDialog(Product product)
+    {
+        currentProduct = new Product
+        {
+            ProductId = product.ProductId,
+            Sku = product.Sku,
+            Name = product.Name,
+            Description = product.Description,
+            UnitPrice = product.UnitPrice,
+            CostPrice = product.CostPrice,
+            Unit = product.Unit,
+            Active = product.Active
+        };
+        isEditMode = true;
+        showDialog = true;
+        ClearMessages();
+    }
+
+    private void CloseDialog()
+    {
+        showDialog = false;
+        currentProduct = new();
+        isEditMode = false;
+    }
+
+    private async Task SaveProduct()
+    {
+        try
+        {
+            ClearMessages();
+
+            if (string.IsNullOrWhiteSpace(currentProduct.Name))
+            {
+                errorMessage = "Product name is required.";
+                return;
+            }
+
+            if (isEditMode)
+            {
+                var existing = await DbContext.Products.FindAsync(currentProduct.ProductId);
+                if (existing != null)
+                {
+                    existing.Sku = currentProduct.Sku?.Trim();
+                    existing.Name = currentProduct.Name.Trim();
+                    existing.Description = currentProduct.Description?.Trim();
+                    existing.UnitPrice = currentProduct.UnitPrice;
+                    existing.CostPrice = currentProduct.CostPrice;
+                    existing.Unit = currentProduct.Unit?.Trim();
+                    existing.Active = currentProduct.Active;
+                    await DbContext.SaveChangesAsync();
+                    successMessage = "Product updated successfully!";
+                }
+            }
+            else
+            {
+                var newProduct = new Product
+                {
+                    Sku = currentProduct.Sku?.Trim(),
+                    Name = currentProduct.Name.Trim(),
+                    Description = currentProduct.Description?.Trim(),
+                    UnitPrice = currentProduct.UnitPrice,
+                    CostPrice = currentProduct.CostPrice,
+                    Unit = currentProduct.Unit?.Trim(),
+                    Active = currentProduct.Active
+                };
+                DbContext.Products.Add(newProduct);
+                await DbContext.SaveChangesAsync();
+                successMessage = "Product created successfully!";
+            }
+
+            CloseDialog();
+            await LoadProducts();
+            _ = AutoDismissSuccess();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving product: {ex.Message}";
+        }
+    }
+
+    private long? archiveProductId = null;
+    private bool showArchiveConfirm = false;
+
+    private void ConfirmArchiveProduct(long productId)
+    {
+        archiveProductId = productId;
+        showArchiveConfirm = true;
+    }
+
+    private void CancelArchive()
+    {
+        archiveProductId = null;
+        showArchiveConfirm = false;
+    }
+
+    private async Task ArchiveProduct()
+    {
+        if (archiveProductId == null) return;
+        
+        try
+        {
+            ClearMessages();
+            var product = await DbContext.Products.FindAsync(archiveProductId.Value);
+            if (product == null)
+            {
+                errorMessage = "Product not found.";
+                return;
+            }
+
+            product.Active = false;
+            await DbContext.SaveChangesAsync();
+            successMessage = "Product archived successfully!";
+            showArchiveConfirm = false;
+            archiveProductId = null;
+            await LoadProducts();
+            _ = AutoDismissSuccess();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error archiving product: {ex.Message}";
+        }
+    }
+
+    private async Task RestoreProduct(long productId)
+    {
+        try
+        {
+            ClearMessages();
+            var product = await DbContext.Products.FindAsync(productId);
+            if (product == null)
+            {
+                errorMessage = "Product not found.";
+                return;
+            }
+
+            product.Active = true;
+            await DbContext.SaveChangesAsync();
+            successMessage = "Product restored successfully!";
+            await LoadProducts();
+            _ = AutoDismissSuccess();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error restoring product: {ex.Message}";
+        }
+    }
+
+    private async Task AutoDismissSuccess()
+    {
+        await Task.Delay(3000);
+        await InvokeAsync(() =>
+        {
+            successMessage = null;
+            StateHasChanged();
+        });
+    }
+
+    private void ClearMessages()
+    {
+        successMessage = null;
+        errorMessage = null;
+    }
+}

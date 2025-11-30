@@ -1,0 +1,740 @@
+@page "/financial-reports"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Financial Reports - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-bar-chart-line"></span> Financial Reports</h3>
+                <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">
+                    View revenue, expenses, and business performance metrics
+                </p>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-outline-secondary" @onclick="PrintReport" title="Print">
+                    <span class="bi bi-printer"></span>
+                </button>
+                <button class="btn btn-outline-danger" @onclick="ExportToPdf" title="Export PDF">
+                    <span class="bi bi-file-pdf"></span>
+                </button>
+                <button class="btn btn-outline-success" @onclick="ExportToExcel" title="Export Excel">
+                    <span class="bi bi-file-excel"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Date Range Filter -->
+        <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center;">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="font-size: 0.85rem;">From</label>
+                <input type="date" class="form-control" @bind="startDate" @bind:after="RefreshReports" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="font-size: 0.85rem;">To</label>
+                <input type="date" class="form-control" @bind="endDate" @bind:after="RefreshReports" />
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: flex-end; padding-top: 1.25rem;">
+                <button class="btn btn-outline" @onclick="SetToday">Today</button>
+                <button class="btn btn-outline" @onclick="SetWeek">This Week</button>
+                <button class="btn btn-outline" @onclick="SetMonth">This Month</button>
+                <button class="btn btn-outline" @onclick="SetYear">This Year</button>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="padding: 2rem; text-align: center;">
+                <div class="loading"></div>
+                <p style="margin-top: 1rem; color: var(--spa-text-light);">Loading reports...</p>
+            </div>
+        }
+        else
+        {
+            <!-- Key Metrics -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                <div style="padding: 1.5rem; background: linear-gradient(135deg, #28a745, #20c997); border-radius: 12px; color: white;">
+                    <div style="font-size: 0.85rem; opacity: 0.9;">Total Revenue</div>
+                    <div style="font-size: 2rem; font-weight: bold;">₱@totalRevenue.ToString("N2")</div>
+                    <div style="font-size: 0.8rem; opacity: 0.8;">@salesCount transactions</div>
+                </div>
+                <div style="padding: 1.5rem; background: linear-gradient(135deg, #007bff, #6f42c1); border-radius: 12px; color: white;">
+                    <div style="font-size: 0.85rem; opacity: 0.9;">Service Revenue</div>
+                    <div style="font-size: 2rem; font-weight: bold;">₱@serviceRevenue.ToString("N2")</div>
+                    <div style="font-size: 0.8rem; opacity: 0.8;">@completedAppointments appointments</div>
+                </div>
+                <div style="padding: 1.5rem; background: linear-gradient(135deg, #fd7e14, #ffc107); border-radius: 12px; color: white;">
+                    <div style="font-size: 0.85rem; opacity: 0.9;">Product Sales</div>
+                    <div style="font-size: 2rem; font-weight: bold;">₱@productRevenue.ToString("N2")</div>
+                    <div style="font-size: 0.8rem; opacity: 0.8;">@productsSold items sold</div>
+                </div>
+                <div style="padding: 1.5rem; background: linear-gradient(135deg, #dc3545, #e83e8c); border-radius: 12px; color: white;">
+                    <div style="font-size: 0.85rem; opacity: 0.9;">Commissions Paid</div>
+                    <div style="font-size: 2rem; font-weight: bold;">₱@totalCommissions.ToString("N2")</div>
+                    <div style="font-size: 0.8rem; opacity: 0.8;">to @therapistCount therapists</div>
+                </div>
+            </div>
+
+            <!-- Report Tabs -->
+            <div style="border-bottom: 2px solid var(--spa-secondary); margin-bottom: 1.5rem;">
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn @(activeTab == "sales" ? "btn-primary" : "btn-outline")" @onclick='() => activeTab = "sales"'>
+                        <span class="bi bi-cash-coin"></span> Sales Summary
+                    </button>
+                    <button class="btn @(activeTab == "services" ? "btn-primary" : "btn-outline")" @onclick='() => activeTab = "services"'>
+                        <span class="bi bi-heart"></span> Service Analysis
+                    </button>
+                    <button class="btn @(activeTab == "products" ? "btn-primary" : "btn-outline")" @onclick='() => activeTab = "products"'>
+                        <span class="bi bi-box"></span> Product Sales
+                    </button>
+                    <button class="btn @(activeTab == "commissions" ? "btn-primary" : "btn-outline")" @onclick='() => activeTab = "commissions"'>
+                        <span class="bi bi-people"></span> Commission Report
+                    </button>
+                    <button class="btn @(activeTab == "daily" ? "btn-primary" : "btn-outline")" @onclick='() => activeTab = "daily"'>
+                        <span class="bi bi-calendar3"></span> Daily Breakdown
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sales Summary -->
+            @if (activeTab == "sales")
+            {
+                <div style="display: grid; gap: 1.5rem;">
+                    <div>
+                        <h4 style="color: var(--spa-primary); margin-bottom: 1rem;">Payment Methods</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                            @foreach (var method in paymentBreakdown)
+                            {
+                                <div style="padding: 1rem; border: 1px solid var(--spa-secondary); border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 1.5rem;">
+                                        <span class="bi @(method.Method == "Cash" ? "bi-cash" : method.Method == "Card" ? "bi-credit-card" : "bi-phone")"></span>
+                                    </div>
+                                    <div style="font-weight: bold; color: var(--spa-primary);">@method.Method</div>
+                                    <div style="font-size: 1.25rem; font-weight: bold;">₱@method.Amount.ToString("N2")</div>
+                                    <div style="font-size: 0.8rem; color: var(--spa-text-light);">@method.Count transactions</div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 style="color: var(--spa-primary); margin-bottom: 1rem;">Recent Sales</h4>
+                        <div style="overflow-x: auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th @onclick='() => SortSalesBy("Date")' style="cursor: pointer;">Date @GetSalesSortIcon("Date")</th>
+                                        <th @onclick='() => SortSalesBy("Customer")' style="cursor: pointer;">Customer @GetSalesSortIcon("Customer")</th>
+                                        <th>Status</th>
+                                        <th @onclick='() => SortSalesBy("Amount")' style="text-align: right; cursor: pointer;">Amount @GetSalesSortIcon("Amount")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var sale in GetPagedSales())
+                                    {
+                                        <tr>
+                                            <td>@sale.CreatedAt.ToString("MMM dd, HH:mm")</td>
+                                            <td>@(sale.Customer?.Person?.FirstName ?? "Walk-in") @(sale.Customer?.Person?.LastName ?? "")</td>
+                                            <td>
+                                                <span class="badge badge-secondary">@sale.PaymentStatus</span>
+                                            </td>
+                                            <td style="text-align: right; font-weight: bold;">₱@sale.TotalAmount.ToString("N2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        @if (SalesTotalPages > 1)
+                        {
+                            <div class="table-pagination">
+                                <span>Showing @(((salesPage - 1) * pageSize) + 1)-@(Math.Min(salesPage * pageSize, recentSales.Count)) of @recentSales.Count</span>
+                                <div style="display: flex; gap: 0.25rem;">
+                                    <button class="btn btn-sm btn-outline" @onclick="() => { if (salesPage > 1) salesPage--; }" disabled="@(salesPage == 1)">‹</button>
+                                    @for (int i = 1; i <= Math.Min(5, SalesTotalPages); i++) { var p = i; <button class="btn btn-sm @(salesPage == p ? "btn-primary" : "btn-outline")" @onclick="() => salesPage = p">@p</button> }
+                                    <button class="btn btn-sm btn-outline" @onclick="() => { if (salesPage < SalesTotalPages) salesPage++; }" disabled="@(salesPage == SalesTotalPages)">›</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Services Analysis -->
+            @if (activeTab == "services")
+            {
+                <div>
+                    <h4 style="color: var(--spa-primary); margin-bottom: 1rem;">Services Performed</h4>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th @onclick='() => SortServicesBy("Service")' style="cursor: pointer;">Service @GetServicesSortIcon("Service")</th>
+                                <th @onclick='() => SortServicesBy("Category")' style="cursor: pointer;">Category @GetServicesSortIcon("Category")</th>
+                                <th @onclick='() => SortServicesBy("Count")' style="text-align: center; cursor: pointer;">Count @GetServicesSortIcon("Count")</th>
+                                <th @onclick='() => SortServicesBy("Revenue")' style="text-align: right; cursor: pointer;">Total Revenue @GetServicesSortIcon("Revenue")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var svc in GetPagedServices())
+                            {
+                                <tr>
+                                    <td><strong>@svc.ServiceName</strong></td>
+                                    <td>@svc.Category</td>
+                                    <td style="text-align: center;">@svc.Count</td>
+                                    <td style="text-align: right; font-weight: bold; color: var(--spa-success);">₱@svc.Revenue.ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr style="font-weight: bold; background: var(--spa-light);">
+                                <td colspan="2">Total</td>
+                                <td style="text-align: center;">@serviceBreakdown.Sum(s => s.Count)</td>
+                                <td style="text-align: right;">₱@serviceBreakdown.Sum(s => s.Revenue).ToString("N2")</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    @if (ServicesTotalPages > 1)
+                    {
+                        <div class="table-pagination">
+                            <span>Showing @(((servicesPage - 1) * pageSize) + 1)-@(Math.Min(servicesPage * pageSize, serviceBreakdown.Count)) of @serviceBreakdown.Count</span>
+                            <div style="display: flex; gap: 0.25rem;">
+                                <button class="btn btn-sm btn-outline" @onclick="() => { if (servicesPage > 1) servicesPage--; }" disabled="@(servicesPage == 1)">‹</button>
+                                @for (int i = 1; i <= Math.Min(5, ServicesTotalPages); i++) { var p = i; <button class="btn btn-sm @(servicesPage == p ? "btn-primary" : "btn-outline")" @onclick="() => servicesPage = p">@p</button> }
+                                <button class="btn btn-sm btn-outline" @onclick="() => { if (servicesPage < ServicesTotalPages) servicesPage++; }" disabled="@(servicesPage == ServicesTotalPages)">›</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- Product Sales -->
+            @if (activeTab == "products")
+            {
+                <div>
+                    <h4 style="color: var(--spa-primary); margin-bottom: 1rem;">Top Selling Products</h4>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th @onclick='() => SortProductsBy("Product")' style="cursor: pointer;">Product @GetProductsSortIcon("Product")</th>
+                                <th>SKU</th>
+                                <th @onclick='() => SortProductsBy("Qty")' style="text-align: center; cursor: pointer;">Qty Sold @GetProductsSortIcon("Qty")</th>
+                                <th @onclick='() => SortProductsBy("Revenue")' style="text-align: right; cursor: pointer;">Revenue @GetProductsSortIcon("Revenue")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var prod in GetPagedProducts())
+                            {
+                                <tr>
+                                    <td><strong>@prod.ProductName</strong></td>
+                                    <td style="color: var(--spa-text-light);">@prod.SKU</td>
+                                    <td style="text-align: center;">@prod.QtySold</td>
+                                    <td style="text-align: right; font-weight: bold; color: var(--spa-success);">₱@prod.Revenue.ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr style="font-weight: bold; background: var(--spa-light);">
+                                <td colspan="2">Total</td>
+                                <td style="text-align: center;">@productBreakdown.Sum(p => p.QtySold)</td>
+                                <td style="text-align: right;">₱@productBreakdown.Sum(p => p.Revenue).ToString("N2")</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    @if (ProductsTotalPages > 1)
+                    {
+                        <div class="table-pagination">
+                            <span>Showing @(((productsPage - 1) * pageSize) + 1)-@(Math.Min(productsPage * pageSize, productBreakdown.Count)) of @productBreakdown.Count</span>
+                            <div style="display: flex; gap: 0.25rem;">
+                                <button class="btn btn-sm btn-outline" @onclick="() => { if (productsPage > 1) productsPage--; }" disabled="@(productsPage == 1)">‹</button>
+                                @for (int i = 1; i <= Math.Min(5, ProductsTotalPages); i++) { var p = i; <button class="btn btn-sm @(productsPage == p ? "btn-primary" : "btn-outline")" @onclick="() => productsPage = p">@p</button> }
+                                <button class="btn btn-sm btn-outline" @onclick="() => { if (productsPage < ProductsTotalPages) productsPage++; }" disabled="@(productsPage == ProductsTotalPages)">›</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- Commission Report -->
+            @if (activeTab == "commissions")
+            {
+                <div>
+                    <h4 style="color: var(--spa-primary); margin-bottom: 1rem;">Therapist Commissions</h4>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th @onclick='() => SortCommissionsBy("Name")' style="cursor: pointer;">Therapist @GetCommissionsSortIcon("Name")</th>
+                                <th @onclick='() => SortCommissionsBy("Services")' style="text-align: center; cursor: pointer;">Services @GetCommissionsSortIcon("Services")</th>
+                                <th @onclick='() => SortCommissionsBy("Revenue")' style="text-align: right; cursor: pointer;">Service Revenue @GetCommissionsSortIcon("Revenue")</th>
+                                <th @onclick='() => SortCommissionsBy("Commission")' style="text-align: right; cursor: pointer;">Commission @GetCommissionsSortIcon("Commission")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var emp in GetPagedCommissions())
+                            {
+                                <tr>
+                                    <td><strong>@emp.Name</strong></td>
+                                    <td style="text-align: center;">@emp.ServiceCount</td>
+                                    <td style="text-align: right;">₱@emp.ServiceRevenue.ToString("N2")</td>
+                                    <td style="text-align: right; font-weight: bold; color: var(--spa-accent);">₱@emp.Commission.ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr style="font-weight: bold; background: var(--spa-light);">
+                                <td>Total</td>
+                                <td style="text-align: center;">@therapistBreakdown.Sum(t => t.ServiceCount)</td>
+                                <td style="text-align: right;">₱@therapistBreakdown.Sum(t => t.ServiceRevenue).ToString("N2")</td>
+                                <td style="text-align: right;">₱@therapistBreakdown.Sum(t => t.Commission).ToString("N2")</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    @if (CommissionsTotalPages > 1)
+                    {
+                        <div class="table-pagination">
+                            <span>Showing @(((commissionsPage - 1) * pageSize) + 1)-@(Math.Min(commissionsPage * pageSize, therapistBreakdown.Count)) of @therapistBreakdown.Count</span>
+                            <div style="display: flex; gap: 0.25rem;">
+                                <button class="btn btn-sm btn-outline" @onclick="() => { if (commissionsPage > 1) commissionsPage--; }" disabled="@(commissionsPage == 1)">‹</button>
+                                @for (int i = 1; i <= Math.Min(5, CommissionsTotalPages); i++) { var p = i; <button class="btn btn-sm @(commissionsPage == p ? "btn-primary" : "btn-outline")" @onclick="() => commissionsPage = p">@p</button> }
+                                <button class="btn btn-sm btn-outline" @onclick="() => { if (commissionsPage < CommissionsTotalPages) commissionsPage++; }" disabled="@(commissionsPage == CommissionsTotalPages)">›</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- Daily Breakdown -->
+            @if (activeTab == "daily")
+            {
+                <div>
+                    <h4 style="color: var(--spa-primary); margin-bottom: 1rem;">Daily Revenue</h4>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th @onclick='() => SortDailyBy("Date")' style="cursor: pointer;">Date @GetDailySortIcon("Date")</th>
+                                <th @onclick='() => SortDailyBy("Transactions")' style="text-align: center; cursor: pointer;">Transactions @GetDailySortIcon("Transactions")</th>
+                                <th @onclick='() => SortDailyBy("Services")' style="text-align: right; cursor: pointer;">Services @GetDailySortIcon("Services")</th>
+                                <th @onclick='() => SortDailyBy("Products")' style="text-align: right; cursor: pointer;">Products @GetDailySortIcon("Products")</th>
+                                <th @onclick='() => SortDailyBy("Total")' style="text-align: right; cursor: pointer;">Total @GetDailySortIcon("Total")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var day in GetPagedDaily())
+                            {
+                                <tr>
+                                    <td><strong>@day.Date.ToString("ddd, MMM dd")</strong></td>
+                                    <td style="text-align: center;">@day.TransactionCount</td>
+                                    <td style="text-align: right;">₱@day.ServiceRevenue.ToString("N2")</td>
+                                    <td style="text-align: right;">₱@day.ProductRevenue.ToString("N2")</td>
+                                    <td style="text-align: right; font-weight: bold; color: var(--spa-success);">₱@day.TotalRevenue.ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr style="font-weight: bold; background: var(--spa-light);">
+                                <td>Total</td>
+                                <td style="text-align: center;">@dailyBreakdown.Sum(d => d.TransactionCount)</td>
+                                <td style="text-align: right;">₱@dailyBreakdown.Sum(d => d.ServiceRevenue).ToString("N2")</td>
+                                <td style="text-align: right;">₱@dailyBreakdown.Sum(d => d.ProductRevenue).ToString("N2")</td>
+                                <td style="text-align: right;">₱@dailyBreakdown.Sum(d => d.TotalRevenue).ToString("N2")</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    @if (DailyTotalPages > 1)
+                    {
+                        <div class="table-pagination">
+                            <span>Showing @(((dailyPage - 1) * pageSize) + 1)-@(Math.Min(dailyPage * pageSize, dailyBreakdown.Count)) of @dailyBreakdown.Count</span>
+                            <div style="display: flex; gap: 0.25rem;">
+                                <button class="btn btn-sm btn-outline" @onclick="() => { if (dailyPage > 1) dailyPage--; }" disabled="@(dailyPage == 1)">‹</button>
+                                @for (int i = 1; i <= Math.Min(5, DailyTotalPages); i++) { var p = i; <button class="btn btn-sm @(dailyPage == p ? "btn-primary" : "btn-outline")" @onclick="() => dailyPage = p">@p</button> }
+                                <button class="btn btn-sm btn-outline" @onclick="() => { if (dailyPage < DailyTotalPages) dailyPage++; }" disabled="@(dailyPage == DailyTotalPages)">›</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private DateTime startDate = DateTime.Today.AddDays(-30);
+    private DateTime endDate = DateTime.Today;
+    private string activeTab = "sales";
+
+    // Pagination settings
+    private int pageSize = 10;
+    private int salesPage = 1;
+    private int servicesPage = 1;
+    private int productsPage = 1;
+    private int commissionsPage = 1;
+    private int dailyPage = 1;
+
+    // Sorting
+    private string salesSortCol = "Date"; private bool salesSortAsc = false;
+    private string servicesSortCol = "Revenue"; private bool servicesSortAsc = false;
+    private string productsSortCol = "Revenue"; private bool productsSortAsc = false;
+    private string commissionsSortCol = "Commission"; private bool commissionsSortAsc = false;
+    private string dailySortCol = "Date"; private bool dailySortAsc = false;
+
+    // Page counts
+    private int SalesTotalPages => (int)Math.Ceiling(recentSales.Count / (double)pageSize);
+    private int ServicesTotalPages => (int)Math.Ceiling(serviceBreakdown.Count / (double)pageSize);
+    private int ProductsTotalPages => (int)Math.Ceiling(productBreakdown.Count / (double)pageSize);
+    private int CommissionsTotalPages => (int)Math.Ceiling(therapistBreakdown.Count / (double)pageSize);
+    private int DailyTotalPages => (int)Math.Ceiling(dailyBreakdown.Count / (double)pageSize);
+
+    // Paged data methods
+    private IEnumerable<Sale> GetPagedSales()
+    {
+        var sorted = salesSortCol switch
+        {
+            "Date" => salesSortAsc ? recentSales.OrderBy(s => s.CreatedAt) : recentSales.OrderByDescending(s => s.CreatedAt),
+            "Customer" => salesSortAsc ? recentSales.OrderBy(s => s.Customer?.Person?.LastName) : recentSales.OrderByDescending(s => s.Customer?.Person?.LastName),
+            "Amount" => salesSortAsc ? recentSales.OrderBy(s => s.TotalAmount) : recentSales.OrderByDescending(s => s.TotalAmount),
+            _ => recentSales.OrderByDescending(s => s.CreatedAt)
+        };
+        return sorted.Skip((salesPage - 1) * pageSize).Take(pageSize);
+    }
+
+    private IEnumerable<ServiceBreakdown> GetPagedServices()
+    {
+        var sorted = servicesSortCol switch
+        {
+            "Service" => servicesSortAsc ? serviceBreakdown.OrderBy(s => s.ServiceName) : serviceBreakdown.OrderByDescending(s => s.ServiceName),
+            "Category" => servicesSortAsc ? serviceBreakdown.OrderBy(s => s.Category) : serviceBreakdown.OrderByDescending(s => s.Category),
+            "Count" => servicesSortAsc ? serviceBreakdown.OrderBy(s => s.Count) : serviceBreakdown.OrderByDescending(s => s.Count),
+            "Revenue" => servicesSortAsc ? serviceBreakdown.OrderBy(s => s.Revenue) : serviceBreakdown.OrderByDescending(s => s.Revenue),
+            _ => serviceBreakdown.OrderByDescending(s => s.Revenue)
+        };
+        return sorted.Skip((servicesPage - 1) * pageSize).Take(pageSize);
+    }
+
+    private IEnumerable<ProductBreakdown> GetPagedProducts()
+    {
+        var sorted = productsSortCol switch
+        {
+            "Product" => productsSortAsc ? productBreakdown.OrderBy(p => p.ProductName) : productBreakdown.OrderByDescending(p => p.ProductName),
+            "Qty" => productsSortAsc ? productBreakdown.OrderBy(p => p.QtySold) : productBreakdown.OrderByDescending(p => p.QtySold),
+            "Revenue" => productsSortAsc ? productBreakdown.OrderBy(p => p.Revenue) : productBreakdown.OrderByDescending(p => p.Revenue),
+            _ => productBreakdown.OrderByDescending(p => p.Revenue)
+        };
+        return sorted.Skip((productsPage - 1) * pageSize).Take(pageSize);
+    }
+
+    private IEnumerable<TherapistBreakdown> GetPagedCommissions()
+    {
+        var sorted = commissionsSortCol switch
+        {
+            "Name" => commissionsSortAsc ? therapistBreakdown.OrderBy(t => t.Name) : therapistBreakdown.OrderByDescending(t => t.Name),
+            "Services" => commissionsSortAsc ? therapistBreakdown.OrderBy(t => t.ServiceCount) : therapistBreakdown.OrderByDescending(t => t.ServiceCount),
+            "Revenue" => commissionsSortAsc ? therapistBreakdown.OrderBy(t => t.ServiceRevenue) : therapistBreakdown.OrderByDescending(t => t.ServiceRevenue),
+            "Commission" => commissionsSortAsc ? therapistBreakdown.OrderBy(t => t.Commission) : therapistBreakdown.OrderByDescending(t => t.Commission),
+            _ => therapistBreakdown.OrderByDescending(t => t.Commission)
+        };
+        return sorted.Skip((commissionsPage - 1) * pageSize).Take(pageSize);
+    }
+
+    private IEnumerable<DailyBreakdown> GetPagedDaily()
+    {
+        var sorted = dailySortCol switch
+        {
+            "Date" => dailySortAsc ? dailyBreakdown.OrderBy(d => d.Date) : dailyBreakdown.OrderByDescending(d => d.Date),
+            "Transactions" => dailySortAsc ? dailyBreakdown.OrderBy(d => d.TransactionCount) : dailyBreakdown.OrderByDescending(d => d.TransactionCount),
+            "Services" => dailySortAsc ? dailyBreakdown.OrderBy(d => d.ServiceRevenue) : dailyBreakdown.OrderByDescending(d => d.ServiceRevenue),
+            "Products" => dailySortAsc ? dailyBreakdown.OrderBy(d => d.ProductRevenue) : dailyBreakdown.OrderByDescending(d => d.ProductRevenue),
+            "Total" => dailySortAsc ? dailyBreakdown.OrderBy(d => d.TotalRevenue) : dailyBreakdown.OrderByDescending(d => d.TotalRevenue),
+            _ => dailyBreakdown.OrderByDescending(d => d.Date)
+        };
+        return sorted.Skip((dailyPage - 1) * pageSize).Take(pageSize);
+    }
+
+    // Sort handlers
+    private void SortSalesBy(string col) { if (salesSortCol == col) salesSortAsc = !salesSortAsc; else { salesSortCol = col; salesSortAsc = true; } salesPage = 1; }
+    private void SortServicesBy(string col) { if (servicesSortCol == col) servicesSortAsc = !servicesSortAsc; else { servicesSortCol = col; servicesSortAsc = true; } servicesPage = 1; }
+    private void SortProductsBy(string col) { if (productsSortCol == col) productsSortAsc = !productsSortAsc; else { productsSortCol = col; productsSortAsc = true; } productsPage = 1; }
+    private void SortCommissionsBy(string col) { if (commissionsSortCol == col) commissionsSortAsc = !commissionsSortAsc; else { commissionsSortCol = col; commissionsSortAsc = true; } commissionsPage = 1; }
+    private void SortDailyBy(string col) { if (dailySortCol == col) dailySortAsc = !dailySortAsc; else { dailySortCol = col; dailySortAsc = true; } dailyPage = 1; }
+
+    // Sort icons
+    private string GetSalesSortIcon(string col) => salesSortCol == col ? (salesSortAsc ? "▲" : "▼") : "";
+    private string GetServicesSortIcon(string col) => servicesSortCol == col ? (servicesSortAsc ? "▲" : "▼") : "";
+    private string GetProductsSortIcon(string col) => productsSortCol == col ? (productsSortAsc ? "▲" : "▼") : "";
+    private string GetCommissionsSortIcon(string col) => commissionsSortCol == col ? (commissionsSortAsc ? "▲" : "▼") : "";
+    private string GetDailySortIcon(string col) => dailySortCol == col ? (dailySortAsc ? "▲" : "▼") : "";
+
+    // Summary metrics
+    private decimal totalRevenue = 0;
+    private decimal serviceRevenue = 0;
+    private decimal productRevenue = 0;
+    private decimal totalCommissions = 0;
+    private int salesCount = 0;
+    private int completedAppointments = 0;
+    private int productsSold = 0;
+    private int therapistCount = 0;
+
+    // Detailed data
+    private List<Sale> recentSales = new();
+    private List<PaymentMethodBreakdown> paymentBreakdown = new();
+    private List<ServiceBreakdown> serviceBreakdown = new();
+    private List<ProductBreakdown> productBreakdown = new();
+    private List<TherapistBreakdown> therapistBreakdown = new();
+    private List<DailyBreakdown> dailyBreakdown = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReports();
+    }
+
+    private async Task RefreshReports() => await LoadReports();
+
+    private async Task LoadReports()
+    {
+        isLoading = true;
+        try
+        {
+            var endDateEnd = endDate.AddDays(1);
+
+            // Get sales
+            recentSales = await DbContext.Sales
+                .Include(s => s.Customer).ThenInclude(c => c!.Person)
+                .Where(s => s.CreatedAt >= startDate && s.CreatedAt < endDateEnd)
+                .OrderByDescending(s => s.CreatedAt)
+                .ToListAsync();
+
+            // Summary metrics
+            totalRevenue = recentSales.Sum(s => s.TotalAmount);
+            salesCount = recentSales.Count;
+
+            // Get completed appointments
+            var appointments = await DbContext.Appointments
+                .Include(a => a.AppointmentServices).ThenInclude(asvc => asvc.Service)
+                .Include(a => a.AppointmentServices).ThenInclude(asvc => asvc.TherapistEmployee).ThenInclude(e => e!.Person)
+                .Where(a => a.ScheduledStart >= startDate && a.ScheduledStart < endDateEnd && a.Status == "completed")
+                .ToListAsync();
+
+            completedAppointments = appointments.Count;
+            serviceRevenue = appointments.Sum(a => a.AppointmentServices?.Sum(s => s.Price) ?? 0);
+
+            // Product sales
+            var saleItems = await DbContext.SaleItems
+                .Include(si => si.Product)
+                .Include(si => si.Sale)
+                .Where(si => si.Sale!.CreatedAt >= startDate && si.Sale.CreatedAt < endDateEnd)
+                .ToListAsync();
+
+            productsSold = (int)saleItems.Sum(si => si.Qty);
+            productRevenue = saleItems.Sum(si => si.LineTotal);
+
+            // Commissions - calculate from completed appointments
+            var employeeCommissions = await DbContext.EmployeeServiceCommissions.ToListAsync();
+
+            totalCommissions = 0;
+            var therapistIds = new HashSet<long>();
+            
+            foreach (var a in appointments)
+            {
+                foreach (var asvc in a.AppointmentServices ?? new List<Models.AppointmentService>())
+                {
+                    if (asvc.TherapistEmployeeId.HasValue)
+                    {
+                        therapistIds.Add(asvc.TherapistEmployeeId.Value);
+                        var commConfig = employeeCommissions
+                            .FirstOrDefault(ec => ec.EmployeeId == asvc.TherapistEmployeeId && ec.ServiceId == asvc.ServiceId);
+                        var rate = commConfig?.CommissionType == "percent" ? commConfig.CommissionValue / 100m : 0.30m;
+                        totalCommissions += asvc.Price * rate;
+                    }
+                }
+            }
+            therapistCount = therapistIds.Count;
+
+            // Payment method breakdown (from Payments table)
+            var payments = await DbContext.Payments
+                .Where(p => p.PaidAt >= startDate && p.PaidAt < endDateEnd)
+                .ToListAsync();
+
+            paymentBreakdown = payments
+                .GroupBy(p => p.PaymentMethod ?? "Cash")
+                .Select(g => new PaymentMethodBreakdown { Method = g.Key, Amount = g.Sum(p => p.Amount), Count = g.Count() })
+                .ToList();
+
+            // If no payments found, show based on sales
+            if (!paymentBreakdown.Any() && recentSales.Any())
+            {
+                paymentBreakdown = new List<PaymentMethodBreakdown>
+                {
+                    new() { Method = "Cash", Amount = totalRevenue, Count = salesCount }
+                };
+            }
+
+            // Service breakdown
+            serviceBreakdown = appointments
+                .SelectMany(a => a.AppointmentServices ?? new List<Models.AppointmentService>(), (a, asvc) => asvc)
+                .Where(asvc => asvc.Service != null)
+                .GroupBy(asvc => new { asvc.Service!.ServiceId, asvc.Service.Name, Category = asvc.Service.ServiceCategory?.Name ?? "Uncategorized" })
+                .Select(g => new ServiceBreakdown 
+                { 
+                    ServiceName = g.Key.Name, 
+                    Category = g.Key.Category,
+                    Count = g.Count(),
+                    Revenue = g.Sum(asvc => asvc.Price)
+                })
+                .ToList();
+
+            // Product breakdown
+            productBreakdown = saleItems
+                .Where(si => si.Product != null)
+                .GroupBy(si => new { si.Product!.ProductId, si.Product.Name, si.Product.Sku })
+                .Select(g => new ProductBreakdown
+                {
+                    ProductName = g.Key.Name,
+                    SKU = g.Key.Sku ?? "",
+                    QtySold = (int)g.Sum(si => si.Qty),
+                    Revenue = g.Sum(si => si.LineTotal)
+                })
+                .ToList();
+
+            // Therapist breakdown
+            var therapistGroups = appointments
+                .SelectMany(a => a.AppointmentServices ?? new List<Models.AppointmentService>())
+                .Where(asvc => asvc.TherapistEmployee != null)
+                .GroupBy(asvc => new { 
+                    Id = asvc.TherapistEmployeeId!.Value, 
+                    Name = $"{asvc.TherapistEmployee!.Person?.FirstName} {asvc.TherapistEmployee.Person?.LastName}" 
+                });
+
+            therapistBreakdown = therapistGroups.Select(g => 
+            {
+                var svcCount = g.Count();
+                var svcRev = g.Sum(asvc => asvc.Price);
+                var comm = g.Sum(asvc => 
+                {
+                    var commConfig = employeeCommissions
+                        .FirstOrDefault(ec => ec.EmployeeId == asvc.TherapistEmployeeId && ec.ServiceId == asvc.ServiceId);
+                    var rate = commConfig?.CommissionType == "percent" ? commConfig.CommissionValue / 100m : 0.30m;
+                    return asvc.Price * rate;
+                });
+                return new TherapistBreakdown
+                {
+                    Name = g.Key.Name,
+                    ServiceCount = svcCount,
+                    ServiceRevenue = svcRev,
+                    Commission = comm
+                };
+            }).ToList();
+
+            // Daily breakdown
+            dailyBreakdown = Enumerable.Range(0, (int)(endDate - startDate).TotalDays + 1)
+                .Select(i => startDate.AddDays(i))
+                .Select(date => 
+                {
+                    var daySales = recentSales.Where(s => s.CreatedAt.Date == date).ToList();
+                    var dayAppts = appointments.Where(a => a.ScheduledStart.Date == date).ToList();
+                    var daySvcRev = dayAppts.Sum(a => a.AppointmentServices?.Sum(s => s.Price) ?? 0);
+                    var dayProdRev = saleItems.Where(si => si.Sale!.CreatedAt.Date == date).Sum(si => si.LineTotal);
+                    return new DailyBreakdown
+                    {
+                        Date = date,
+                        TransactionCount = daySales.Count + dayAppts.Count,
+                        ServiceRevenue = daySvcRev,
+                        ProductRevenue = dayProdRev,
+                        TotalRevenue = daySvcRev + dayProdRev
+                    };
+                })
+                .Where(d => d.TransactionCount > 0)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading reports: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SetToday()
+    {
+        startDate = DateTime.Today;
+        endDate = DateTime.Today;
+        await LoadReports();
+    }
+
+    private async Task SetWeek()
+    {
+        startDate = DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek);
+        endDate = DateTime.Today;
+        await LoadReports();
+    }
+
+    private async Task SetMonth()
+    {
+        startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        endDate = DateTime.Today;
+        await LoadReports();
+    }
+
+    private async Task SetYear()
+    {
+        startDate = new DateTime(DateTime.Today.Year, 1, 1);
+        endDate = DateTime.Today;
+        await LoadReports();
+    }
+
+    private class PaymentMethodBreakdown
+    {
+        public string Method { get; set; } = "";
+        public decimal Amount { get; set; }
+        public int Count { get; set; }
+    }
+
+    private class ServiceBreakdown
+    {
+        public string ServiceName { get; set; } = "";
+        public string Category { get; set; } = "";
+        public int Count { get; set; }
+        public decimal Revenue { get; set; }
+    }
+
+    private class ProductBreakdown
+    {
+        public string ProductName { get; set; } = "";
+        public string SKU { get; set; } = "";
+        public int QtySold { get; set; }
+        public decimal Revenue { get; set; }
+    }
+
+    private class TherapistBreakdown
+    {
+        public string Name { get; set; } = "";
+        public int ServiceCount { get; set; }
+        public decimal ServiceRevenue { get; set; }
+        public decimal Commission { get; set; }
+    }
+
+    private class DailyBreakdown
+    {
+        public DateTime Date { get; set; }
+        public int TransactionCount { get; set; }
+        public decimal ServiceRevenue { get; set; }
+        public decimal ProductRevenue { get; set; }
+        public decimal TotalRevenue { get; set; }
+    }
+
+    private async Task PrintReport() => await JSRuntime.InvokeVoidAsync("exportUtils.printElement", ".card");
+    private async Task ExportToPdf() => await JSRuntime.InvokeVoidAsync("exportUtils.exportToPdf", ".card", $"FinancialReport_{startDate:yyyyMMdd}-{endDate:yyyyMMdd}");
+    private async Task ExportToExcel() => await JSRuntime.InvokeVoidAsync("exportUtils.exportTableToExcel", ".card table", $"FinancialReport_{startDate:yyyyMMdd}");
+}

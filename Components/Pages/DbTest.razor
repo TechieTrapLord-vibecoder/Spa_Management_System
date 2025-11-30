@@ -1,0 +1,158 @@
+@page "/db-test"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@inject AppDbContext DbContext
+
+<PageTitle>Database Connection Test</PageTitle>
+
+<div class="card">
+    <h3 class="card-title">🔌 Database Connection Test</h3>
+
+    @if (isLoading)
+    {
+        <div style="display: flex; align-items: center; gap: 1rem; padding: 2rem;">
+            <div class="loading"></div>
+            <p style="margin: 0; color: var(--spa-text-light);">Testing database connection...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <span class="bi bi-x-circle-fill" style="font-size: 1.5rem;"></span>
+            <div>
+                <h4 style="margin: 0 0 0.5rem 0;">Connection Failed</h4>
+                <p style="margin: 0; font-size: 0.9rem;">@errorMessage</p>
+            </div>
+        </div>
+        
+        <button class="btn btn-primary" @onclick="RefreshCounts">
+            <span class="bi bi-arrow-clockwise"></span> Retry Connection
+        </button>
+    }
+    else
+    {
+        <div class="alert alert-success">
+            <span class="bi bi-check-circle-fill" style="font-size: 1.5rem;"></span>
+            <div>
+                <h4 style="margin: 0 0 0.5rem 0;">Database Connected Successfully!</h4>
+                <p style="margin: 0; font-size: 0.9rem;"><strong>Database:</strong> spa_erp</p>
+                <p style="margin: 0; font-size: 0.9rem;"><strong>Server:</strong> NIKOLA\SQLEXPRESS</p>
+            </div>
+        </div>
+
+        <h4 style="color: var(--spa-primary); margin: 2rem 0 1rem 0;"><span class="bi bi-bar-chart-line"></span> Table Record Counts</h4>
+        
+        <div style="overflow-x: auto;">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Table Name</th>
+                        <th style="text-align: right;">Record Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var table in tableCounts.OrderBy(t => t.Key))
+                    {
+                        <tr>
+                            <td>
+                                <span class="bi bi-table"></span> @table.Key
+                            </td>
+                            <td style="text-align: right;">
+                                <span class="badge @(table.Value > 0 ? "badge-success" : "badge-info")">
+                                    @table.Value
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div style="margin-top: 1.5rem;">
+            <button class="btn btn-primary" @onclick="RefreshCounts">
+                <span class="bi bi-arrow-clockwise"></span> Refresh Counts
+            </button>
+        </div>
+    }
+</div>
+
+@if (!isLoading && string.IsNullOrEmpty(errorMessage))
+{
+    <div class="card">
+        <h4 class="card-title"><span class="bi bi-info-circle"></span> Next Steps</h4>
+        <div class="alert alert-info">
+            <span class="bi bi-lightbulb-fill"></span>
+            <div>
+                <p style="margin: 0;">
+                    If you see empty tables (0 records), run the sample data SQL script from <strong>GETTING_STARTED.md</strong> 
+                    to populate your database with test data.
+                </p>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private string? errorMessage;
+    private Dictionary<string, int> tableCounts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TestConnection();
+    }
+
+    private async Task TestConnection()
+    {
+        isLoading = true;
+        errorMessage = null;
+        tableCounts.Clear();
+
+        try
+        {
+            // Test if database can be connected
+            var canConnect = await DbContext.Database.CanConnectAsync();
+            
+            if (!canConnect)
+            {
+                errorMessage = "Cannot connect to database. Please check your connection string.";
+                isLoading = false;
+                return;
+            }
+
+            // Get counts from all tables
+            tableCounts["Persons"] = await DbContext.Persons.CountAsync();
+            tableCounts["Roles"] = await DbContext.Roles.CountAsync();
+            tableCounts["Employees"] = await DbContext.Employees.CountAsync();
+            tableCounts["User Accounts"] = await DbContext.UserAccounts.CountAsync();
+            tableCounts["Customers"] = await DbContext.Customers.CountAsync();
+            tableCounts["Service Categories"] = await DbContext.ServiceCategories.CountAsync();
+            tableCounts["Services"] = await DbContext.Services.CountAsync();
+            tableCounts["Products"] = await DbContext.Products.CountAsync();
+            tableCounts["Inventories"] = await DbContext.Inventories.CountAsync();
+            tableCounts["Suppliers"] = await DbContext.Suppliers.CountAsync();
+            tableCounts["Appointments"] = await DbContext.Appointments.CountAsync();
+            tableCounts["Sales"] = await DbContext.Sales.CountAsync();
+            tableCounts["Ledger Accounts"] = await DbContext.LedgerAccounts.CountAsync();
+            tableCounts["CRM Notes"] = await DbContext.CrmNotes.CountAsync();
+            tableCounts["Audit Logs"] = await DbContext.AuditLogs.CountAsync();
+
+            isLoading = false;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"{ex.Message}";
+            if (ex.InnerException != null)
+            {
+                errorMessage += $"\n\nDetails: {ex.InnerException.Message}";
+            }
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshCounts()
+    {
+        await TestConnection();
+    }
+}

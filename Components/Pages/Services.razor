@@ -1,0 +1,627 @@
+@page "/services"
+@using Spa_Management_System.Services
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@using Microsoft.EntityFrameworkCore
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Services - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated || !AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+{
+    <div class="card">
+        <div class="alert alert-danger">
+            <span class="bi bi-shield-x"></span>
+            <div>
+                <h4 style="margin: 0 0 0.5rem 0;">Access Denied</h4>
+                <p style="margin: 0;">You need SuperAdmin access to manage services.</p>
+            </div>
+        </div>
+        <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/login")'>
+            <span class="bi bi-box-arrow-in-right"></span> Go to Login
+        </button>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-heart"></span> Services Menu</h3>
+                <p style="color: var(--spa-text-light); margin: 0.5rem 0 0 0;">Manage all spa services and treatments</p>
+            </div>
+            <button class="btn btn-primary" @onclick="OpenAddDialog">
+                <span class="bi bi-plus-circle"></span> Add Service
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success">
+                <span class="bi bi-check-circle-fill"></span>
+                <div>@successMessage</div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">
+                <span class="bi bi-exclamation-triangle-fill"></span>
+                <div>@errorMessage</div>
+            </div>
+        }
+
+        <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+            <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Filter by Category:</label>
+                <select class="form-control" @onchange="OnCategoryFilterChanged" style="max-width: 300px;">
+                    <option value="">All Categories</option>
+                    @foreach (var cat in categories)
+                    {
+                        <option value="@cat.ServiceCategoryId">@cat.Name</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Status:</label>
+                <select class="form-control" @onchange="OnStatusFilterChanged" style="max-width: 200px;">
+                    <option value="">All Services</option>
+                    <option value="true">Active Only</option>
+                    <option value="false">Inactive/Archived</option>
+                </select>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="padding: 2rem; text-align: center;">
+                <div class="loading"></div>
+                <p style="margin-top: 1rem; color: var(--spa-text-light);">Loading services...</p>
+            </div>
+        }
+        else if (!filteredServices.Any())
+        {
+            <div class="alert alert-info">
+                <span class="bi bi-info-circle-fill"></span>
+                <div>
+                    <strong>No Services Yet</strong><br />
+                    @if (!categories.Any())
+                    {
+                        <span>Please create service categories first, then add services.</span>
+                        <br />
+                        <button class="btn btn-sm btn-primary" style="margin-top: 0.5rem;" @onclick='() => Navigation.NavigateTo("/service-categories")'>
+                            Go to Service Categories
+                        </button>
+                    }
+                    else
+                    {
+                        <span>Start by adding your first service.</span>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="table-search">
+                <input type="text" placeholder="Search services..." @bind="searchTerm" @bind:event="oninput" @bind:after="ApplyFilter" />
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("code")'>Code @GetSortIcon("code")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("name")'>Service Name @GetSortIcon("name")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("category")'>Category @GetSortIcon("category")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("price")'>Price @GetSortIcon("price")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("duration")'>Duration @GetSortIcon("duration")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("status")'>Status @GetSortIcon("status")</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var service in GetPagedServices())
+                        {
+                            <tr>
+                                <td><code>@service.Code</code></td>
+                                <td>
+                                    <strong>@service.Name</strong>
+                                    @if (!string.IsNullOrEmpty(service.Description))
+                                    {
+                                        <br /><small style="color: var(--spa-text-light);">@service.Description</small>
+                                    }
+                                </td>
+                                <td>
+                                    @if (service.ServiceCategory != null)
+                                    {
+                                        <span class="badge badge-secondary">@service.ServiceCategory.Name</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: var(--spa-text-light);">Uncategorized</span>
+                                    }
+                                </td>
+                                <td><strong>₱@service.Price.ToString("N2")</strong></td>
+                                <td>@service.DurationMinutes min</td>
+                                <td>
+                                    @if (service.Active)
+                                    {
+                                        <span class="badge badge-success">Active</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge" style="background: #6c757d;">Inactive</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="btn-group">
+                                        <button class="btn btn-sm btn-light" @onclick="() => OpenEditDialog(service)">
+                                            Edit
+                                        </button>
+                                        @if (service.Active)
+                                        {
+                                            <button class="btn btn-sm btn-warning" @onclick="() => ConfirmArchiveService(service.ServiceId)">
+                                                Archive
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-success" @onclick="() => RestoreService(service.ServiceId)">
+                                                Restore
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-pagination">
+                <span>Showing @(Math.Min((currentPage - 1) * pageSize + 1, filteredServices.Count))-@(Math.Min(currentPage * pageSize, filteredServices.Count)) of @filteredServices.Count entries</span>
+                <div class="pagination-buttons">
+                    <button class="btn btn-sm btn-light" disabled="@(currentPage <= 1)" @onclick="PreviousPage">Previous</button>
+                    @for (int i = 1; i <= TotalPages; i++)
+                    {
+                        var pageNum = i;
+                        <button class="btn btn-sm @(pageNum == currentPage ? "btn-primary" : "btn-light")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                    }
+                    <button class="btn btn-sm btn-light" disabled="@(currentPage >= TotalPages)" @onclick="NextPage">Next</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (showDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseDialog">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);">
+                        @(isEditMode ? "Edit Service" : "Add New Service")
+                    </h4>
+                    <button class="btn-close" @onclick="CloseDialog">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Service Code</label>
+                        <input type="text" class="form-control" @bind="currentService.Code" 
+                               placeholder="e.g., SWE-MSG-60" maxlength="60" />
+                        <small style="color: var(--spa-text-light);">Optional unique identifier</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Service Name *</label>
+                        <input type="text" class="form-control" @bind="currentService.Name" 
+                               placeholder="e.g., Swedish Massage" maxlength="150" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Category *</label>
+                        <select class="form-control" @bind="currentService.ServiceCategoryId">
+                            <option value="">-- Select Category --</option>
+                            @foreach (var cat in categories)
+                            {
+                                <option value="@cat.ServiceCategoryId">@cat.Name</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea class="form-control" @bind="currentService.Description" 
+                                  rows="3" placeholder="Brief description of the service"></textarea>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label>Price (₱) *</label>
+                            <input type="number" class="form-control" @bind="currentService.Price" 
+                                   step="0.01" min="0" placeholder="0.00" />
+                        </div>
+
+                        <div class="form-group">
+                            <label>Duration (minutes) *</label>
+                            <input type="number" class="form-control" @bind="currentService.DurationMinutes" 
+                                   min="0" placeholder="60" />
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" @bind="currentService.Active" />
+                            <span>Active (available for booking)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseDialog">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-primary" @onclick="SaveService" 
+                            disabled="@(string.IsNullOrWhiteSpace(currentService.Name) || currentService.ServiceCategoryId == null)">
+                        <span class="bi bi-check-circle"></span> @(isEditMode ? "Update" : "Create")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Archive Confirmation Dialog -->
+    @if (showArchiveConfirm)
+    {
+        <div class="modal-overlay" @onclick="CancelArchive">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 400px;">
+                <div class="modal-header" style="background: var(--spa-warning); color: white;">
+                    <h4 style="margin: 0;"><span class="bi bi-archive"></span> Confirm Archive</h4>
+                </div>
+                <div class="modal-body" style="text-align: center; padding: 2rem;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;"><span class="bi bi-archive"></span></div>
+                    <p style="font-size: 1.1rem;">Are you sure you want to archive this service?</p>
+                    <p style="color: var(--spa-text-light);">Archived services will be marked as inactive and can be restored later.</p>
+                </div>
+                <div class="modal-footer" style="justify-content: center; gap: 1rem;">
+                    <button class="btn btn-secondary" @onclick="CancelArchive">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-warning" @onclick="ArchiveService">
+                        <span class="bi bi-archive"></span> Yes, Archive
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<Service> services = new();
+    private List<Service> filteredServices = new();
+    private List<ServiceCategory> categories = new();
+    private Service currentService = new();
+    private bool isLoading = true;
+    private bool showDialog = false;
+    private bool isEditMode = false;
+    private string? successMessage;
+    private string? errorMessage;
+    private int? selectedCategoryFilter = null;
+    private bool? statusFilter = null;
+
+    // Pagination & Sorting
+    private string searchTerm = "";
+    private string sortColumn = "name";
+    private bool sortAscending = true;
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private List<Service> pagedServices = new();
+    private int TotalPages => (int)Math.Ceiling(filteredServices.Count / (double)pageSize);
+
+    protected override void OnInitialized()
+    {
+        if (!AuthState.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+        {
+            Navigation.NavigateTo("/dashboard");
+            return;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        
+        try
+        {
+            categories = await DbContext.ServiceCategories
+                .OrderBy(c => c.Name)
+                .ToListAsync();
+
+            services = await DbContext.Services
+                .Include(s => s.ServiceCategory)
+                .OrderBy(s => s.Name)
+                .ToListAsync();
+
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading data: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        var query = services.AsEnumerable();
+
+        if (selectedCategoryFilter.HasValue)
+        {
+            query = query.Where(s => s.ServiceCategoryId == selectedCategoryFilter.Value);
+        }
+
+        if (statusFilter.HasValue)
+        {
+            query = query.Where(s => s.Active == statusFilter.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.ToLower();
+            query = query.Where(s =>
+                (s.Code?.ToLower().Contains(term) ?? false) ||
+                s.Name.ToLower().Contains(term) ||
+                (s.ServiceCategory?.Name?.ToLower().Contains(term) ?? false)
+            );
+        }
+
+        query = sortColumn switch
+        {
+            "code" => sortAscending ? query.OrderBy(s => s.Code) : query.OrderByDescending(s => s.Code),
+            "name" => sortAscending ? query.OrderBy(s => s.Name) : query.OrderByDescending(s => s.Name),
+            "category" => sortAscending ? query.OrderBy(s => s.ServiceCategory?.Name) : query.OrderByDescending(s => s.ServiceCategory?.Name),
+            "price" => sortAscending ? query.OrderBy(s => s.Price) : query.OrderByDescending(s => s.Price),
+            "duration" => sortAscending ? query.OrderBy(s => s.DurationMinutes) : query.OrderByDescending(s => s.DurationMinutes),
+            "status" => sortAscending ? query.OrderBy(s => s.Active) : query.OrderByDescending(s => s.Active),
+            _ => query.OrderBy(s => s.Name)
+        };
+
+        filteredServices = query.ToList();
+        currentPage = 1;
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column) sortAscending = !sortAscending;
+        else { sortColumn = column; sortAscending = true; }
+        ApplyFilter();
+    }
+
+    private string GetSortIcon(string column) => sortColumn != column ? "" : (sortAscending ? "▲" : "▼");
+    private List<Service> GetPagedServices() => filteredServices.Skip((currentPage - 1) * pageSize).Take(pageSize).ToList();
+    private void GoToPage(int page) => currentPage = page;
+    private void PreviousPage() { if (currentPage > 1) currentPage--; }
+    private void NextPage() { if (currentPage < TotalPages) currentPage++; }
+
+    private void OnCategoryFilterChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int categoryId))
+        {
+            selectedCategoryFilter = categoryId;
+        }
+        else
+        {
+            selectedCategoryFilter = null;
+        }
+        ApplyFilter();
+    }
+
+    private void OnStatusFilterChanged(ChangeEventArgs e)
+    {
+        if (bool.TryParse(e.Value?.ToString(), out bool status))
+        {
+            statusFilter = status;
+        }
+        else
+        {
+            statusFilter = null;
+        }
+        ApplyFilter();
+    }
+
+    private void OpenAddDialog()
+    {
+        currentService = new Service { Active = true, DurationMinutes = 60, Price = 0 };
+        isEditMode = false;
+        showDialog = true;
+        ClearMessages();
+    }
+
+    private void OpenEditDialog(Service service)
+    {
+        currentService = new Service
+        {
+            ServiceId = service.ServiceId,
+            Code = service.Code,
+            Name = service.Name,
+            Description = service.Description,
+            ServiceCategoryId = service.ServiceCategoryId,
+            Price = service.Price,
+            DurationMinutes = service.DurationMinutes,
+            Active = service.Active
+        };
+        isEditMode = true;
+        showDialog = true;
+        ClearMessages();
+    }
+
+    private void CloseDialog()
+    {
+        showDialog = false;
+        currentService = new();
+        isEditMode = false;
+    }
+
+    private async Task SaveService()
+    {
+        try
+        {
+            ClearMessages();
+
+            if (string.IsNullOrWhiteSpace(currentService.Name))
+            {
+                errorMessage = "Service name is required.";
+                return;
+            }
+
+            if (currentService.ServiceCategoryId == null)
+            {
+                errorMessage = "Please select a category.";
+                return;
+            }
+
+            if (isEditMode)
+            {
+                var existing = await DbContext.Services.FindAsync(currentService.ServiceId);
+                if (existing != null)
+                {
+                    existing.Code = currentService.Code?.Trim();
+                    existing.Name = currentService.Name.Trim();
+                    existing.Description = currentService.Description?.Trim();
+                    existing.ServiceCategoryId = currentService.ServiceCategoryId;
+                    existing.Price = currentService.Price;
+                    existing.DurationMinutes = currentService.DurationMinutes;
+                    existing.Active = currentService.Active;
+                    await DbContext.SaveChangesAsync();
+                    successMessage = "Service updated successfully!";
+                }
+            }
+            else
+            {
+                var newService = new Service
+                {
+                    Code = currentService.Code?.Trim(),
+                    Name = currentService.Name.Trim(),
+                    Description = currentService.Description?.Trim(),
+                    ServiceCategoryId = currentService.ServiceCategoryId,
+                    Price = currentService.Price,
+                    DurationMinutes = currentService.DurationMinutes,
+                    Active = currentService.Active
+                };
+                DbContext.Services.Add(newService);
+                await DbContext.SaveChangesAsync();
+                successMessage = "Service created successfully!";
+            }
+
+            CloseDialog();
+            await LoadData();
+            _ = AutoDismissSuccess();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving service: {ex.Message}";
+        }
+    }
+
+    private long? archiveServiceId = null;
+    private bool showArchiveConfirm = false;
+
+    private void ConfirmArchiveService(long serviceId)
+    {
+        archiveServiceId = serviceId;
+        showArchiveConfirm = true;
+    }
+
+    private void CancelArchive()
+    {
+        archiveServiceId = null;
+        showArchiveConfirm = false;
+    }
+
+    private async Task ArchiveService()
+    {
+        if (archiveServiceId == null) return;
+        
+        try
+        {
+            ClearMessages();
+            var service = await DbContext.Services.FindAsync(archiveServiceId.Value);
+            if (service == null)
+            {
+                errorMessage = "Service not found.";
+                return;
+            }
+
+            service.Active = false;
+            await DbContext.SaveChangesAsync();
+            successMessage = "Service archived successfully!";
+            showArchiveConfirm = false;
+            archiveServiceId = null;
+            await LoadData();
+            _ = AutoDismissSuccess();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error archiving service: {ex.Message}";
+        }
+    }
+
+    private async Task RestoreService(long serviceId)
+    {
+        try
+        {
+            ClearMessages();
+            var service = await DbContext.Services.FindAsync(serviceId);
+            if (service == null)
+            {
+                errorMessage = "Service not found.";
+                return;
+            }
+
+            service.Active = true;
+            await DbContext.SaveChangesAsync();
+            successMessage = "Service restored successfully!";
+            await LoadData();
+            _ = AutoDismissSuccess();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error restoring service: {ex.Message}";
+        }
+    }
+
+    private async Task AutoDismissSuccess()
+    {
+        await Task.Delay(3000);
+        await InvokeAsync(() =>
+        {
+            successMessage = null;
+            StateHasChanged();
+        });
+    }
+
+    private void ClearMessages()
+    {
+        successMessage = null;
+        errorMessage = null;
+    }
+}

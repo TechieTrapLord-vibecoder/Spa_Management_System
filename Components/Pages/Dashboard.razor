@@ -1,0 +1,470 @@
+@page "/dashboard"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using InventoryModel = Spa_Management_System.Models.Inventory
+@using Spa_Management_System.Models
+@using Spa_Management_System.Services
+@inject AppDbContext DbContext
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Analytics Dashboard - Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-bar-chart-line"></span> Dashboard</h3>
+                <p style="color: var(--spa-text-light); margin: 0;">Welcome, @AuthState.GetUserDisplayName() • @DateTime.Now.ToString("dddd, MMMM d, yyyy")</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <select class="form-control" @bind="selectedPeriod" @bind:after="LoadDashboardData" style="width: auto;">
+                    <option value="7">Last 7 Days</option>
+                    <option value="30">Last 30 Days</option>
+                    <option value="90">Last 90 Days</option>
+                    <option value="365">This Year</option>
+                </select>
+                <button class="btn btn-outline" @onclick="RefreshData">
+                    <span class="bi bi-arrow-clockwise"></span> Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="card" style="padding: 1.25rem; background: linear-gradient(135deg, #28a745, #20c997); color: white; margin-bottom: 0;">
+            <div style="font-size: 0.85rem; opacity: 0.9;">Total Revenue</div>
+            <div style="font-size: 2rem; font-weight: 700;">₱@totalRevenue.ToString("N0")</div>
+            <div style="font-size: 0.8rem; opacity: 0.8;">
+                @if (revenueGrowth >= 0)
+                {
+                    <span>↑ @revenueGrowth.ToString("N1")% vs prev period</span>
+                }
+                else
+                {
+                    <span>↓ @Math.Abs(revenueGrowth).ToString("N1")% vs prev period</span>
+                }
+            </div>
+        </div>
+        <div class="card" style="padding: 1.25rem; background: linear-gradient(135deg, #007bff, #6f42c1); color: white; margin-bottom: 0;">
+            <div style="font-size: 0.85rem; opacity: 0.9;">Appointments</div>
+            <div style="font-size: 2rem; font-weight: 700;">@totalAppointments</div>
+            <div style="font-size: 0.8rem; opacity: 0.8;">@completedAppointments completed</div>
+        </div>
+        <div class="card" style="padding: 1.25rem; background: linear-gradient(135deg, #fd7e14, #ffc107); color: white; margin-bottom: 0;">
+            <div style="font-size: 0.85rem; opacity: 0.9;">New Customers</div>
+            <div style="font-size: 2rem; font-weight: 700;">@newCustomers</div>
+            <div style="font-size: 0.8rem; opacity: 0.8;">Total: @totalCustomers</div>
+        </div>
+        <div class="card" style="padding: 1.25rem; background: linear-gradient(135deg, #dc3545, #e83e8c); color: white; margin-bottom: 0;">
+            <div style="font-size: 0.85rem; opacity: 0.9;">Expenses</div>
+            <div style="font-size: 2rem; font-weight: 700;">₱@totalExpenses.ToString("N0")</div>
+            <div style="font-size: 0.8rem; opacity: 0.8;">Net: ₱@(totalRevenue - totalExpenses).ToString("N0")</div>
+        </div>
+    </div>
+
+    <!-- Charts Row 1 -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="card">
+            <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-graph-up"></span> Revenue Trend</h4>
+            <div style="height: 300px; position: relative;">
+                <canvas id="revenueChart"></canvas>
+            </div>
+        </div>
+        <div class="card">
+            <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-pie-chart"></span> Revenue Breakdown</h4>
+            <div style="height: 300px; position: relative;">
+                <canvas id="revenueBreakdownChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 2 -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="card">
+            <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-calendar-check"></span> Appointments by Status</h4>
+            <div style="height: 250px; position: relative;">
+                <canvas id="appointmentChart"></canvas>
+            </div>
+        </div>
+        <div class="card">
+            <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-heart"></span> Top Services</h4>
+            <div style="height: 250px; position: relative;">
+                <canvas id="servicesChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 3 -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="card">
+            <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-credit-card"></span> Payment Methods</h4>
+            <div style="height: 250px; position: relative;">
+                <canvas id="paymentChart"></canvas>
+            </div>
+        </div>
+        <div class="card">
+            <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-receipt"></span> Expense Categories</h4>
+            <div style="height: 250px; position: relative;">
+                <canvas id="expenseChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Stats Tables -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div class="card">
+            <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-star-fill"></span> Top Therapists</h4>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Therapist</th>
+                        <th style="text-align: center;">Services</th>
+                        <th style="text-align: right;">Revenue</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var therapist in topTherapists.Take(5))
+                    {
+                        <tr>
+                            <td><strong>@therapist.Name</strong></td>
+                            <td style="text-align: center;">@therapist.ServiceCount</td>
+                            <td style="text-align: right; font-weight: 600; color: var(--spa-success);">₱@therapist.Revenue.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="card">
+            <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-people-fill"></span> Top Customers</h4>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th style="text-align: center;">Visits</th>
+                        <th style="text-align: right;">Spent</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var customer in topCustomers.Take(5))
+                    {
+                        <tr>
+                            <td><strong>@customer.Name</strong></td>
+                            <td style="text-align: center;">@customer.Visits</td>
+                            <td style="text-align: right; font-weight: 600; color: var(--spa-accent);">₱@customer.TotalSpent.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Alerts Section -->
+    @if (lowStockProducts.Any() || todayAppointments > 0 || pendingPOs > 0)
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-bell-fill"></span> Alerts & Notifications</h4>
+            <div style="display: grid; gap: 0.75rem;">
+                @if (lowStockProducts.Any())
+                {
+                    <a href="/inventory" style="text-decoration: none;">
+                        <div class="alert alert-warning" style="margin: 0; cursor: pointer;">
+                            <span class="bi bi-exclamation-triangle-fill"></span>
+                            <strong>Low Stock:</strong> @lowStockProducts.Count product(s) below reorder level
+                        </div>
+                    </a>
+                }
+                @if (todayAppointments > 0)
+                {
+                    <a href="/appointments" style="text-decoration: none;">
+                        <div class="alert alert-info" style="margin: 0; cursor: pointer;">
+                            <span class="bi bi-calendar-check-fill"></span>
+                            <strong>Today:</strong> @todayAppointments appointment(s) scheduled
+                        </div>
+                    </a>
+                }
+                @if (pendingPOs > 0)
+                {
+                    <a href="/purchase-orders" style="text-decoration: none;">
+                        <div class="alert alert-info" style="margin: 0; cursor: pointer;">
+                            <span class="bi bi-truck"></span>
+                            <strong>Pending:</strong> @pendingPOs purchase order(s) awaiting processing
+                        </div>
+                    </a>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private int selectedPeriod = 30;
+    private bool isLoading = true;
+
+    // KPI Data
+    private decimal totalRevenue = 0;
+    private decimal revenueGrowth = 0;
+    private int totalAppointments = 0;
+    private int completedAppointments = 0;
+    private int newCustomers = 0;
+    private int totalCustomers = 0;
+    private decimal totalExpenses = 0;
+
+    // Chart Data
+    private List<DailyRevenue> dailyRevenue = new();
+    private List<ServiceStat> topServices = new();
+    private List<TherapistStat> topTherapists = new();
+    private List<CustomerStat> topCustomers = new();
+    private Dictionary<string, decimal> paymentBreakdown = new();
+    private Dictionary<string, decimal> expenseBreakdown = new();
+    private Dictionary<string, int> appointmentStatus = new();
+
+    // Alerts
+    private List<InventoryModel> lowStockProducts = new();
+    private int todayAppointments = 0;
+    private int pendingPOs = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardData();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!isLoading)
+        {
+            await RenderCharts();
+        }
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadDashboardData();
+        StateHasChanged();
+    }
+
+    private async Task LoadDashboardData()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var endDate = DateTime.Today.AddDays(1);
+            var startDate = DateTime.Today.AddDays(-selectedPeriod);
+            var prevStartDate = startDate.AddDays(-selectedPeriod);
+
+            // Revenue
+            var currentSales = await DbContext.Sales
+                .Where(s => s.CreatedAt >= startDate && s.CreatedAt < endDate)
+                .ToListAsync();
+            totalRevenue = currentSales.Sum(s => s.TotalAmount);
+
+            var prevSales = await DbContext.Sales
+                .Where(s => s.CreatedAt >= prevStartDate && s.CreatedAt < startDate)
+                .ToListAsync();
+            var prevRevenue = prevSales.Sum(s => s.TotalAmount);
+            revenueGrowth = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
+
+            // Appointments
+            var appointments = await DbContext.Appointments
+                .Where(a => a.ScheduledStart >= startDate && a.ScheduledStart < endDate)
+                .ToListAsync();
+            totalAppointments = appointments.Count;
+            completedAppointments = appointments.Count(a => a.Status == "completed");
+
+            appointmentStatus = appointments
+                .GroupBy(a => a.Status)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            // Customers
+            totalCustomers = await DbContext.Customers.CountAsync();
+            newCustomers = await DbContext.Customers
+                .Where(c => c.CreatedAt >= startDate)
+                .CountAsync();
+
+            // Expenses
+            totalExpenses = await DbContext.Expenses
+                .Where(e => e.ExpenseDate >= startDate && e.ExpenseDate < endDate && e.Status != "cancelled")
+                .SumAsync(e => e.Amount);
+
+            // Daily Revenue for Chart
+            dailyRevenue = Enumerable.Range(0, selectedPeriod)
+                .Select(i => startDate.AddDays(i))
+                .Select(date => new DailyRevenue
+                {
+                    Date = date,
+                    Revenue = currentSales.Where(s => s.CreatedAt.Date == date).Sum(s => s.TotalAmount)
+                })
+                .ToList();
+
+            // Top Services
+            var appointmentServices = await DbContext.AppointmentServices
+                .Include(a => a.Service)
+                .Include(a => a.Appointment)
+                .Where(a => a.Appointment.ScheduledStart >= startDate && a.Appointment.ScheduledStart < endDate && a.Appointment.Status == "completed")
+                .ToListAsync();
+
+            topServices = appointmentServices
+                .Where(a => a.Service != null)
+                .GroupBy(a => a.Service!.Name)
+                .Select(g => new ServiceStat { Name = g.Key, Count = g.Count(), Revenue = g.Sum(a => a.Price) })
+                .OrderByDescending(s => s.Revenue)
+                .Take(5)
+                .ToList();
+
+            // Top Therapists
+            topTherapists = appointmentServices
+                .Where(a => a.TherapistEmployee?.Person != null)
+                .GroupBy(a => $"{a.TherapistEmployee!.Person!.FirstName} {a.TherapistEmployee.Person.LastName}")
+                .Select(g => new TherapistStat { Name = g.Key, ServiceCount = g.Count(), Revenue = g.Sum(a => a.Price) })
+                .OrderByDescending(t => t.Revenue)
+                .Take(5)
+                .ToList();
+
+            // Top Customers
+            var customerAppointments = await DbContext.Appointments
+                .Include(a => a.Customer).ThenInclude(c => c!.Person)
+                .Include(a => a.AppointmentServices)
+                .Where(a => a.ScheduledStart >= startDate && a.ScheduledStart < endDate && a.Status == "completed" && a.CustomerId > 0)
+                .ToListAsync();
+
+            topCustomers = customerAppointments
+                .Where(a => a.Customer?.Person != null)
+                .GroupBy(a => $"{a.Customer!.Person!.FirstName} {a.Customer.Person.LastName}")
+                .Select(g => new CustomerStat
+                {
+                    Name = g.Key,
+                    Visits = g.Count(),
+                    TotalSpent = g.Sum(a => a.AppointmentServices?.Sum(s => s.Price) ?? 0)
+                })
+                .OrderByDescending(c => c.TotalSpent)
+                .Take(5)
+                .ToList();
+
+            // Payment Breakdown
+            var payments = await DbContext.Payments
+                .Where(p => p.PaidAt >= startDate && p.PaidAt < endDate)
+                .ToListAsync();
+
+            paymentBreakdown = payments
+                .GroupBy(p => p.PaymentMethod ?? "Cash")
+                .ToDictionary(g => g.Key, g => g.Sum(p => p.Amount));
+
+            if (!paymentBreakdown.Any() && totalRevenue > 0)
+            {
+                paymentBreakdown["Cash"] = totalRevenue;
+            }
+
+            // Expense Breakdown
+            var expenses = await DbContext.Expenses
+                .Where(e => e.ExpenseDate >= startDate && e.ExpenseDate < endDate && e.Status != "cancelled")
+                .ToListAsync();
+
+            expenseBreakdown = expenses
+                .GroupBy(e => e.Category)
+                .ToDictionary(g => g.Key, g => g.Sum(e => e.Amount));
+
+            // Alerts
+            lowStockProducts = await DbContext.Inventories
+                .Include(i => i.Product)
+                .Where(i => i.QuantityOnHand <= i.ReorderLevel)
+                .ToListAsync();
+
+            todayAppointments = await DbContext.Appointments
+                .CountAsync(a => a.ScheduledStart.Date == DateTime.Today && a.Status != "cancelled");
+
+            pendingPOs = await DbContext.PurchaseOrders
+                .CountAsync(p => p.Status == "pending" || p.Status == "ordered");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading dashboard: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RenderCharts()
+    {
+        try
+        {
+            // Revenue Trend Chart
+            var revenueLabels = dailyRevenue.Select(d => d.Date.ToString("MMM dd")).ToArray();
+            var revenueData = dailyRevenue.Select(d => (double)d.Revenue).ToArray();
+            await JS.InvokeVoidAsync("chartUtils.createLineChart", "revenueChart", revenueLabels,
+                new[] { new { label = "Revenue (₱)", data = revenueData, color = "#28a745" } }, null);
+
+            // Revenue Breakdown (Services vs Products)
+            var serviceRevenue = topServices.Sum(s => s.Revenue);
+            var productRevenue = totalRevenue - serviceRevenue;
+            await JS.InvokeVoidAsync("chartUtils.createDoughnutChart", "revenueBreakdownChart",
+                new[] { "Services", "Products" }, new[] { (double)serviceRevenue, (double)productRevenue }, null);
+
+            // Appointments Status Chart
+            var statusLabels = appointmentStatus.Keys.Select(k => char.ToUpper(k[0]) + k.Substring(1)).ToArray();
+            var statusData = appointmentStatus.Values.Select(v => (double)v).ToArray();
+            await JS.InvokeVoidAsync("chartUtils.createPieChart", "appointmentChart", statusLabels, statusData, null);
+
+            // Top Services Chart
+            var serviceLabels = topServices.Select(s => s.Name).ToArray();
+            var serviceData = topServices.Select(s => (double)s.Count).ToArray();
+            await JS.InvokeVoidAsync("chartUtils.createBarChart", "servicesChart", serviceLabels,
+                new[] { new { label = "Bookings", data = serviceData, color = "#AA9478" } }, null);
+
+            // Payment Methods Chart
+            var paymentLabels = paymentBreakdown.Keys.ToArray();
+            var paymentData = paymentBreakdown.Values.Select(v => (double)v).ToArray();
+            await JS.InvokeVoidAsync("chartUtils.createDoughnutChart", "paymentChart", paymentLabels, paymentData, null);
+
+            // Expense Categories Chart
+            if (expenseBreakdown.Any())
+            {
+                var expenseLabels = expenseBreakdown.Keys.ToArray();
+                var expenseData = expenseBreakdown.Values.Select(v => (double)v).ToArray();
+                await JS.InvokeVoidAsync("chartUtils.createBarChart", "expenseChart", expenseLabels,
+                    new[] { new { label = "Amount (₱)", data = expenseData, color = "#dc3545" } }, null);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error rendering charts: {ex.Message}");
+        }
+    }
+
+    private class DailyRevenue
+    {
+        public DateTime Date { get; set; }
+        public decimal Revenue { get; set; }
+    }
+
+    private class ServiceStat
+    {
+        public string Name { get; set; } = "";
+        public int Count { get; set; }
+        public decimal Revenue { get; set; }
+    }
+
+    private class TherapistStat
+    {
+        public string Name { get; set; } = "";
+        public int ServiceCount { get; set; }
+        public decimal Revenue { get; set; }
+    }
+
+    private class CustomerStat
+    {
+        public string Name { get; set; } = "";
+        public int Visits { get; set; }
+        public decimal TotalSpent { get; set; }
+    }
+}

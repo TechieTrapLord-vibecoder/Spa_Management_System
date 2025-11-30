@@ -1,0 +1,14 @@
+wwwroot\css\app.css
+wwwroot\css\bootstrap\bootstrap.min.css
+wwwroot\css\bootstrap\bootstrap.min.css.map
+wwwroot\images\Logo.png
+wwwroot\images\Logo1.png
+wwwroot\index.html
+wwwroot\js\datatables-init.js
+wwwroot\js\exportUtils.js
+C:\Users\hmmth\source\repos\Spa_Management_System\Spa_Management_System\wwwroot\js\exportUtils.js
+C:\Users\hmmth\source\repos\Spa_Management_System\Spa_Management_System\wwwroot\css\app.css
+C:\Users\hmmth\source\repos\Spa_Management_System\Spa_Management_System\wwwroot\css\bootstrap\bootstrap.min.css
+C:\Users\hmmth\source\repos\Spa_Management_System\Spa_Management_System\wwwroot\js\datatables-init.js
+C:\Users\hmmth\source\repos\Spa_Management_System\Spa_Management_System\wwwroot\css\bootstrap\bootstrap.min.css.map
+C:\Users\hmmth\source\repos\Spa_Management_System\Spa_Management_System\wwwroot\index.html

@@ -1,0 +1,977 @@
+@page "/manager-dashboard"
+@using Spa_Management_System.Services
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+
+<PageTitle>Manager Dashboard - Kaye Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else if (!IsAuthorized())
+{
+    <div class="card">
+        <div class="alert alert-danger">
+            <span class="bi bi-shield-x"></span>
+            <div>
+                <h4 style="margin: 0 0 0.5rem 0;">Access Denied</h4>
+                <p style="margin: 0;">You do not have permission to access this page. Manager or SuperAdmin access required.</p>
+            </div>
+        </div>
+        <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/employee-dashboard")'>
+            <span class="bi bi-arrow-left"></span> Go to Dashboard
+        </button>
+    </div>
+}
+else
+{
+    <div class="manager-dashboard">
+        <!-- Header -->
+        <div class="dashboard-header">
+            <div class="header-left">
+                <h1><span class="bi bi-briefcase-fill"></span> Manager Dashboard</h1>
+                <p class="current-time">@DateTime.Now.ToString("dddd, MMMM d, yyyy") | Welcome, @AuthState.GetUserDisplayName()</p>
+            </div>
+            <div class="header-actions">
+                <a href="/reports" class="header-btn">
+                    <span class="bi bi-file-earmark-bar-graph"></span> Reports
+                </a>
+                <a href="/financial-reports" class="header-btn">
+                    <span class="bi bi-graph-up"></span> Financials
+                </a>
+            </div>
+        </div>
+
+        <!-- Key Metrics Row -->
+        <div class="metrics-row">
+            <div class="metric-card revenue">
+                <div class="metric-icon"><span class="bi bi-cash-stack"></span></div>
+                <div class="metric-content">
+                    <span class="metric-value">P@todayRevenue.ToString("N0")</span>
+                    <span class="metric-label">Today's Revenue</span>
+                </div>
+            </div>
+            <div class="metric-card appointments">
+                <div class="metric-icon"><span class="bi bi-calendar-check"></span></div>
+                <div class="metric-content">
+                    <span class="metric-value">@todayAppointments</span>
+                    <span class="metric-label">Today's Bookings</span>
+                </div>
+            </div>
+            <div class="metric-card customers">
+                <div class="metric-icon"><span class="bi bi-people"></span></div>
+                <div class="metric-content">
+                    <span class="metric-value">@newCustomersThisMonth</span>
+                    <span class="metric-label">New Customers (Month)</span>
+                </div>
+            </div>
+            <div class="metric-card services">
+                <div class="metric-icon"><span class="bi bi-heart-pulse"></span></div>
+                <div class="metric-content">
+                    <span class="metric-value">@servicesCompletedToday</span>
+                    <span class="metric-label">Services Completed</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- Left Column -->
+            <div class="dashboard-left">
+                <!-- Team Status -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3><span class="bi bi-people-fill"></span> Team Status Today</h3>
+                        <a href="/employees" class="view-link">Manage <span class="bi bi-arrow-right"></span></a>
+                    </div>
+                    <div class="team-grid">
+                        @if (activeEmployees.Any())
+                        {
+                            @foreach (var emp in activeEmployees.Take(6))
+                            {
+                                <div class="team-member">
+                                    <div class="member-avatar">
+                                        @(emp.Person?.FirstName?.Substring(0, 1))@(emp.Person?.LastName?.Substring(0, 1))
+                                    </div>
+                                    <div class="member-info">
+                                        <span class="member-name">@emp.Person?.FirstName @emp.Person?.LastName</span>
+                                        <span class="member-role">@emp.Role?.Name</span>
+                                    </div>
+                                    <span class="status-dot active"></span>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <p class="no-data">No active employees found</p>
+                        }
+                    </div>
+                    <div class="team-summary">
+                        <div class="summary-item">
+                            <span class="bi bi-check-circle-fill text-success"></span>
+                            <span>@activeEmployeeCount Active</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="bi bi-person-badge"></span>
+                            <span>@therapistCount Therapists</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Financial Summary -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3><span class="bi bi-wallet2"></span> Financial Summary</h3>
+                        <a href="/financial-reports" class="view-link">Details <span class="bi bi-arrow-right"></span></a>
+                    </div>
+                    <div class="financial-grid">
+                        <div class="financial-item">
+                            <span class="fin-label">This Week</span>
+                            <span class="fin-value">P@weekRevenue.ToString("N0")</span>
+                        </div>
+                        <div class="financial-item">
+                            <span class="fin-label">This Month</span>
+                            <span class="fin-value">P@monthRevenue.ToString("N0")</span>
+                        </div>
+                        <div class="financial-item">
+                            <span class="fin-label">Expenses (Month)</span>
+                            <span class="fin-value expense">P@monthExpenses.ToString("N0")</span>
+                        </div>
+                        <div class="financial-item">
+                            <span class="fin-label">Net Income</span>
+                            <span class="fin-value @(monthRevenue - monthExpenses >= 0 ? "positive" : "negative")">
+                                P@((monthRevenue - monthExpenses).ToString("N0"))
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Services -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3><span class="bi bi-trophy"></span> Top Services This Month</h3>
+                    </div>
+                    <div class="top-services-list">
+                        @if (topServices.Any())
+                        {
+                            @foreach (var svc in topServices)
+                            {
+                                <div class="top-service-item">
+                                    <div class="service-info">
+                                        <span class="service-name">@svc.ServiceName</span>
+                                        <span class="service-count">@svc.Count bookings</span>
+                                    </div>
+                                    <span class="service-revenue">P@svc.Revenue.ToString("N0")</span>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <p class="no-data">No service data available</p>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column -->
+            <div class="dashboard-right">
+                <!-- Alerts & Notifications -->
+                <div class="dashboard-card alerts-card">
+                    <div class="card-header">
+                        <h3><span class="bi bi-bell-fill"></span> Alerts</h3>
+                    </div>
+                    <div class="alerts-list">
+                        @if (lowStockCount > 0)
+                        {
+                            <a href="/inventory" class="alert-item warning">
+                                <span class="bi bi-exclamation-triangle-fill"></span>
+                                <div class="alert-content">
+                                    <span class="alert-title">Low Stock</span>
+                                    <span class="alert-desc">@lowStockCount items need restocking</span>
+                                </div>
+                                <span class="bi bi-chevron-right"></span>
+                            </a>
+                        }
+                        @if (pendingPayrollCount > 0)
+                        {
+                            <a href="/payroll" class="alert-item info">
+                                <span class="bi bi-cash-coin"></span>
+                                <div class="alert-content">
+                                    <span class="alert-title">Pending Payroll</span>
+                                    <span class="alert-desc">@pendingPayrollCount records to process</span>
+                                </div>
+                                <span class="bi bi-chevron-right"></span>
+                            </a>
+                        }
+                        @if (pendingPOCount > 0)
+                        {
+                            <a href="/purchase-orders" class="alert-item info">
+                                <span class="bi bi-truck"></span>
+                                <div class="alert-content">
+                                    <span class="alert-title">Pending Orders</span>
+                                    <span class="alert-desc">@pendingPOCount purchase orders pending</span>
+                                </div>
+                                <span class="bi bi-chevron-right"></span>
+                            </a>
+                        }
+                        @if (todayCancelledCount > 0)
+                        {
+                            <a href="/appointments" class="alert-item danger">
+                                <span class="bi bi-x-circle-fill"></span>
+                                <div class="alert-content">
+                                    <span class="alert-title">Cancelled Today</span>
+                                    <span class="alert-desc">@todayCancelledCount appointment(s) cancelled</span>
+                                </div>
+                                <span class="bi bi-chevron-right"></span>
+                            </a>
+                        }
+                        @if (lowStockCount == 0 && pendingPayrollCount == 0 && pendingPOCount == 0 && todayCancelledCount == 0)
+                        {
+                            <div class="no-alerts">
+                                <span class="bi bi-check-circle"></span>
+                                <span>All clear! No alerts at this time.</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3><span class="bi bi-lightning-fill"></span> Quick Actions</h3>
+                    </div>
+                    <div class="quick-actions-grid">
+                        <a href="/appointments" class="quick-action">
+                            <span class="bi bi-calendar-plus"></span>
+                            <span>Appointments</span>
+                        </a>
+                        <a href="/customers" class="quick-action">
+                            <span class="bi bi-person-plus"></span>
+                            <span>Customers</span>
+                        </a>
+                        <a href="/payroll" class="quick-action">
+                            <span class="bi bi-wallet"></span>
+                            <span>Payroll</span>
+                        </a>
+                        <a href="/expenses" class="quick-action">
+                            <span class="bi bi-receipt"></span>
+                            <span>Expenses</span>
+                        </a>
+                        <a href="/inventory" class="quick-action">
+                            <span class="bi bi-box-seam"></span>
+                            <span>Inventory</span>
+                        </a>
+                        <a href="/audit-logs" class="quick-action">
+                            <span class="bi bi-clock-history"></span>
+                            <span>Audit Logs</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Today's Appointment Summary -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3><span class="bi bi-calendar-day"></span> Today's Summary</h3>
+                        <a href="/appointments" class="view-link">View All <span class="bi bi-arrow-right"></span></a>
+                    </div>
+                    <div class="appointment-stats">
+                        <div class="appt-stat">
+                            <span class="appt-stat-value scheduled">@scheduledCount</span>
+                            <span class="appt-stat-label">Scheduled</span>
+                        </div>
+                        <div class="appt-stat">
+                            <span class="appt-stat-value in-progress">@inProgressCount</span>
+                            <span class="appt-stat-label">In Progress</span>
+                        </div>
+                        <div class="appt-stat">
+                            <span class="appt-stat-value completed">@completedCount</span>
+                            <span class="appt-stat-label">Completed</span>
+                        </div>
+                        <div class="appt-stat">
+                            <span class="appt-stat-value paid">@paidCount</span>
+                            <span class="appt-stat-label">Paid</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Staff Performance -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3><span class="bi bi-bar-chart-fill"></span> Staff Performance (Month)</h3>
+                    </div>
+                    <div class="staff-performance-list">
+                        @if (staffPerformance.Any())
+                        {
+                            @foreach (var staff in staffPerformance.Take(5))
+                            {
+                                <div class="staff-perf-item">
+                                    <div class="staff-info">
+                                        <span class="staff-name">@staff.Name</span>
+                                        <span class="staff-services">@staff.ServicesCount services</span>
+                                    </div>
+                                    <span class="staff-commission">P@staff.Commission.ToString("N0")</span>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <p class="no-data">No performance data available</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .manager-dashboard {
+            padding: 0;
+        }
+
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            color: white;
+        }
+
+        .header-left h1 {
+            font-size: 1.5rem;
+            margin: 0 0 0.25rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .current-time {
+            opacity: 0.85;
+            font-size: 0.9rem;
+            margin: 0;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .header-btn {
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.15);
+            border-radius: 8px;
+            color: white;
+            text-decoration: none;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: background 0.2s;
+        }
+
+        .header-btn:hover {
+            background: rgba(255,255,255,0.25);
+            color: white;
+        }
+
+        /* Metrics Row */
+        .metrics-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .metric-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        .metric-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .metric-card.revenue .metric-icon { background: #dcfce7; color: #16a34a; }
+        .metric-card.appointments .metric-icon { background: #dbeafe; color: #2563eb; }
+        .metric-card.customers .metric-icon { background: #fef3c7; color: #d97706; }
+        .metric-card.services .metric-icon { background: #f3e8ff; color: #9333ea; }
+
+        .metric-content {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .metric-label {
+            font-size: 0.85rem;
+            color: #6b7280;
+        }
+
+        /* Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 1.5rem;
+        }
+
+        .dashboard-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .card-header h3 {
+            margin: 0;
+            font-size: 1rem;
+            color: #1f2937;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .view-link {
+            color: #4a7c59;
+            text-decoration: none;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        /* Team Grid */
+        .team-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .team-member {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+
+        .member-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4a7c59, #6b9b7a);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .member-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .member-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #1f2937;
+        }
+
+        .member-role {
+            font-size: 0.75rem;
+            color: #6b7280;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #d1d5db;
+        }
+
+        .status-dot.active {
+            background: #22c55e;
+        }
+
+        .team-summary {
+            display: flex;
+            gap: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .summary-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: #6b7280;
+        }
+
+        /* Financial Grid */
+        .financial-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        .financial-item {
+            padding: 1rem;
+            background: #f9fafb;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .fin-label {
+            font-size: 0.8rem;
+            color: #6b7280;
+            margin-bottom: 0.25rem;
+        }
+
+        .fin-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .fin-value.expense { color: #dc2626; }
+        .fin-value.positive { color: #16a34a; }
+        .fin-value.negative { color: #dc2626; }
+
+        /* Top Services */
+        .top-services-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .top-service-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+
+        .service-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .service-name {
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .service-count {
+            font-size: 0.8rem;
+            color: #6b7280;
+        }
+
+        .service-revenue {
+            font-weight: 600;
+            color: #16a34a;
+        }
+
+        /* Alerts */
+        .alerts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .alert-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: transform 0.2s;
+        }
+
+        .alert-item:hover {
+            transform: translateX(4px);
+        }
+
+        .alert-item.warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .alert-item.info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .alert-item.danger {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .alert-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .alert-title {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .alert-desc {
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+
+        .no-alerts {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem;
+            color: #16a34a;
+            background: #f0fdf4;
+            border-radius: 8px;
+        }
+
+        /* Quick Actions */
+        .quick-actions-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+        }
+
+        .quick-action {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem;
+            background: #f9fafb;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #1f2937;
+            transition: all 0.2s;
+        }
+
+        .quick-action:hover {
+            background: #4a7c59;
+            color: white;
+        }
+
+        .quick-action span:first-child {
+            font-size: 1.5rem;
+        }
+
+        .quick-action span:last-child {
+            font-size: 0.8rem;
+        }
+
+        /* Appointment Stats */
+        .appointment-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
+        }
+
+        .appt-stat {
+            text-align: center;
+            padding: 0.75rem;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+
+        .appt-stat-value {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .appt-stat-value.scheduled { color: #6b7280; }
+        .appt-stat-value.in-progress { color: #2563eb; }
+        .appt-stat-value.completed { color: #16a34a; }
+        .appt-stat-value.paid { color: #9333ea; }
+
+        .appt-stat-label {
+            font-size: 0.7rem;
+            color: #6b7280;
+        }
+
+        /* Staff Performance */
+        .staff-performance-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .staff-perf-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+
+        .staff-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .staff-name {
+            font-weight: 600;
+            color: #1f2937;
+            font-size: 0.9rem;
+        }
+
+        .staff-services {
+            font-size: 0.75rem;
+            color: #6b7280;
+        }
+
+        .staff-commission {
+            font-weight: 600;
+            color: #16a34a;
+        }
+
+        .no-data {
+            color: #6b7280;
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 1rem;
+        }
+
+        @@media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .metrics-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @@media (max-width: 768px) {
+            .metrics-row {
+                grid-template-columns: 1fr;
+            }
+
+            .team-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header-actions {
+                display: none;
+            }
+        }
+    </style>
+}
+
+@code {
+    private decimal todayRevenue = 0;
+    private int todayAppointments = 0;
+    private int newCustomersThisMonth = 0;
+    private int servicesCompletedToday = 0;
+
+    private int activeEmployeeCount = 0;
+    private int therapistCount = 0;
+    private List<Employee> activeEmployees = new();
+
+    private decimal weekRevenue = 0;
+    private decimal monthRevenue = 0;
+    private decimal monthExpenses = 0;
+
+    private int lowStockCount = 0;
+    private int pendingPayrollCount = 0;
+    private int pendingPOCount = 0;
+    private int todayCancelledCount = 0;
+
+    private int scheduledCount = 0;
+    private int inProgressCount = 0;
+    private int completedCount = 0;
+    private int paidCount = 0;
+
+    private List<TopServiceDto> topServices = new();
+    private List<StaffPerformanceDto> staffPerformance = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AuthState.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!IsAuthorized())
+        {
+            return;
+        }
+
+        await LoadDashboardData();
+    }
+
+    private bool IsAuthorized()
+    {
+        var role = AuthState.GetUserRole();
+        return role.Equals("Manager", StringComparison.OrdinalIgnoreCase) ||
+               role.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task LoadDashboardData()
+    {
+        try
+        {
+            var today = DateTime.Today;
+            var startOfWeek = today.AddDays(-(int)today.DayOfWeek);
+            var startOfMonth = new DateTime(today.Year, today.Month, 1);
+
+            // Revenue
+            todayRevenue = await DbContext.Payments
+                .Where(p => p.PaidAt.Date == today)
+                .SumAsync(p => p.Amount);
+
+            weekRevenue = await DbContext.Payments
+                .Where(p => p.PaidAt.Date >= startOfWeek)
+                .SumAsync(p => p.Amount);
+
+            monthRevenue = await DbContext.Payments
+                .Where(p => p.PaidAt.Date >= startOfMonth)
+                .SumAsync(p => p.Amount);
+
+            // Expenses
+            monthExpenses = await DbContext.Expenses
+                .Where(e => e.ExpenseDate >= startOfMonth)
+                .SumAsync(e => e.Amount);
+
+            // Appointments
+            var todayAppointmentsList = await DbContext.Appointments
+                .Where(a => a.ScheduledStart.Date == today)
+                .ToListAsync();
+
+            todayAppointments = todayAppointmentsList.Count(a => a.Status != "cancelled");
+            scheduledCount = todayAppointmentsList.Count(a => a.Status == "scheduled" || a.Status == "confirmed");
+            inProgressCount = todayAppointmentsList.Count(a => a.Status == "in-progress");
+            completedCount = todayAppointmentsList.Count(a => a.Status == "completed");
+            paidCount = todayAppointmentsList.Count(a => a.Status == "paid");
+            todayCancelledCount = todayAppointmentsList.Count(a => a.Status == "cancelled");
+
+            servicesCompletedToday = await DbContext.AppointmentServices
+                .Include(a => a.Appointment)
+                .Where(a => a.Appointment.ScheduledStart.Date == today &&
+                           (a.Appointment.Status == "completed" || a.Appointment.Status == "paid"))
+                .CountAsync();
+
+            // Customers
+            newCustomersThisMonth = await DbContext.Customers
+                .Where(c => c.CreatedAt >= startOfMonth)
+                .CountAsync();
+
+            // Employees
+            activeEmployees = await DbContext.Employees
+                .Include(e => e.Person)
+                .Include(e => e.Role)
+                .Where(e => e.Status == "active")
+                .ToListAsync();
+
+            activeEmployeeCount = activeEmployees.Count;
+            therapistCount = activeEmployees.Count(e => e.Role?.Name == "Therapist");
+
+            // Alerts
+            lowStockCount = await DbContext.Inventories
+                .CountAsync(i => i.QuantityOnHand <= i.ReorderLevel);
+
+            pendingPOCount = await DbContext.PurchaseOrders
+                .CountAsync(p => p.Status == "pending" || p.Status == "ordered");
+
+            pendingPayrollCount = await DbContext.Payrolls
+                .CountAsync(p => p.Status == "pending" || p.Status == "draft");
+
+            // Top Services
+            topServices = await DbContext.AppointmentServices
+                .Include(a => a.Service)
+                .Include(a => a.Appointment)
+                .Where(a => a.Appointment.ScheduledStart >= startOfMonth)
+                .GroupBy(a => new { a.ServiceId, a.Service!.Name })
+                .Select(g => new TopServiceDto
+                {
+                    ServiceName = g.Key.Name,
+                    Count = g.Count(),
+                    Revenue = g.Sum(x => x.Price)
+                })
+                .OrderByDescending(x => x.Count)
+                .Take(5)
+                .ToListAsync();
+
+            // Staff Performance
+            staffPerformance = await DbContext.AppointmentServices
+                .Include(a => a.TherapistEmployee).ThenInclude(e => e!.Person)
+                .Include(a => a.Appointment)
+                .Where(a => a.Appointment.ScheduledStart >= startOfMonth && a.TherapistEmployeeId != null)
+                .GroupBy(a => new { a.TherapistEmployeeId, a.TherapistEmployee!.Person!.FirstName, a.TherapistEmployee.Person.LastName })
+                .Select(g => new StaffPerformanceDto
+                {
+                    Name = g.Key.FirstName + " " + g.Key.LastName,
+                    ServicesCount = g.Count(),
+                    Commission = g.Sum(x => x.CommissionAmount)
+                })
+                .OrderByDescending(x => x.ServicesCount)
+                .Take(5)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading manager dashboard: {ex.Message}");
+        }
+    }
+
+    private class TopServiceDto
+    {
+        public string ServiceName { get; set; } = "";
+        public int Count { get; set; }
+        public decimal Revenue { get; set; }
+    }
+
+    private class StaffPerformanceDto
+    {
+        public string Name { get; set; } = "";
+        public int ServicesCount { get; set; }
+        public decimal Commission { get; set; }
+    }
+}

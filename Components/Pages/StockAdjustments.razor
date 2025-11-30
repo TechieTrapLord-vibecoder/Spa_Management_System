@@ -1,0 +1,550 @@
+@page "/stock-adjustments"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+
+<PageTitle>Stock Adjustments - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else if (!HasAccess())
+{
+    <div class="card">
+        <div class="alert alert-danger">
+            <span class="bi bi-exclamation-triangle-fill"></span>
+            <div>Access denied. Only SuperAdmin, Managers and Inventory Clerks can make stock adjustments.</div>
+        </div>
+        <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/")'>
+            <span class="bi bi-house"></span> Go Home
+        </button>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-box-seam"></span> Stock Adjustments</h3>
+                <p style="color: var(--spa-text-light); margin: 0.5rem 0 0 0;">Record manual inventory corrections and adjustments</p>
+            </div>
+            <button class="btn btn-primary" @onclick="OpenNewAdjustmentDialog">
+                <span class="bi bi-plus-circle"></span> New Adjustment
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success">
+                <span class="bi bi-check-circle-fill"></span>
+                <div>@successMessage</div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">
+                <span class="bi bi-exclamation-triangle-fill"></span>
+                <div>@errorMessage</div>
+            </div>
+        }
+
+        @if (isLoading)
+        {
+            <div style="padding: 2rem; text-align: center;">
+                <div class="loading"></div>
+                <p style="margin-top: 1rem; color: var(--spa-text-light);">Loading transactions...</p>
+            </div>
+        }
+        else
+        {
+            <!-- Summary Cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                <div class="card" style="text-align: center; padding: 1.25rem;">
+                    <div style="font-size: 1.75rem; font-weight: bold; color: var(--spa-primary);">@totalAdjustments</div>
+                    <div style="color: var(--spa-text-light); font-size: 0.9rem;">Total Adjustments</div>
+                </div>
+                <div class="card" style="text-align: center; padding: 1.25rem;">
+                    <div style="font-size: 1.75rem; font-weight: bold; color: var(--spa-success);">@positiveAdjustments</div>
+                    <div style="color: var(--spa-text-light); font-size: 0.9rem;">Increases</div>
+                </div>
+                <div class="card" style="text-align: center; padding: 1.25rem;">
+                    <div style="font-size: 1.75rem; font-weight: bold; color: var(--spa-danger);">@negativeAdjustments</div>
+                    <div style="color: var(--spa-text-light); font-size: 0.9rem;">Decreases</div>
+                </div>
+                <div class="card" style="text-align: center; padding: 1.25rem;">
+                    <div style="font-size: 1.75rem; font-weight: bold; color: var(--spa-info);">@thisMonthAdjustments</div>
+                    <div style="color: var(--spa-text-light); font-size: 0.9rem;">This Month</div>
+                </div>
+            </div>
+
+            <!-- Stock Transaction History -->
+            <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-list-check"></span> Recent Stock Transactions</h4>
+
+            @if (!stockTransactions.Any())
+            {
+                <div class="alert alert-info">
+                    <span class="bi bi-info-circle-fill"></span>
+                    <div>No stock transactions recorded yet.</div>
+                </div>
+            }
+            else
+            {
+                <!-- Search -->
+                <div style="margin-bottom: 1rem;">
+                    <input type="text" class="table-search" placeholder="Search transactions..." @bind="searchText" @bind:event="oninput" style="max-width: 300px;" />
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th @onclick='() => SortBy("Date")' style="cursor: pointer;">Date/Time @GetSortIcon("Date")</th>
+                                <th @onclick='() => SortBy("Product")' style="cursor: pointer;">Product @GetSortIcon("Product")</th>
+                                <th @onclick='() => SortBy("Type")' style="cursor: pointer;">Type @GetSortIcon("Type")</th>
+                                <th @onclick='() => SortBy("Qty")' style="text-align: right; cursor: pointer;">Qty @GetSortIcon("Qty")</th>
+                                <th @onclick='() => SortBy("UnitCost")' style="text-align: right; cursor: pointer;">Unit Cost @GetSortIcon("UnitCost")</th>
+                                <th>Reference</th>
+                                <th>Created By</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var tx in GetPagedTransactions())
+                            {
+                                <tr>
+                                    <td>
+                                        <div style="font-size: 0.9rem;">@tx.CreatedAt.ToString("MMM dd, yyyy")</div>
+                                        <div style="font-size: 0.75rem; color: var(--spa-text-light);">@tx.CreatedAt.ToString("hh:mm tt")</div>
+                                    </td>
+                                    <td>
+                                        <strong>@tx.Product?.Name</strong>
+                                        <div style="font-size: 0.75rem; color: var(--spa-text-light);">@tx.Product?.Sku</div>
+                                    </td>
+                                    <td>
+                                        @switch (tx.TxType)
+                                        {
+                                            case "purchase":
+                                                <span class="badge badge-success"><span class="bi bi-box-seam"></span> Purchase</span>
+                                                break;
+                                            case "sale":
+                                                <span class="badge" style="background: var(--spa-info); color: white;"><span class="bi bi-cart"></span> Sale</span>
+                                                break;
+                                            case "adjust":
+                                                <span class="badge" style="background: var(--spa-warning); color: #000;"><span class="bi bi-pencil-square"></span> Adjust</span>
+                                                break;
+                                            case "return":
+                                                <span class="badge badge-secondary"><span class="bi bi-arrow-return-left"></span> Return</span>
+                                                break;
+                                            default:
+                                                <span class="badge badge-secondary">@tx.TxType</span>
+                                                break;
+                                        }
+                                    </td>
+                                    <td style="text-align: right; font-weight: bold;">
+                                        @if (tx.Qty > 0)
+                                        {
+                                            <span style="color: var(--spa-success);">+@((int)tx.Qty)</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: var(--spa-danger);">@((int)tx.Qty)</span>
+                                        }
+                                    </td>
+                                    <td style="text-align: right;">
+                                        @if (tx.UnitCost.HasValue)
+                                        {
+                                            <span>₱@tx.UnitCost.Value.ToString("N2")</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: var(--spa-text-light);">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(tx.Reference))
+                                        {
+                                            <span style="font-size: 0.85rem;">@tx.Reference</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: var(--spa-text-light);">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (tx.CreatedByUser?.Employee?.Person != null)
+                                        {
+                                            <span>@tx.CreatedByUser.Employee.Person.FirstName @tx.CreatedByUser.Employee.Person.LastName</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: var(--spa-text-light);">System</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                @if (TotalPages > 1)
+                {
+                    <div class="table-pagination">
+                        <span>Showing @(((currentPage - 1) * pageSize) + 1)-@(Math.Min(currentPage * pageSize, filteredTransactions.Count())) of @filteredTransactions.Count() entries</span>
+                        <div style="display: flex; gap: 0.25rem;">
+                            <button class="btn btn-sm btn-outline" @onclick="PreviousPage" disabled="@(currentPage == 1)">‹ Prev</button>
+                            @for (int i = 1; i <= TotalPages; i++)
+                            {
+                                var pageNum = i;
+                                <button class="btn btn-sm @(currentPage == pageNum ? "btn-primary" : "btn-outline")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                            }
+                            <button class="btn btn-sm btn-outline" @onclick="NextPage" disabled="@(currentPage == TotalPages)">Next ›</button>
+                        </div>
+                    </div>
+                }
+            }
+        }
+    </div>
+
+    <!-- New Adjustment Dialog -->
+    @if (showAdjustmentDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseAdjustmentDialog">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 550px;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);"><span class="bi bi-box-seam"></span> New Stock Adjustment</h4>
+                    <button class="btn-close" @onclick="CloseAdjustmentDialog">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Product *</label>
+                        <select class="form-control" @bind="selectedProductId">
+                            <option value="0">-- Select Product --</option>
+                            @foreach (var product in products)
+                            {
+                                <option value="@product.ProductId">@product.Name (@product.Sku) - Current: @((int)(product.Inventory?.QuantityOnHand ?? 0))</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Adjustment Type *</label>
+                        <select class="form-control" @bind="adjustmentType">
+                            <option value="increase">Increase (Add Stock)</option>
+                            <option value="decrease">Decrease (Remove Stock)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Quantity *</label>
+                        <input type="number" class="form-control" @bind="adjustmentQty" min="1" step="1" />
+                        <small style="color: var(--spa-text-light);">Enter a positive whole number</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Reason / Reference *</label>
+                        <select class="form-control" @bind="adjustmentReason">
+                            <option value="">-- Select Reason --</option>
+                            <option value="Physical count correction">Physical count correction</option>
+                            <option value="Damaged goods">Damaged goods</option>
+                            <option value="Expired products">Expired products</option>
+                            <option value="Theft/Loss">Theft/Loss</option>
+                            <option value="Found inventory">Found inventory</option>
+                            <option value="Sample/Promo use">Sample/Promo use</option>
+                            <option value="Return from customer">Return from customer</option>
+                            <option value="Transfer between locations">Transfer between locations</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    @if (adjustmentReason == "Other")
+                    {
+                        <div class="form-group">
+                            <label>Custom Reason *</label>
+                            <input type="text" class="form-control" @bind="customReason" placeholder="Enter custom reason" />
+                        </div>
+                    }
+
+                    <div class="form-group">
+                        <label>Notes (Optional)</label>
+                        <textarea class="form-control" @bind="adjustmentNotes" rows="2" placeholder="Additional notes..."></textarea>
+                    </div>
+
+                    @if (selectedProductId > 0 && adjustmentQty > 0)
+                    {
+                        var product = products.FirstOrDefault(p => p.ProductId == selectedProductId);
+                        var currentQty = (int)(product?.Inventory?.QuantityOnHand ?? 0);
+                        var newQty = adjustmentType == "increase" ? currentQty + (int)adjustmentQty : currentQty - (int)adjustmentQty;
+                        <div class="alert @(newQty < 0 ? "alert-danger" : "alert-info")" style="margin-top: 1rem;">
+                            <strong>Preview:</strong><br />
+                            Current Stock: @currentQty → New Stock: @newQty
+                            @if (newQty < 0)
+                            {
+                                <br /><span style="color: var(--spa-danger);"><span class="bi bi-exclamation-triangle"></span> Warning: This will result in negative stock!</span>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseAdjustmentDialog">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-primary" @onclick="SaveAdjustment" disabled="@(!CanSaveAdjustment())">
+                        <span class="bi bi-check-circle"></span> Save Adjustment
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<StockTransaction> stockTransactions = new();
+    private List<Product> products = new();
+    private bool isLoading = true;
+    private string? successMessage;
+    private string? errorMessage;
+
+    // Pagination & Sorting
+    private int pageSize = 10;
+    private int currentPage = 1;
+    private string sortColumn = "Date";
+    private bool sortAscending = false;
+    private string searchText = "";
+
+    private IEnumerable<StockTransaction> filteredTransactions => stockTransactions
+        .Where(t => string.IsNullOrEmpty(searchText) ||
+            (t.Product?.Name?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (t.Product?.Sku?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (t.TxType?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (t.Reference?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    private int TotalPages => (int)Math.Ceiling(filteredTransactions.Count() / (double)pageSize);
+
+    private IEnumerable<StockTransaction> GetPagedTransactions()
+    {
+        var sorted = sortColumn switch
+        {
+            "Date" => sortAscending ? filteredTransactions.OrderBy(t => t.CreatedAt) : filteredTransactions.OrderByDescending(t => t.CreatedAt),
+            "Product" => sortAscending ? filteredTransactions.OrderBy(t => t.Product?.Name) : filteredTransactions.OrderByDescending(t => t.Product?.Name),
+            "Type" => sortAscending ? filteredTransactions.OrderBy(t => t.TxType) : filteredTransactions.OrderByDescending(t => t.TxType),
+            "Qty" => sortAscending ? filteredTransactions.OrderBy(t => t.Qty) : filteredTransactions.OrderByDescending(t => t.Qty),
+            "UnitCost" => sortAscending ? filteredTransactions.OrderBy(t => t.UnitCost ?? 0) : filteredTransactions.OrderByDescending(t => t.UnitCost ?? 0),
+            _ => filteredTransactions.OrderByDescending(t => t.CreatedAt)
+        };
+        return sorted.Skip((currentPage - 1) * pageSize).Take(pageSize);
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column) sortAscending = !sortAscending;
+        else { sortColumn = column; sortAscending = true; }
+        currentPage = 1;
+    }
+
+    private string GetSortIcon(string column) => sortColumn == column ? (sortAscending ? "▲" : "▼") : "";
+
+    private void PreviousPage() { if (currentPage > 1) currentPage--; }
+    private void NextPage() { if (currentPage < TotalPages) currentPage++; }
+    private void GoToPage(int page) { currentPage = page; }
+
+    // Stats
+    private int totalAdjustments = 0;
+    private int positiveAdjustments = 0;
+    private int negativeAdjustments = 0;
+    private int thisMonthAdjustments = 0;
+
+    // Dialog
+    private bool showAdjustmentDialog = false;
+    private long selectedProductId = 0;
+    private string adjustmentType = "increase";
+    private decimal adjustmentQty = 0;
+    private string adjustmentReason = "";
+    private string customReason = "";
+    private string adjustmentNotes = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private bool HasAccess()
+    {
+        var role = AuthState.GetUserRole()?.ToLower();
+        return role == "superadmin" || role == "manager" || role == "inventoryclerk";
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            stockTransactions = await DbContext.StockTransactions
+                .Include(t => t.Product)
+                .Include(t => t.CreatedByUser)
+                    .ThenInclude(u => u!.Employee)
+                        .ThenInclude(e => e!.Person)
+                .OrderByDescending(t => t.CreatedAt)
+                .Take(200)
+                .ToListAsync();
+
+            products = await DbContext.Products
+                .Include(p => p.Inventory)
+                .Where(p => p.Active)
+                .OrderBy(p => p.Name)
+                .ToListAsync();
+
+            // Calculate stats
+            var adjustTxs = stockTransactions.Where(t => t.TxType == "adjust").ToList();
+            totalAdjustments = adjustTxs.Count;
+            positiveAdjustments = adjustTxs.Count(t => t.Qty > 0);
+            negativeAdjustments = adjustTxs.Count(t => t.Qty < 0);
+            
+            var firstOfMonth = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+            thisMonthAdjustments = adjustTxs.Count(t => t.CreatedAt >= firstOfMonth);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading data: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void OpenNewAdjustmentDialog()
+    {
+        selectedProductId = 0;
+        adjustmentType = "increase";
+        adjustmentQty = 0;
+        adjustmentReason = "";
+        customReason = "";
+        adjustmentNotes = "";
+        showAdjustmentDialog = true;
+        ClearMessages();
+    }
+
+    private void CloseAdjustmentDialog()
+    {
+        showAdjustmentDialog = false;
+    }
+
+    private bool CanSaveAdjustment()
+    {
+        if (selectedProductId <= 0) return false;
+        if (adjustmentQty <= 0) return false;
+        if (string.IsNullOrEmpty(adjustmentReason)) return false;
+        if (adjustmentReason == "Other" && string.IsNullOrWhiteSpace(customReason)) return false;
+        return true;
+    }
+
+    private async Task SaveAdjustment()
+    {
+        try
+        {
+            ClearMessages();
+
+            var product = products.FirstOrDefault(p => p.ProductId == selectedProductId);
+            if (product == null)
+            {
+                errorMessage = "Product not found.";
+                return;
+            }
+
+            // Calculate actual qty change (negative if decreasing)
+            var qtyChange = adjustmentType == "increase" ? adjustmentQty : -adjustmentQty;
+
+            // Build reference string
+            var reason = adjustmentReason == "Other" ? customReason : adjustmentReason;
+            var reference = reason;
+            if (!string.IsNullOrWhiteSpace(adjustmentNotes))
+            {
+                reference += $" | {adjustmentNotes}";
+            }
+
+            // Create stock transaction
+            var stockTx = new StockTransaction
+            {
+                ProductId = selectedProductId,
+                TxType = "adjust",
+                Qty = qtyChange,
+                UnitCost = null,
+                Reference = reference,
+                CreatedByUserId = AuthState.CurrentUser?.UserId,
+                CreatedAt = DateTime.Now
+            };
+
+            DbContext.StockTransactions.Add(stockTx);
+
+            // Update inventory
+            if (product.Inventory != null)
+            {
+                product.Inventory.QuantityOnHand += qtyChange;
+            }
+            else
+            {
+                // Create inventory if doesn't exist
+                var inventory = new Models.Inventory
+                {
+                    ProductId = selectedProductId,
+                    QuantityOnHand = qtyChange,
+                    ReorderLevel = 10
+                };
+                DbContext.Inventories.Add(inventory);
+            }
+
+            await DbContext.SaveChangesAsync();
+
+            // Log to audit
+            try
+            {
+                var auditLog = new AuditLog
+                {
+                    EntityName = "StockTransaction",
+                    EntityId = stockTx.StockTxId.ToString(),
+                    Action = "create",
+                    ChangeSummary = $"Stock adjustment for {product.Name}: {(qtyChange > 0 ? "+" : "")}{qtyChange} ({reason})",
+                    ChangedByUserId = AuthState.CurrentUser?.UserId,
+                    CreatedAt = DateTime.Now
+                };
+                DbContext.AuditLogs.Add(auditLog);
+                await DbContext.SaveChangesAsync();
+            }
+            catch { /* Audit logging is non-critical */ }
+
+            successMessage = $"Stock adjustment saved! {product.Name}: {(qtyChange > 0 ? "+" : "")}{qtyChange}";
+            CloseAdjustmentDialog();
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving adjustment: {ex.Message}";
+        }
+    }
+
+    private void ClearMessages()
+    {
+        successMessage = null;
+        errorMessage = null;
+    }
+}
+
+<style>
+    .table th {
+        background: var(--spa-light);
+    }
+
+    .table tbody tr:hover {
+        background: rgba(179, 157, 219, 0.05);
+    }
+</style>

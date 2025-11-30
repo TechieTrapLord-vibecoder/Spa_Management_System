@@ -1,0 +1,57 @@
+{
+  "Files": [
+    {
+      "Id": "C:\\Users\\hmmth\\source\\repos\\Spa_Management_System\\Spa_Management_System\\wwwroot\\css\\app.css",
+      "PackagePath": "staticwebassets\\css\\app.css"
+    },
+    {
+      "Id": "C:\\Users\\hmmth\\source\\repos\\Spa_Management_System\\Spa_Management_System\\wwwroot\\css\\bootstrap\\bootstrap.min.css",
+      "PackagePath": "staticwebassets\\css\\bootstrap\\bootstrap.min.css"
+    },
+    {
+      "Id": "C:\\Users\\hmmth\\source\\repos\\Spa_Management_System\\Spa_Management_System\\wwwroot\\css\\bootstrap\\bootstrap.min.css.map",
+      "PackagePath": "staticwebassets\\css\\bootstrap\\bootstrap.min.css.map"
+    },
+    {
+      "Id": "C:\\Users\\hmmth\\source\\repos\\Spa_Management_System\\Spa_Management_System\\wwwroot\\images\\Logo.png",
+      "PackagePath": "staticwebassets\\images\\Logo.png"
+    },
+    {
+      "Id": "C:\\Users\\hmmth\\source\\repos\\Spa_Management_System\\Spa_Management_System\\wwwroot\\images\\Logo1.png",
+      "PackagePath": "staticwebassets\\images\\Logo1.png"
+    },
+    {
+      "Id": "C:\\Users\\hmmth\\source\\repos\\Spa_Management_System\\Spa_Management_System\\wwwroot\\index.html",
+      "PackagePath": "staticwebassets\\index.html"
+    },
+    {
+      "Id": "C:\\Users\\hmmth\\source\\repos\\Spa_Management_System\\Spa_Management_System\\wwwroot\\js\\datatables-init.js",
+      "PackagePath": "staticwebassets\\js\\datatables-init.js"
+    },
+    {
+      "Id": "C:\\Users\\hmmth\\source\\repos\\Spa_Management_System\\Spa_Management_System\\wwwroot\\js\\exportUtils.js",
+      "PackagePath": "staticwebassets\\js\\exportUtils.js"
+    },
+    {
+      "Id": "obj\\Debug\\net9.0-windows10.0.19041.0\\win10-x64\\staticwebassets\\msbuild.Spa_Management_System.Microsoft.AspNetCore.StaticWebAssetEndpoints.props",
+      "PackagePath": "build\\Microsoft.AspNetCore.StaticWebAssetEndpoints.props"
+    },
+    {
+      "Id": "obj\\Debug\\net9.0-windows10.0.19041.0\\win10-x64\\staticwebassets\\msbuild.Spa_Management_System.Microsoft.AspNetCore.StaticWebAssets.props",
+      "PackagePath": "build\\Microsoft.AspNetCore.StaticWebAssets.props"
+    },
+    {
+      "Id": "obj\\Debug\\net9.0-windows10.0.19041.0\\win10-x64\\staticwebassets\\msbuild.build.Spa_Management_System.props",
+      "PackagePath": "build\\Spa_Management_System.props"
+    },
+    {
+      "Id": "obj\\Debug\\net9.0-windows10.0.19041.0\\win10-x64\\staticwebassets\\msbuild.buildMultiTargeting.Spa_Management_System.props",
+      "PackagePath": "buildMultiTargeting\\Spa_Management_System.props"
+    },
+    {
+      "Id": "obj\\Debug\\net9.0-windows10.0.19041.0\\win10-x64\\staticwebassets\\msbuild.buildTransitive.Spa_Management_System.props",
+      "PackagePath": "buildTransitive\\Spa_Management_System.props"
+    }
+  ],
+  "ElementsToRemove": []
+}

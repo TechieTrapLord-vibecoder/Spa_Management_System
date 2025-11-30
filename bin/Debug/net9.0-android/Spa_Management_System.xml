@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Spa_Management_System</name>
+    </assembly>
+    <members>
+        <member name="T:Spa_Management_System.Models.EmployeeAttendance">
+            <summary>
+            Simple attendance - just records days worked per pay period
+            </summary>
+        </member>
+        <member name="T:Spa_Management_System.Models.Payroll">
+            <summary>
+            Simple payroll - Days Worked × Daily Rate = Gross Pay, minus Deductions = Net Pay
+            </summary>
+        </member>
+        <member name="T:Spa_Management_System.Services.IAccountingService">
+            <summary>
+            Automated accounting service that creates journal entries for business transactions.
+            Triggered automatically when payments are processed - no accountant intervention needed.
+            </summary>
+        </member>
+        <member name="M:Spa_Management_System.Services.IAccountingService.CreateSaleJournalEntriesAsync(Spa_Management_System.Models.Sale,System.String,System.Nullable{System.Int64},System.Nullable{System.Int64})">
+            <summary>
+            Creates journal entries when a sale/payment is completed.
+            Handles: Service Revenue, Cash/AR, Inventory, COGS, Commission Expense
+            </summary>
+        </member>
+        <member name="M:Spa_Management_System.Services.IAccountingService.CreatePurchaseJournalEntriesAsync(Spa_Management_System.Models.PurchaseOrder,System.Nullable{System.Int64})">
+            <summary>
+            Creates journal entries when inventory is purchased.
+            </summary>
+        </member>
+        <member name="M:Spa_Management_System.Services.IAccountingService.CreatePayrollJournalEntryAsync(Spa_Management_System.Models.Payroll,System.Nullable{System.Int64})">
+            <summary>
+            Creates journal entries when payroll is paid.
+            Debit: Salary Expense, Credit: Cash
+            </summary>
+        </member>
+        <member name="M:Spa_Management_System.Services.IAccountingService.CreateExpenseJournalEntryAsync(Spa_Management_System.Models.Expense,System.Nullable{System.Int64})">
+            <summary>
+            Creates journal entries when an expense is paid.
+            Debit: Expense Account (based on category), Credit: Cash
+            </summary>
+        </member>
+        <member name="M:Spa_Management_System.Services.AccountingService.GetExpenseAccountKey(System.String)">
+            <summary>
+            Maps expense category to account key
+            </summary>
+        </member>
+        <member name="M:Spa_Management_System.Services.AccountingService.GetOrCreateAccountsAsync">
+            <summary>
+            Gets existing ledger accounts or creates them if they don't exist
+            </summary>
+        </member>
+        <member name="T:Spa_Management_System.Resource">
+            <summary>
+            Android Resource Designer class.
+            Exposes the Android Resource designer assembly into the project Namespace.
+            </summary>
+        </member>
+    </members>
+</doc>

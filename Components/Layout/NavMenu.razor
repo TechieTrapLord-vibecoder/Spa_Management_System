@@ -1,0 +1,475 @@
+﻿@using Spa_Management_System.Services
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+
+<div class="top-row">
+    <a class="navbar-brand" href="">
+        <img src="images/Logo1.png" alt="Spa Logo" class="brand-logo" />
+    </a>
+</div>
+
+<div class="nav-scrollable">
+    <nav class="flex-column">
+        @if (AuthState.IsAuthenticated)
+        {
+            @* Dashboard Link - Only for SuperAdmin and Manager *@
+            @if (AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) ||
+                 AuthState.GetUserRole().Equals("Manager", StringComparison.OrdinalIgnoreCase))
+            {
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="@GetDashboardUrl()" Match="NavLinkMatch.All">
+                        <span class="bi bi-house-door-fill" aria-hidden="true"></span> Dashboard
+                    </NavLink>
+                </div>
+            }
+
+            @if (AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+            {
+                <!-- Operations Section - Daily Work -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    <span class="bi bi-calendar3" aria-hidden="true"></span> Operations
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="appointments">
+                        <span class="bi bi-calendar-check" aria-hidden="true"></span> Appointments
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="customers">
+                        <span class="bi bi-people" aria-hidden="true"></span> Customers
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="checkout">
+                        <span class="bi bi-credit-card" aria-hidden="true"></span> Checkout / POS
+                    </NavLink>
+                </div>
+
+                <!-- Admin Control Section -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    <span class="bi bi-shield-lock" aria-hidden="true"></span> Admin Control
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="reports">
+                        <span class="bi bi-bar-chart-line" aria-hidden="true"></span> Reports
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="sales-history">
+                        <span class="bi bi-receipt-cutoff" aria-hidden="true"></span> Sales History
+                    </NavLink>
+                </div>
+                
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="roles">
+                        <span class="bi bi-shield-check" aria-hidden="true"></span> Roles
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="employees">
+                        <span class="bi bi-people-fill" aria-hidden="true"></span> Employees
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="users">
+                        <span class="bi bi-person-lock" aria-hidden="true"></span> User Accounts
+                    </NavLink>
+                </div>
+
+                <!-- Master Data Section -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    <span class="bi bi-briefcase" aria-hidden="true"></span> Master Data
+                </div>
+                
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="service-categories">
+                        <span class="bi bi-tags" aria-hidden="true"></span> Service Categories
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="services">
+                        <span class="bi bi-spa" aria-hidden="true"></span> Services
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="service-commissions">
+                        <span class="bi bi-cash-stack" aria-hidden="true"></span> Commissions
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="suppliers">
+                        <span class="bi bi-truck" aria-hidden="true"></span> Suppliers
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="products">
+                        <span class="bi bi-box" aria-hidden="true"></span> Products
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="inventory">
+                        <span class="bi bi-box-seam" aria-hidden="true"></span> Inventory
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="stock-adjustments">
+                        <span class="bi bi-pencil-square" aria-hidden="true"></span> Stock Adjustments
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="purchase-orders">
+                        <span class="bi bi-cart" aria-hidden="true"></span> Purchase Orders
+                    </NavLink>
+                </div>
+
+                <!-- HR & Payroll Section -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    <span class="bi bi-people" aria-hidden="true"></span> HR & Payroll
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="payroll">
+                        <span class="bi bi-wallet2" aria-hidden="true"></span> Payroll
+                    </NavLink>
+                </div>
+
+                <!-- Finance Section -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    <span class="bi bi-bar-chart-line" aria-hidden="true"></span> Finance
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="expenses">
+                        <span class="bi bi-receipt" aria-hidden="true"></span> Expenses
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="financial-statements">
+                        <span class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></span> Financial Statements
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="financial-reports">
+                        <span class="bi bi-graph-up-arrow" aria-hidden="true"></span> Financial Reports
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="journal-entries">
+                        <span class="bi bi-journal-text" aria-hidden="true"></span> Journal Entries
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="ledger">
+                        <span class="bi bi-book" aria-hidden="true"></span> Ledger
+                    </NavLink>
+                </div>
+
+                <!-- System Section -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    <span class="bi bi-gear" aria-hidden="true"></span> System Tools
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="audit-logs">
+                        <span class="bi bi-clipboard-check" aria-hidden="true"></span> Audit Logs
+                    </NavLink>
+                </div>
+                
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="db-test">
+                        <span class="bi bi-database" aria-hidden="true"></span> DB Test
+                    </NavLink>
+                </div>
+            }
+            else if (AuthState.GetUserRole().Equals("Manager", StringComparison.OrdinalIgnoreCase))
+            {
+                <!-- Manager Section -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    <span class="bi bi-clipboard-check" aria-hidden="true"></span> Management
+                </div>
+                
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="appointments">
+                        <span class="bi bi-calendar-check" aria-hidden="true"></span> Appointments
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="customers">
+                        <span class="bi bi-people" aria-hidden="true"></span> Customers
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="reports">
+                        <span class="bi bi-graph-up" aria-hidden="true"></span> Reports
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="sales-history">
+                        <span class="bi bi-receipt-cutoff" aria-hidden="true"></span> Sales History
+                    </NavLink>
+                </div>
+
+                <!-- HR & Payroll Section for Manager -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    <span class="bi bi-people" aria-hidden="true"></span> HR & Finance
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="payroll">
+                        <span class="bi bi-wallet2" aria-hidden="true"></span> Payroll
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="expenses">
+                        <span class="bi bi-receipt" aria-hidden="true"></span> Expenses
+                    </NavLink>
+                </div>
+
+                <!-- Inventory Section for Manager -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    <span class="bi bi-box-seam" aria-hidden="true"></span> Inventory
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="stock-adjustments">
+                        <span class="bi bi-pencil-square" aria-hidden="true"></span> Stock Adjustments
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="audit-logs">
+                        <span class="bi bi-clipboard-check" aria-hidden="true"></span> Audit Logs
+                    </NavLink>
+                </div>
+            }
+            else if (AuthState.GetUserRole().Equals("Therapist", StringComparison.OrdinalIgnoreCase))
+            {
+                <!-- Therapist Section -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    My Work
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="my-schedule">
+                        <span class="bi bi-calendar-week" aria-hidden="true"></span> My Schedule
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="my-commissions">
+                        <span class="bi bi-cash-coin" aria-hidden="true"></span> My Commissions
+                    </NavLink>
+                </div>
+            }
+            else if (AuthState.GetUserRole().Equals("Receptionist", StringComparison.OrdinalIgnoreCase))
+            {
+                <!-- Receptionist Section -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    Front Desk
+                </div>
+                
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="appointments">
+                        <span class="bi bi-calendar-plus" aria-hidden="true"></span> Book Appointment
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="customers">
+                        <span class="bi bi-people" aria-hidden="true"></span> Customers
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="checkout">
+                        <span class="bi bi-credit-card" aria-hidden="true"></span> Checkout
+                    </NavLink>
+                </div>
+            }
+            else if (AuthState.GetUserRole().Equals("InventoryClerk", StringComparison.OrdinalIgnoreCase))
+            {
+                <!-- Inventory Section -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    Inventory
+                </div>
+                
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="inventory">
+                        <span class="bi bi-box-seam" aria-hidden="true"></span> Stock Management
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="stock-adjustments">
+                        <span class="bi bi-pencil-square" aria-hidden="true"></span> Stock Adjustments
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="purchase-orders">
+                        <span class="bi bi-cart" aria-hidden="true"></span> Purchase Orders
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="suppliers">
+                        <span class="bi bi-truck" aria-hidden="true"></span> Suppliers
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="products">
+                        <span class="bi bi-box" aria-hidden="true"></span> Products
+                    </NavLink>
+                </div>
+            }
+            else if (AuthState.GetUserRole().Equals("Accountant", StringComparison.OrdinalIgnoreCase))
+            {
+                <!-- Accounting Section -->
+                <div style="padding: 1rem 1.25rem 0.5rem; color: rgba(255,255,255,0.5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+                    <span class="bi bi-calculator" aria-hidden="true"></span> Accounting
+                </div>
+                
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="expenses">
+                        <span class="bi bi-receipt" aria-hidden="true"></span> Expenses
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="payroll">
+                        <span class="bi bi-wallet2" aria-hidden="true"></span> Payroll
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="financial-statements">
+                        <span class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></span> Financial Statements
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="financial-reports">
+                        <span class="bi bi-graph-up-arrow" aria-hidden="true"></span> Financial Reports
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="journal-entries">
+                        <span class="bi bi-journal-text" aria-hidden="true"></span> Journal Entries
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="ledger">
+                        <span class="bi bi-book" aria-hidden="true"></span> Ledger
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="audit-logs">
+                        <span class="bi bi-clipboard-check" aria-hidden="true"></span> Audit Logs
+                    </NavLink>
+                </div>
+            }
+        }
+        else
+        {
+            <!-- Not Logged In -->
+            <div class="nav-item">
+                <NavLink class="nav-link" href="login">
+                    <span class="bi bi-box-arrow-in-right" aria-hidden="true"></span> Login
+                </NavLink>
+            </div>
+        }
+    </nav>
+</div>
+
+<div class="user-profile-section">
+    @if (AuthState.IsAuthenticated)
+    {
+        <div class="user-profile">
+            <div class="user-avatar">
+                @GetInitials()
+            </div>
+            <div class="user-info">
+                <div class="user-fullname">@AuthState.GetUserDisplayName()</div>
+                <div class="user-username">@AuthState.CurrentUser?.Username</div>
+            </div>
+        </div>
+        <button class="logout-button" @onclick="HandleLogout">
+            <span class="bi bi-box-arrow-left"></span> Sign out
+        </button>
+    }
+    else
+    {
+        <button class="logout-button" @onclick="NavigateToLogin">
+            <span class="bi bi-box-arrow-in-right"></span> Login
+        </button>
+    }
+</div>
+
+@code {
+    private void HandleLogout()
+    {
+        AuthState.Logout();
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+
+    private void NavigateToLogin()
+    {
+        Navigation.NavigateTo("/login");
+    }
+
+    private string GetDashboardUrl()
+    {
+        var role = AuthState.GetUserRole();
+        
+        // Only SuperAdmin and Manager have dashboards
+        // Other roles go to their main work page
+        return role.ToLower() switch
+        {
+            "superadmin" => "/admin",
+            "manager" => "/manager-dashboard",
+            "therapist" => "/my-schedule",
+            "receptionist" => "/appointments",
+            "inventoryclerk" => "/inventory",
+            _ => "/employee-dashboard"
+        };
+    }
+
+    private string GetInitials()
+    {
+        var displayName = AuthState.GetUserDisplayName();
+        var parts = displayName.Split(' ');
+        
+        if (parts.Length >= 2)
+        {
+            return $"{parts[0][0]}{parts[1][0]}".ToUpper();
+        }
+        
+        return displayName.Length > 0 ? displayName[0].ToString().ToUpper() : "?";
+    }
+}

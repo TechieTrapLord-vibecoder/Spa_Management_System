@@ -1,0 +1,651 @@
+@page "/payroll"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using PayrollModel = Spa_Management_System.Models.Payroll
+@using Spa_Management_System.Models
+@using Spa_Management_System.Services
+@inject AppDbContext DbContext
+@inject IAuthStateService AuthState
+@inject IAccountingService AccountingService
+@inject NavigationManager Navigation
+
+<PageTitle>Payroll - Kaye Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-wallet2"></span> Payroll Management</h3>
+                <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">Days × Rate = Pay • Auto-posts to accounting when paid</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-success" @onclick="PayAllDrafts" disabled="@(pendingCount == 0)">
+                    <span class="bi bi-check-all"></span> Pay All Drafts (@pendingCount)
+                </button>
+                <button class="btn btn-primary" @onclick="ShowAddForm">
+                    <span class="bi bi-plus-circle"></span> Create Payroll
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="alert @(isError ? "alert-danger" : "alert-success")" style="margin-bottom: 1rem;">
+                @message
+            </div>
+        }
+
+        <!-- Summary Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="padding: 1.25rem; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 12px; color: white;">
+                <div style="font-size: 0.85rem; opacity: 0.9;">Total Payroll</div>
+                <div style="font-size: 1.75rem; font-weight: bold;">₱@totalPayroll.ToString("N0")</div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">@payrolls.Count records</div>
+            </div>
+            <div style="padding: 1.25rem; background: linear-gradient(135deg, #11998e, #38ef7d); border-radius: 12px; color: white;">
+                <div style="font-size: 0.85rem; opacity: 0.9;"><span class="bi bi-check-circle"></span> Paid</div>
+                <div style="font-size: 1.75rem; font-weight: bold;">₱@paidAmount.ToString("N0")</div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">Posted to journal</div>
+            </div>
+            <div style="padding: 1.25rem; background: linear-gradient(135deg, #f093fb, #f5576c); border-radius: 12px; color: white;">
+                <div style="font-size: 0.85rem; opacity: 0.9;"><span class="bi bi-hourglass-split"></span> Pending</div>
+                <div style="font-size: 1.75rem; font-weight: bold;">₱@pendingAmount.ToString("N0")</div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">@pendingCount to pay</div>
+            </div>
+            <div style="padding: 1.25rem; background: linear-gradient(135deg, #4facfe, #00f2fe); border-radius: 12px; color: white;">
+                <div style="font-size: 0.85rem; opacity: 0.9;">Total Deductions</div>
+                <div style="font-size: 1.75rem; font-weight: bold;">₱@totalDeductions.ToString("N0")</div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">SSS/PhilHealth/etc</div>
+            </div>
+        </div>
+
+        <!-- Add/Edit Form -->
+        @if (showForm)
+        {
+            <div style="background: var(--spa-light); padding: 1.5rem; border-radius: 12px; margin-bottom: 1.5rem; border: 2px solid var(--spa-primary);">
+                <h4 style="margin: 0 0 1rem 0; color: var(--spa-primary);">@(isEditing ? "Edit" : "Create") Payroll</h4>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    <div class="form-group" style="margin: 0;">
+                        <label class="form-label">Employee *</label>
+                        <select class="form-control" @bind="selectedEmployeeId" disabled="@isEditing">
+                            <option value="0">-- Select Employee --</option>
+                            @foreach (var emp in employees)
+                            {
+                                <option value="@emp.EmployeeId">@emp.Person?.FirstName @emp.Person?.LastName (@emp.Role?.Name)</option>
+                            }
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" style="margin: 0;">
+                        <label class="form-label">Period Start *</label>
+                        <input type="date" class="form-control" @bind="periodStart" />
+                    </div>
+                    
+                    <div class="form-group" style="margin: 0;">
+                        <label class="form-label">Period End *</label>
+                        <input type="date" class="form-control" @bind="periodEnd" />
+                    </div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                    <div class="form-group" style="margin: 0;">
+                        <label class="form-label">Days Worked *</label>
+                        <input type="number" class="form-control" @bind="daysWorked" @bind:after="Calculate" min="0" max="31" />
+                    </div>
+                    
+                    <div class="form-group" style="margin: 0;">
+                        <label class="form-label">Daily Rate (₱) *</label>
+                        <input type="number" class="form-control" @bind="dailyRate" @bind:after="Calculate" min="0" />
+                    </div>
+                    
+                    <div class="form-group" style="margin: 0;">
+                        <label class="form-label">Deductions (₱)</label>
+                        <input type="number" class="form-control" @bind="deductions" @bind:after="Calculate" min="0" />
+                        <small style="color: var(--spa-text-light);">SSS, PhilHealth, etc.</small>
+                    </div>
+                </div>
+                
+                <div class="form-group" style="margin-top: 1rem;">
+                    <label class="form-label">Notes</label>
+                    <input type="text" class="form-control" @bind="notes" placeholder="e.g., SSS ₱500, PhilHealth ₱300, Pag-IBIG ₱100..." />
+                </div>
+                
+                <!-- Live Calculation -->
+                <div style="background: white; padding: 1rem; border-radius: 8px; margin-top: 1rem; border: 1px solid var(--spa-secondary);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span>Gross Pay (@daysWorked days × ₱@dailyRate.ToString("N0"))</span>
+                        <strong>₱@grossPay.ToString("N2")</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; color: #dc3545;">
+                        <span>Less: Deductions</span>
+                        <span>- ₱@deductions.ToString("N2")</span>
+                    </div>
+                    <hr style="margin: 0.5rem 0;" />
+                    <div style="display: flex; justify-content: space-between; font-size: 1.25rem;">
+                        <strong>Net Pay</strong>
+                        <strong style="color: var(--spa-primary);">₱@netPay.ToString("N2")</strong>
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                    <button class="btn btn-primary" @onclick="SavePayroll" disabled="@isSaving">
+                        @(isSaving ? "Saving..." : "Save as Draft")
+                    </button>
+                    <button class="btn btn-success" @onclick="SaveAndPay" disabled="@isSaving">
+                        @(isSaving ? "Saving..." : "Save & Pay Now")
+                    </button>
+                    <button class="btn btn-outline" @onclick="CancelForm">Cancel</button>
+                </div>
+            </div>
+        }
+
+        <!-- Filters -->
+        <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: end;">
+            <div class="form-group" style="margin: 0;">
+                <label class="form-label">Month</label>
+                <input type="month" class="form-control" value="@filterMonth" @onchange="OnMonthChanged" />
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label class="form-label">Status</label>
+                <select class="form-control" @bind="filterStatus" @bind:after="LoadPayrolls" style="width: 130px;">
+                    <option value="">All</option>
+                    <option value="draft">Draft</option>
+                    <option value="paid">Paid</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label class="form-label">Employee</label>
+                <select class="form-control" @bind="filterEmployeeId" @bind:after="LoadPayrolls" style="width: 200px;">
+                    <option value="0">All Employees</option>
+                    @foreach (var emp in employees)
+                    {
+                        <option value="@emp.EmployeeId">@emp.Person?.FirstName @emp.Person?.LastName</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="text-align: center; padding: 2rem;"><div class="loading"></div></div>
+        }
+        else if (!payrolls.Any())
+        {
+            <div class="alert alert-info">No payroll records found for this period.</div>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th @onclick='() => SortBy("Employee")' style="cursor: pointer;">Employee @GetSortIcon("Employee")</th>
+                        <th @onclick='() => SortBy("Role")' style="cursor: pointer;">Role @GetSortIcon("Role")</th>
+                        <th @onclick='() => SortBy("Period")' style="cursor: pointer;">Period @GetSortIcon("Period")</th>
+                        <th @onclick='() => SortBy("Days")' style="text-align: center; cursor: pointer;">Days @GetSortIcon("Days")</th>
+                        <th @onclick='() => SortBy("Rate")' style="text-align: right; cursor: pointer;">Rate @GetSortIcon("Rate")</th>
+                        <th @onclick='() => SortBy("Gross")' style="text-align: right; cursor: pointer;">Gross @GetSortIcon("Gross")</th>
+                        <th @onclick='() => SortBy("Deduct")' style="text-align: right; cursor: pointer;">Deduct @GetSortIcon("Deduct")</th>
+                        <th @onclick='() => SortBy("NetPay")' style="text-align: right; cursor: pointer;">Net Pay @GetSortIcon("NetPay")</th>
+                        <th @onclick='() => SortBy("Status")' style="cursor: pointer;">Status @GetSortIcon("Status")</th>
+                        <th style="text-align: center;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in GetPagedPayrolls())
+                    {
+                        <tr>
+                            <td><strong>@p.Employee?.Person?.FirstName @p.Employee?.Person?.LastName</strong></td>
+                            <td>@p.Employee?.Role?.Name</td>
+                            <td style="font-size: 0.9rem;">@p.PeriodStart.ToString("MMM dd") - @p.PeriodEnd.ToString("MMM dd, yyyy")</td>
+                            <td style="text-align: center;">@p.DaysWorked</td>
+                            <td style="text-align: right;">₱@p.DailyRate.ToString("N0")</td>
+                            <td style="text-align: right;">₱@p.GrossPay.ToString("N0")</td>
+                            <td style="text-align: right; color: #dc3545;">₱@p.Deductions.ToString("N0")</td>
+                            <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">₱@p.NetPay.ToString("N0")</td>
+                            <td>
+                                @if (p.Status == "paid")
+                                {
+                                    <span class="badge badge-success" title="@(p.JournalId > 0 ? $"Journal #{p.JournalId}" : "")">
+                                        <span class="bi bi-check-circle"></span> PAID
+                                    </span>
+                                    @if (p.PaidAt.HasValue)
+                                    {
+                                        <br /><small style="color: var(--spa-text-light);">@p.PaidAt.Value.ToString("MMM dd")</small>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="badge badge-warning">DRAFT</span>
+                                }
+                            </td>
+                            <td style="text-align: center; white-space: nowrap;">
+                                @if (p.Status == "draft")
+                                {
+                                    <button class="btn btn-sm btn-success" @onclick="() => MarkAsPaid(p)" title="Pay Now">
+                                        <span class="bi bi-cash-coin"></span> Pay
+                                    </button>
+                                    <button class="btn btn-sm btn-outline" @onclick="() => EditPayroll(p)" title="Edit">
+                                        <span class="bi bi-pencil"></span> Edit
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeletePayroll(p)" title="Delete">
+                                        <span class="bi bi-trash"></span> Delete
+                                    </button>
+                                }
+                                else
+                                {
+                                    @if (p.JournalId > 0)
+                                    {
+                                        <a href="/journal-entries" class="btn btn-sm btn-outline" title="View Journal">
+                                            <span class="bi bi-journal-text"></span> Journal
+                                        </a>
+                                    }
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr style="font-weight: 600; background: var(--spa-background);">
+                        <td colspan="4">TOTAL</td>
+                        <td></td>
+                        <td style="text-align: right;">₱@payrolls.Sum(p => p.GrossPay).ToString("N0")</td>
+                        <td style="text-align: right; color: #dc3545;">₱@payrolls.Sum(p => p.Deductions).ToString("N0")</td>
+                        <td style="text-align: right; color: var(--spa-primary);">₱@payrolls.Sum(p => p.NetPay).ToString("N0")</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <!-- Pagination -->
+            @if (TotalPages > 1)
+            {
+                <div class="table-pagination">
+                    <span>Showing @(((currentPage - 1) * pageSize) + 1)-@(Math.Min(currentPage * pageSize, payrolls.Count)) of @payrolls.Count entries</span>
+                    <div style="display: flex; gap: 0.25rem;">
+                        <button class="btn btn-sm btn-outline" @onclick="PreviousPage" disabled="@(currentPage == 1)">‹ Prev</button>
+                        @for (int i = 1; i <= TotalPages; i++)
+                        {
+                            var pageNum = i;
+                            <button class="btn btn-sm @(currentPage == pageNum ? "btn-primary" : "btn-outline")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                        }
+                        <button class="btn btn-sm btn-outline" @onclick="NextPage" disabled="@(currentPage == TotalPages)">Next ›</button>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool showForm = false;
+    private bool isEditing = false;
+    private string? message;
+    private bool isError = false;
+
+    // Pagination & Sorting
+    private int pageSize = 10;
+    private int currentPage = 1;
+    private string sortColumn = "Period";
+    private bool sortAscending = false;
+
+    private int TotalPages => (int)Math.Ceiling(payrolls.Count / (double)pageSize);
+
+    private IEnumerable<PayrollModel> GetPagedPayrolls()
+    {
+        var sorted = sortColumn switch
+        {
+            "Employee" => sortAscending ? payrolls.OrderBy(p => p.Employee?.Person?.LastName) : payrolls.OrderByDescending(p => p.Employee?.Person?.LastName),
+            "Role" => sortAscending ? payrolls.OrderBy(p => p.Employee?.Role?.Name) : payrolls.OrderByDescending(p => p.Employee?.Role?.Name),
+            "Period" => sortAscending ? payrolls.OrderBy(p => p.PeriodEnd) : payrolls.OrderByDescending(p => p.PeriodEnd),
+            "Days" => sortAscending ? payrolls.OrderBy(p => p.DaysWorked) : payrolls.OrderByDescending(p => p.DaysWorked),
+            "Rate" => sortAscending ? payrolls.OrderBy(p => p.DailyRate) : payrolls.OrderByDescending(p => p.DailyRate),
+            "Gross" => sortAscending ? payrolls.OrderBy(p => p.GrossPay) : payrolls.OrderByDescending(p => p.GrossPay),
+            "Deduct" => sortAscending ? payrolls.OrderBy(p => p.Deductions) : payrolls.OrderByDescending(p => p.Deductions),
+            "NetPay" => sortAscending ? payrolls.OrderBy(p => p.NetPay) : payrolls.OrderByDescending(p => p.NetPay),
+            "Status" => sortAscending ? payrolls.OrderBy(p => p.Status) : payrolls.OrderByDescending(p => p.Status),
+            _ => payrolls.OrderByDescending(p => p.PeriodEnd)
+        };
+        return sorted.Skip((currentPage - 1) * pageSize).Take(pageSize);
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column) sortAscending = !sortAscending;
+        else { sortColumn = column; sortAscending = true; }
+        currentPage = 1;
+    }
+
+    private string GetSortIcon(string column) => sortColumn == column ? (sortAscending ? "▲" : "▼") : "";
+
+    private void PreviousPage() { if (currentPage > 1) currentPage--; }
+    private void NextPage() { if (currentPage < TotalPages) currentPage++; }
+    private void GoToPage(int page) { currentPage = page; }
+
+    private List<Employee> employees = new();
+    private List<PayrollModel> payrolls = new();
+    
+    // Summary
+    private decimal totalPayroll = 0;
+    private decimal paidAmount = 0;
+    private decimal pendingAmount = 0;
+    private decimal totalDeductions = 0;
+    private int pendingCount = 0;
+
+
+    // Form fields
+    private long editingId = 0;
+    private long selectedEmployeeId = 0;
+    private DateTime periodStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime periodEnd = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 15);
+    private int daysWorked = 0;
+    private decimal dailyRate = 500;
+    private decimal deductions = 0;
+    private string? notes;
+    private decimal grossPay = 0;
+    private decimal netPay = 0;
+
+    // Filters
+    private string filterMonth = DateTime.Today.ToString("yyyy-MM");
+    private string filterStatus = "";
+    private long filterEmployeeId = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEmployees();
+        await LoadPayrolls();
+    }
+
+    private async Task OnMonthChanged(ChangeEventArgs e)
+    {
+        filterMonth = e.Value?.ToString() ?? DateTime.Today.ToString("yyyy-MM");
+        await LoadPayrolls();
+    }
+
+    private async Task LoadEmployees()
+    {
+        employees = await DbContext.Employees
+            .Include(e => e.Person)
+            .Include(e => e.Role)
+            .Where(e => e.Status == "active")
+            .OrderBy(e => e.Person!.LastName)
+            .ToListAsync();
+    }
+
+    private async Task LoadPayrolls()
+    {
+        isLoading = true;
+        try
+        {
+            var year = int.Parse(filterMonth.Substring(0, 4));
+            var month = int.Parse(filterMonth.Substring(5, 2));
+            var startDate = new DateTime(year, month, 1);
+            var endDate = startDate.AddMonths(1).AddDays(-1);
+
+            var query = DbContext.Payrolls
+                .Include(p => p.Employee).ThenInclude(e => e!.Person)
+                .Include(p => p.Employee).ThenInclude(e => e!.Role)
+                .Where(p => p.PeriodEnd >= startDate && p.PeriodEnd <= endDate);
+
+            if (!string.IsNullOrEmpty(filterStatus))
+                query = query.Where(p => p.Status == filterStatus);
+
+            if (filterEmployeeId > 0)
+                query = query.Where(p => p.EmployeeId == filterEmployeeId);
+
+            payrolls = await query.OrderByDescending(p => p.PeriodEnd).ThenBy(p => p.Employee!.Person!.LastName).ToListAsync();
+
+            // Calculate summaries
+            totalPayroll = payrolls.Sum(p => p.NetPay);
+            paidAmount = payrolls.Where(p => p.Status == "paid").Sum(p => p.NetPay);
+            pendingAmount = payrolls.Where(p => p.Status == "draft").Sum(p => p.NetPay);
+            totalDeductions = payrolls.Sum(p => p.Deductions);
+            pendingCount = payrolls.Count(p => p.Status == "draft");
+        }
+        finally { isLoading = false; }
+    }
+
+    private void ShowAddForm()
+    {
+        editingId = 0;
+        selectedEmployeeId = 0;
+        
+        // Default to current pay period (1st-15th or 16th-end of month)
+        var today = DateTime.Today;
+        if (today.Day <= 15)
+        {
+            periodStart = new DateTime(today.Year, today.Month, 1);
+            periodEnd = new DateTime(today.Year, today.Month, 15);
+        }
+        else
+        {
+            periodStart = new DateTime(today.Year, today.Month, 16);
+            periodEnd = new DateTime(today.Year, today.Month, DateTime.DaysInMonth(today.Year, today.Month));
+        }
+        
+        daysWorked = 0;
+        dailyRate = 500;
+        deductions = 0;
+        notes = null;
+        grossPay = 0;
+        netPay = 0;
+        isEditing = false;
+        showForm = true;
+        message = null;
+    }
+
+    private void EditPayroll(PayrollModel p)
+    {
+        editingId = p.PayrollId;
+        selectedEmployeeId = p.EmployeeId;
+        periodStart = p.PeriodStart;
+        periodEnd = p.PeriodEnd;
+        daysWorked = p.DaysWorked;
+        dailyRate = p.DailyRate;
+        deductions = p.Deductions;
+        notes = p.Notes;
+        Calculate();
+        isEditing = true;
+        showForm = true;
+        message = null;
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        message = null;
+    }
+
+    private void Calculate()
+    {
+        grossPay = daysWorked * dailyRate;
+        netPay = grossPay - deductions;
+        if (netPay < 0) netPay = 0;
+    }
+
+    private async Task SavePayroll()
+    {
+        await SavePayrollInternal(payNow: false);
+    }
+
+    private async Task SaveAndPay()
+    {
+        await SavePayrollInternal(payNow: true);
+    }
+
+    private async Task SavePayrollInternal(bool payNow)
+    {
+        if (selectedEmployeeId == 0)
+        {
+            message = "Please select an employee.";
+            isError = true;
+            return;
+        }
+        if (daysWorked <= 0)
+        {
+            message = "Days worked must be greater than 0.";
+            isError = true;
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            PayrollModel payroll;
+
+            if (isEditing)
+            {
+                payroll = await DbContext.Payrolls.FindAsync(editingId) ?? throw new Exception("Payroll not found");
+                payroll.PeriodStart = periodStart;
+                payroll.PeriodEnd = periodEnd;
+                payroll.DaysWorked = daysWorked;
+                payroll.DailyRate = dailyRate;
+                payroll.GrossPay = grossPay;
+                payroll.Deductions = deductions;
+                payroll.NetPay = netPay;
+                payroll.Notes = notes;
+                payroll.UpdatedAt = DateTime.Now;
+            }
+            else
+            {
+                payroll = new PayrollModel
+                {
+                    EmployeeId = selectedEmployeeId,
+                    PeriodStart = periodStart,
+                    PeriodEnd = periodEnd,
+                    DaysWorked = daysWorked,
+                    DailyRate = dailyRate,
+                    GrossPay = grossPay,
+                    Deductions = deductions,
+                    NetPay = netPay,
+                    Status = "draft",
+                    Notes = notes,
+                    CreatedByUserId = AuthState.CurrentUser?.UserId,
+                    CreatedAt = DateTime.Now
+                };
+                DbContext.Payrolls.Add(payroll);
+                await DbContext.SaveChangesAsync();
+            }
+
+            if (payNow)
+            {
+                // Mark as paid and create journal entry
+                payroll.Status = "paid";
+                payroll.PaidAt = DateTime.Now;
+                payroll.UpdatedAt = DateTime.Now;
+                await DbContext.SaveChangesAsync();
+
+                // Create journal entry for accounting
+                var journalId = await AccountingService.CreatePayrollJournalEntryAsync(payroll, AuthState.CurrentUser?.UserId);
+                if (journalId.HasValue)
+                {
+                    payroll.JournalId = journalId.Value;
+                }
+                message = "Payroll paid and posted to journal!";
+            }
+            else
+            {
+                message = isEditing ? "Payroll updated!" : "Payroll created as draft!";
+            }
+
+            await DbContext.SaveChangesAsync();
+            isError = false;
+            showForm = false;
+            await LoadPayrolls();
+        }
+        catch (Exception ex)
+        {
+            message = $"Error: {ex.Message}";
+            isError = true;
+        }
+        finally { isSaving = false; }
+    }
+
+    private async Task MarkAsPaid(PayrollModel p)
+    {
+        try
+        {
+            p.Status = "paid";
+            p.PaidAt = DateTime.Now;
+            p.UpdatedAt = DateTime.Now;
+            await DbContext.SaveChangesAsync();
+
+            // Create journal entry
+            var journalId = await AccountingService.CreatePayrollJournalEntryAsync(p, AuthState.CurrentUser?.UserId);
+            if (journalId.HasValue)
+            {
+                p.JournalId = journalId.Value;
+                await DbContext.SaveChangesAsync();
+            }
+
+            message = $"Paid ₱{p.NetPay:N0} - Journal entry created!";
+            isError = false;
+            await LoadPayrolls();
+        }
+        catch (Exception ex)
+        {
+            message = $"Error: {ex.Message}";
+            isError = true;
+        }
+    }
+
+    private async Task PayAllDrafts()
+    {
+        try
+        {
+            var drafts = payrolls.Where(p => p.Status == "draft").ToList();
+            int count = 0;
+            decimal total = 0;
+
+            foreach (var p in drafts)
+            {
+                p.Status = "paid";
+                p.PaidAt = DateTime.Now;
+                p.UpdatedAt = DateTime.Now;
+                await DbContext.SaveChangesAsync();
+
+                var journalId = await AccountingService.CreatePayrollJournalEntryAsync(p, AuthState.CurrentUser?.UserId);
+                if (journalId.HasValue)
+                {
+                    p.JournalId = journalId.Value;
+                    await DbContext.SaveChangesAsync();
+                }
+
+                count++;
+                total += p.NetPay;
+            }
+
+            message = $"Paid {count} payrolls totaling ₱{total:N0} - All posted to journal!";
+            isError = false;
+            await LoadPayrolls();
+        }
+        catch (Exception ex)
+        {
+            message = $"Error: {ex.Message}";
+            isError = true;
+        }
+    }
+
+    private async Task DeletePayroll(PayrollModel p)
+    {
+        if (p.Status == "paid")
+        {
+            message = "Cannot delete paid payroll. It has been posted to accounting.";
+            isError = true;
+            return;
+        }
+
+        DbContext.Payrolls.Remove(p);
+        await DbContext.SaveChangesAsync();
+        message = "Payroll deleted!";
+        isError = false;
+        await LoadPayrolls();
+    }
+}

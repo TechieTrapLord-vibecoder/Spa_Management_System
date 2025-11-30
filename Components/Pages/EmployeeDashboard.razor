@@ -1,0 +1,701 @@
+@page "/employee-dashboard"
+@using Spa_Management_System.Services
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+
+<PageTitle>Dashboard - Kaye Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="dashboard-container">
+        <!-- Header with Time -->
+        <div class="dashboard-header">
+            <div class="header-left">
+                <h1>Good @GetGreeting(), @AuthState.GetUserDisplayName()!</h1>
+                <p class="current-time">@DateTime.Now.ToString("dddd, MMMM d, yyyy • h:mm tt")</p>
+            </div>
+            <div class="header-stats">
+                <div class="stat-box appointments">
+                    <span class="stat-number">@todayAppointments</span>
+                    <span class="stat-label">Today</span>
+                </div>
+                <div class="stat-box completed">
+                    <span class="stat-number">@completedToday</span>
+                    <span class="stat-label">Done</span>
+                </div>
+                <div class="stat-box in-progress">
+                    <span class="stat-number">@inProgressToday</span>
+                    <span class="stat-label">Active</span>
+                </div>
+                <div class="stat-box revenue">
+                    <span class="stat-number">₱@todayRevenue.ToString("N0")</span>
+                    <span class="stat-label">Revenue</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-main">
+            <!-- Left: Notifications & Actions -->
+            <div class="dashboard-left">
+                <!-- Action Required Section -->
+                @if (readyForCheckout.Any())
+                {
+                    <div class="notification-section urgent">
+                        <div class="section-header">
+                            <span class="pulse-dot"></span>
+                            <h3><span class="bi bi-credit-card-fill"></span> Ready for Checkout</h3>
+                            <span class="count-badge">@readyForCheckout.Count</span>
+                        </div>
+                        <div class="notification-list">
+                            @foreach (var appt in readyForCheckout)
+                            {
+                                <div class="notification-card checkout-ready">
+                                    <div class="notif-icon"><span class="bi bi-check-circle-fill text-success"></span></div>
+                                    <div class="notif-content">
+                                        <div class="notif-title">@appt.Customer?.Person?.FirstName @appt.Customer?.Person?.LastName</div>
+                                        <div class="notif-sub">
+                                            @(appt.AppointmentServices?.Count ?? 0) service(s) • ₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N0"))
+                                        </div>
+                                    </div>
+                                    <button class="action-btn primary" @onclick="() => GoToCheckout(appt.AppointmentId)">
+                                        Checkout →
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Coming Up Soon -->
+                @if (comingUpSoon.Any())
+                {
+                    <div class="notification-section">
+                        <div class="section-header">
+                            <h3><span class="bi bi-clock"></span> Coming Up Next</h3>
+                        </div>
+                        <div class="notification-list">
+                            @foreach (var appt in comingUpSoon)
+                            {
+                                var minutesAway = (int)(appt.ScheduledStart - DateTime.Now).TotalMinutes;
+                                <div class="notification-card @(minutesAway <= 10 ? "soon" : "")">
+                                    <div class="notif-icon"><span class="bi @(minutesAway <= 10 ? "bi-bell-fill" : "bi-calendar-event")"></span></div>
+                                    <div class="notif-content">
+                                        <div class="notif-title">@appt.Customer?.Person?.FirstName @appt.Customer?.Person?.LastName</div>
+                                        <div class="notif-sub">
+                                            @appt.ScheduledStart.ToString("h:mm tt") • 
+                                            @foreach (var svc in appt.AppointmentServices?.Take(2) ?? new List<Models.AppointmentService>())
+                                            {
+                                                <span class="service-chip">@svc.Service?.Name</span>
+                                            }
+                                            @if ((appt.AppointmentServices?.Count ?? 0) > 2)
+                                            {
+                                                <span class="more-chip">+@((appt.AppointmentServices?.Count ?? 0) - 2)</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="time-badge @(minutesAway <= 10 ? "urgent" : "")">
+                                        @if (minutesAway <= 0)
+                                        {
+                                            <span>Now</span>
+                                        }
+                                        else if (minutesAway < 60)
+                                        {
+                                            <span>@minutesAway min</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@((int)(minutesAway / 60))h @(minutesAway % 60)m</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Currently In Progress -->
+                @if (inProgress.Any())
+                {
+                    <div class="notification-section">
+                        <div class="section-header">
+                            <h3><span class="bi bi-heart-pulse"></span> In Progress</h3>
+                        </div>
+                        <div class="notification-list">
+                            @foreach (var appt in inProgress)
+                            {
+                                <div class="notification-card in-progress">
+                                    <div class="notif-icon"><span class="bi bi-arrow-repeat"></span></div>
+                                    <div class="notif-content">
+                                        <div class="notif-title">@appt.Customer?.Person?.FirstName @appt.Customer?.Person?.LastName</div>
+                                        <div class="notif-sub">
+                                            Started @appt.ScheduledStart.ToString("h:mm tt") • 
+                                            @foreach (var svc in appt.AppointmentServices?.Take(2) ?? new List<Models.AppointmentService>())
+                                            {
+                                                <span class="service-chip active">@svc.Service?.Name</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <button class="action-btn secondary" @onclick="() => MarkAsCompleted(appt)">
+                                        Mark Done
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Low Stock Alert (if any) -->
+                @if (lowStockCount > 0)
+                {
+                    <div class="notification-section warning">
+                        <div class="notification-card warning">
+                            <div class="notif-icon"><span class="bi bi-exclamation-triangle-fill"></span></div>
+                            <div class="notif-content">
+                                <div class="notif-title">Low Stock Alert</div>
+                                <div class="notif-sub">@lowStockCount product(s) need restocking</div>
+                            </div>
+                            <a href="/inventory" class="action-btn warning">View →</a>
+                        </div>
+                    </div>
+                }
+
+                <!-- Empty State -->
+                @if (!readyForCheckout.Any() && !comingUpSoon.Any() && !inProgress.Any())
+                {
+                    <div class="empty-state">
+                        <div class="empty-icon"><span class="bi bi-cup-hot"></span></div>
+                        <h3>All caught up!</h3>
+                        <p>No pending appointments right now. Enjoy a quick break!</p>
+                    </div>
+                }
+            </div>
+
+            <!-- Right: Today's Timeline -->
+            <div class="dashboard-right">
+                <div class="timeline-section">
+                    <div class="section-header">
+                        <h3><span class="bi bi-list-check"></span> Today's Schedule</h3>
+                        <a href="/appointments" class="view-all-link">View All →</a>
+                    </div>
+                    
+                    @if (todaySchedule.Any())
+                    {
+                        <div class="timeline">
+                            @foreach (var appt in todaySchedule)
+                            {
+                                var statusClass = GetStatusClass(appt.Status);
+                                <div class="timeline-item @statusClass">
+                                    <div class="timeline-time">@appt.ScheduledStart.ToString("h:mm tt")</div>
+                                    <div class="timeline-dot"></div>
+                                    <div class="timeline-content">
+                                        <div class="timeline-customer">@appt.Customer?.Person?.FirstName @appt.Customer?.Person?.LastName</div>
+                                        <div class="timeline-services">
+                                            @string.Join(", ", appt.AppointmentServices?.Select(s => s.Service?.Name) ?? new List<string?>())
+                                        </div>
+                                        <span class="status-badge @statusClass">@GetStatusLabel(appt.Status)</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="no-schedule">
+                            <span><span class="bi bi-calendar-x"></span></span>
+                            <p>No appointments scheduled for today</p>
+                            <a href="/appointments" class="btn-link">Book an Appointment</a>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .dashboard-container {
+            padding: 0;
+        }
+
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem;
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        .header-left h1 {
+            font-size: 1.5rem;
+            color: #2c3e50;
+            margin: 0 0 0.25rem 0;
+        }
+
+        .current-time {
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin: 0;
+        }
+
+        .header-stats {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .stat-box {
+            padding: 0.75rem 1.25rem;
+            border-radius: 10px;
+            text-align: center;
+            min-width: 80px;
+        }
+
+        .stat-box.appointments { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .stat-box.completed { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; }
+        .stat-box.in-progress { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
+        .stat-box.revenue { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
+
+        .stat-number {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            opacity: 0.9;
+        }
+
+        .dashboard-main {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 1.5rem;
+        }
+
+        /* Notification Sections */
+        .notification-section {
+            background: white;
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        .notification-section.urgent {
+            border-left: 4px solid #22c55e;
+        }
+
+        .notification-section.warning {
+            border-left: 4px solid #f59e0b;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .section-header h3 {
+            margin: 0;
+            font-size: 1rem;
+            color: #2c3e50;
+            flex: 1;
+        }
+
+        .pulse-dot {
+            width: 10px;
+            height: 10px;
+            background: #22c55e;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .count-badge {
+            background: #22c55e;
+            color: white;
+            padding: 0.15rem 0.5rem;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .notification-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .notification-card {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 10px;
+            transition: all 0.2s;
+        }
+
+        .notification-card:hover {
+            background: #f0f0f0;
+        }
+
+        .notification-card.checkout-ready {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+        }
+
+        .notification-card.soon {
+            background: #fef3c7;
+            border: 1px solid #fde68a;
+        }
+
+        .notification-card.in-progress {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+        }
+
+        .notification-card.warning {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+        }
+
+        .notif-icon {
+            font-size: 1.5rem;
+        }
+
+        .notif-content {
+            flex: 1;
+        }
+
+        .notif-title {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .notif-sub {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-top: 0.25rem;
+        }
+
+        .service-chip {
+            display: inline-block;
+            background: #e0e0e0;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-right: 0.25rem;
+        }
+
+        .service-chip.active {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .more-chip {
+            font-size: 0.75rem;
+            color: #888;
+        }
+
+        .action-btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.85rem;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .action-btn.primary {
+            background: #4a7c59;
+            color: white;
+        }
+
+        .action-btn.secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .action-btn.warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .time-badge {
+            padding: 0.35rem 0.75rem;
+            background: #e0e0e0;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .time-badge.urgent {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        /* Timeline */
+        .timeline-section {
+            background: white;
+            border-radius: 12px;
+            padding: 1rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            height: fit-content;
+        }
+
+        .view-all-link {
+            color: #4a7c59;
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+
+        .timeline {
+            position: relative;
+        }
+
+        .timeline-item {
+            display: flex;
+            gap: 1rem;
+            padding: 0.75rem 0;
+            position: relative;
+        }
+
+        .timeline-item:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            left: 70px;
+            top: 30px;
+            bottom: -5px;
+            width: 2px;
+            background: #e0e0e0;
+        }
+
+        .timeline-time {
+            width: 55px;
+            font-size: 0.85rem;
+            color: #6c757d;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        .timeline-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            flex-shrink: 0;
+            margin-top: 4px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .timeline-item.completed .timeline-dot { background: #22c55e; }
+        .timeline-item.in-progress .timeline-dot { background: #3b82f6; animation: pulse 2s infinite; }
+        .timeline-item.pending .timeline-dot { background: #d1d5db; }
+        .timeline-item.paid .timeline-dot { background: #8b5cf6; }
+
+        .timeline-content {
+            flex: 1;
+        }
+
+        .timeline-customer {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 0.9rem;
+        }
+
+        .timeline-services {
+            font-size: 0.8rem;
+            color: #6c757d;
+            margin-top: 0.2rem;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-top: 0.25rem;
+            text-transform: uppercase;
+        }
+
+        .status-badge.completed { background: #dcfce7; color: #166534; }
+        .status-badge.in-progress { background: #dbeafe; color: #1e40af; }
+        .status-badge.pending { background: #f3f4f6; color: #6b7280; }
+        .status-badge.paid { background: #f3e8ff; color: #6b21a8; }
+
+        .empty-state, .no-schedule {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: #6c757d;
+        }
+
+        .empty-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        .empty-state h3, .no-schedule p {
+            margin: 0.5rem 0;
+        }
+
+        .no-schedule span {
+            font-size: 3rem;
+        }
+
+        .btn-link {
+            color: #4a7c59;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        /* Responsive */
+        @@media (max-width: 1024px) {
+            .dashboard-main {
+                grid-template-columns: 1fr;
+            }
+            
+            .header-stats {
+                display: none;
+            }
+        }
+    </style>
+
+}
+
+@code {
+    private bool isLoading = true;
+    private int todayAppointments = 0;
+    private int completedToday = 0;
+    private int inProgressToday = 0;
+    private decimal todayRevenue = 0;
+    private int lowStockCount = 0;
+
+    // New notification data
+    private List<Appointment> readyForCheckout = new();
+    private List<Appointment> comingUpSoon = new();
+    private List<Appointment> inProgress = new();
+    private List<Appointment> todaySchedule = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardData();
+    }
+
+    private async Task LoadDashboardData()
+    {
+        try
+        {
+            var today = DateTime.Today;
+            var now = DateTime.Now;
+
+            // Load all today's appointments with details
+            var allAppointments = await DbContext.Appointments
+                .Include(a => a.Customer).ThenInclude(c => c.Person)
+                .Include(a => a.AppointmentServices).ThenInclude(s => s.Service)
+                .Where(a => a.ScheduledStart.Date == today && a.Status != "cancelled")
+                .OrderBy(a => a.ScheduledStart)
+                .ToListAsync();
+
+            todaySchedule = allAppointments;
+            todayAppointments = allAppointments.Count;
+
+            // Ready for checkout - completed but not paid
+            readyForCheckout = allAppointments
+                .Where(a => a.Status == "completed")
+                .ToList();
+
+            // In progress
+            inProgress = allAppointments
+                .Where(a => a.Status == "in-progress")
+                .ToList();
+            inProgressToday = inProgress.Count;
+
+            // Coming up soon - scheduled within next 2 hours
+            comingUpSoon = allAppointments
+                .Where(a => a.Status == "scheduled" || a.Status == "confirmed" || a.Status == "pending")
+                .Where(a => a.ScheduledStart > now && a.ScheduledStart <= now.AddHours(2))
+                .OrderBy(a => a.ScheduledStart)
+                .Take(5)
+                .ToList();
+
+            completedToday = allAppointments.Count(a => a.Status == "completed" || a.Status == "paid");
+
+            // Get today's revenue from payments
+            todayRevenue = await DbContext.Payments
+                .Where(p => p.PaidAt.Date == today)
+                .SumAsync(p => p.Amount);
+
+            // Low stock count
+            lowStockCount = await DbContext.Inventories
+                .CountAsync(i => i.QuantityOnHand <= i.ReorderLevel);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading dashboard: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void GoToCheckout(long appointmentId)
+    {
+        Navigation.NavigateTo($"/checkout/{appointmentId}");
+    }
+
+    private async Task MarkAsCompleted(Appointment appt)
+    {
+        try
+        {
+            appt.Status = "completed";
+            await DbContext.SaveChangesAsync();
+            await LoadDashboardData(); // Refresh
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+    }
+
+    private string GetGreeting()
+    {
+        var hour = DateTime.Now.Hour;
+        if (hour < 12) return "Morning";
+        if (hour < 17) return "Afternoon";
+        return "Evening";
+    }
+
+    private string GetStatusClass(string? status) => status?.ToLower() switch
+    {
+        "completed" => "completed",
+        "in-progress" => "in-progress",
+        "paid" => "paid",
+        _ => "pending"
+    };
+
+    private string GetStatusLabel(string? status) => status?.ToLower() switch
+    {
+        "completed" => "Done",
+        "in-progress" => "In Progress",
+        "paid" => "Paid",
+        "confirmed" => "Confirmed",
+        "scheduled" => "Scheduled",
+        _ => status ?? "Pending"
+    };
+}

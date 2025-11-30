@@ -1,0 +1,29 @@
+﻿@using Spa_Management_System.Services
+@inherits LayoutComponentBase
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main class="main">
+        <article class="content">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        AuthState.OnAuthStateChanged += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AuthState.OnAuthStateChanged -= StateHasChanged;
+    }
+}

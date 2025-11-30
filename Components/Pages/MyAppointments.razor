@@ -1,0 +1,415 @@
+@page "/my-appointments"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+
+<PageTitle>My Appointments - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else if (currentCustomer == null)
+{
+    <div class="card">
+        <div class="alert alert-warning">
+            <span class="bi bi-exclamation-triangle-fill"></span>
+            <strong>No Customer Profile Found</strong>
+            <p style="margin: 0.5rem 0 0 0;">Your account is not linked to a customer profile. Please contact the front desk to set up your profile.</p>
+        </div>
+        
+        <div style="margin-top: 2rem; text-align: center;">
+            <span style="font-size: 4rem;">🧘</span>
+            <h4 style="color: var(--spa-primary); margin: 1rem 0;">Welcome to Serenity Spa</h4>
+            <p style="color: var(--spa-text-light);">
+                Once your profile is set up, you'll be able to view and manage your appointments here.
+            </p>
+            <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/")'>
+                <span class="bi bi-house"></span> Go to Home
+            </button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-calendar-check"></span> My Appointments</h3>
+                <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">
+                    Welcome, @currentCustomer.Person?.FirstName! View and manage your spa bookings.
+                </p>
+            </div>
+            <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/appointments")'>
+                <span class="bi bi-plus-circle"></span> Book New Appointment
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success" style="margin-bottom: 1rem;">
+                <span class="bi bi-check-circle-fill"></span> @successMessage
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger" style="margin-bottom: 1rem;">
+                <span class="bi bi-exclamation-circle-fill"></span> @errorMessage
+            </div>
+        }
+
+        <!-- Filter Tabs -->
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+            <button class="btn @(filterTab == "upcoming" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("upcoming")'>
+                Upcoming (@upcomingAppointments.Count)
+            </button>
+            <button class="btn @(filterTab == "past" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("past")'>
+                Past (@pastAppointments.Count)
+            </button>
+            <button class="btn @(filterTab == "all" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("all")'>
+                All (@allAppointments.Count)
+            </button>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="text-align: center; padding: 3rem;">
+                <div class="spinner-border" style="color: var(--spa-primary);"></div>
+                <p style="color: var(--spa-text-light); margin-top: 1rem;">Loading your appointments...</p>
+            </div>
+        }
+        else if (!filteredAppointments.Any())
+        {
+            <div style="text-align: center; padding: 3rem;">
+                <span style="font-size: 4rem;">📆</span>
+                <h4 style="color: var(--spa-primary); margin: 1rem 0;">No Appointments Found</h4>
+                <p style="color: var(--spa-text-light); margin-bottom: 1.5rem;">
+                    @if (filterTab == "upcoming")
+                    {
+                        <span>You have no upcoming appointments. Time to treat yourself!</span>
+                    }
+                    else if (filterTab == "past")
+                    {
+                        <span>You haven't had any appointments yet.</span>
+                    }
+                    else
+                    {
+                        <span>No appointments to display.</span>
+                    }
+                </p>
+                <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/appointments")'>
+                    <span class="bi bi-calendar-plus"></span> Book an Appointment
+                </button>
+            </div>
+        }
+        else
+        {
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                @foreach (var appt in filteredAppointments.OrderByDescending(a => a.ScheduledStart))
+                {
+                    var services = appt.AppointmentServices?.ToList() ?? new List<AppointmentService>();
+                    var isPast = appt.ScheduledStart < DateTime.Now;
+                    var isToday = appt.ScheduledStart.Date == DateTime.Today;
+
+                    <div style="padding: 1.5rem; border: 2px solid @(isToday ? "var(--spa-primary)" : "var(--spa-secondary)"); border-radius: 12px; background: @(isToday ? "rgba(170, 148, 120, 0.05)" : "white"); opacity: @(isPast && appt.Status == "completed" ? "0.85" : "1");">
+                        <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 1rem;">
+                            <div style="display: flex; gap: 1rem; align-items: start;">
+                                <!-- Date Box -->
+                                <div style="padding: 0.75rem 1rem; background: @(isToday ? "var(--spa-primary)" : "var(--spa-background)"); color: @(isToday ? "white" : "var(--spa-text-dark)"); border-radius: 8px; text-align: center; min-width: 70px;">
+                                    <p style="margin: 0; font-size: 0.8rem; text-transform: uppercase;">
+                                        @appt.ScheduledStart.ToString("MMM")
+                                    </p>
+                                    <p style="margin: 0; font-size: 1.5rem; font-weight: 700;">
+                                        @appt.ScheduledStart.Day
+                                    </p>
+                                    <p style="margin: 0; font-size: 0.75rem;">
+                                        @appt.ScheduledStart.ToString("ddd")
+                                    </p>
+                                </div>
+                                
+                                <!-- Appointment Info -->
+                                <div>
+                                    <h5 style="margin: 0 0 0.5rem 0; color: var(--spa-text-dark);">
+                                        @string.Join(", ", services.Select(s => s.Service?.Name ?? "Service"))
+                                    </h5>
+                                    <p style="margin: 0; color: var(--spa-text-light);">
+                                        <span class="bi bi-clock"></span> @appt.ScheduledStart.ToString("hh:mm tt") - @appt.ScheduledEnd?.ToString("hh:mm tt")
+                                        @if (isToday && !isPast)
+                                        {
+                                            <span style="margin-left: 0.5rem; padding: 0.15rem 0.5rem; background: var(--spa-primary); color: white; border-radius: 4px; font-size: 0.75rem;">
+                                                TODAY
+                                            </span>
+                                        }
+                                    </p>
+                                    @if (services.Any())
+                                    {
+                                        var therapist = services.FirstOrDefault()?.TherapistEmployee?.Person;
+                                        @if (therapist != null)
+                                        {
+                                            <p style="margin: 0.25rem 0 0 0; color: var(--spa-text-light); font-size: 0.9rem;">
+                                                <span class="bi bi-person"></span> Therapist: @therapist.FirstName @therapist.LastName
+                                            </p>
+                                        }
+                                    }
+                                    <p style="margin: 0.5rem 0 0 0;">
+                                        <span style="padding: 0.15rem 0.5rem; border-radius: 12px; background: @GetStatusColor(appt.Status); font-size: 0.8rem;">
+                                            @GetStatusText(appt.Status)
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Total & Actions -->
+                            <div style="text-align: right;">
+                                <p style="margin: 0 0 0.5rem 0; font-size: 1.25rem; font-weight: 600; color: var(--spa-primary);">
+                                    ₱@services.Sum(s => s.Price).ToString("N0")
+                                </p>
+                                
+                                @if (CanCancel(appt))
+                                {
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => ConfirmCancel(appt)">
+                                        <span class="bi bi-x-circle"></span> Cancel
+                                    </button>
+                                }
+                                @if (appt.Status == "completed")
+                                {
+                                    <button class="btn btn-outline-primary btn-sm" @onclick='() => Navigation.NavigateTo("/appointments")'>
+                                        <span class="bi bi-arrow-repeat"></span> Book Again
+                                    </button>
+                                }
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(appt.Notes))
+                        {
+                            <div style="margin-top: 1rem; padding: 0.75rem; background: #fff3cd; border-radius: 6px; font-size: 0.9rem;">
+                                <span class="bi bi-sticky"></span> @appt.Notes
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- Cancel Confirmation Dialog -->
+    @if (showCancelDialog && cancellingAppointment != null)
+    {
+        <div class="modal-overlay" @onclick="CloseCancelDialog">
+            <div class="modal-content" style="max-width: 400px;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h4><span class="bi bi-exclamation-triangle"></span> Cancel Appointment</h4>
+                    <button class="btn-close" @onclick="CloseCancelDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to cancel your appointment on:</p>
+                    <p style="font-weight: 600; color: var(--spa-primary); margin: 1rem 0;">
+                        @cancellingAppointment.ScheduledStart.ToString("dddd, MMMM dd, yyyy")<br/>
+                        @cancellingAppointment.ScheduledStart.ToString("hh:mm tt") - @cancellingAppointment.ScheduledEnd?.ToString("hh:mm tt")
+                    </p>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem;">
+                        Please note that cancellations should be made at least 24 hours in advance.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" @onclick="CloseCancelDialog">Keep Appointment</button>
+                    <button class="btn btn-danger" @onclick="CancelAppointment" disabled="@isCancelling">
+                        @if (isCancelling)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                        else
+                        {
+                            <span class="bi bi-x-circle"></span>
+                        }
+                        Yes, Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private Customer? currentCustomer;
+    private List<Appointment> allAppointments = new();
+    private List<Appointment> upcomingAppointments = new();
+    private List<Appointment> pastAppointments = new();
+    private List<Appointment> filteredAppointments = new();
+    
+    private Appointment? cancellingAppointment;
+    
+    private string filterTab = "upcoming";
+    private bool isLoading = true;
+    private bool showCancelDialog = false;
+    private bool isCancelling = false;
+    private string? successMessage;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomerProfile();
+        await LoadAppointments();
+    }
+
+    private async Task LoadCustomerProfile()
+    {
+        if (AuthState.CurrentUser == null) return;
+
+        // Find customer linked to current user's employee's person
+        // UserAccount -> Employee -> Person -> Customer
+        var user = await DbContext.UserAccounts
+            .Include(u => u.Employee)
+                .ThenInclude(e => e!.Person)
+            .FirstOrDefaultAsync(u => u.UserId == AuthState.CurrentUser.UserId);
+        
+        if (user?.Employee?.PersonId != null)
+        {
+            // Check if there's a customer with the same person
+            currentCustomer = await DbContext.Customers
+                .Include(c => c.Person)
+                .FirstOrDefaultAsync(c => c.PersonId == user.Employee.PersonId);
+        }
+        
+        // If not found and employee exists, check if this person is also a customer
+        // For demo/testing, if no customer profile exists, allow loading appointments by user
+        if (currentCustomer == null)
+        {
+            // Try to find any customer for demo purposes - in production, you'd want proper linking
+            // For now, just let the view show "no profile" message
+        }
+    }
+
+    private async Task LoadAppointments()
+    {
+        if (currentCustomer == null) return;
+
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            allAppointments = await DbContext.Appointments
+                .Include(a => a.AppointmentServices)
+                    .ThenInclude(s => s.Service)
+                .Include(a => a.AppointmentServices)
+                    .ThenInclude(s => s.TherapistEmployee)
+                        .ThenInclude(e => e!.Person)
+                .Where(a => a.CustomerId == currentCustomer.CustomerId)
+                .ToListAsync();
+
+            var now = DateTime.Now;
+            upcomingAppointments = allAppointments
+                .Where(a => a.ScheduledStart >= now && a.Status != "cancelled" && a.Status != "completed")
+                .OrderBy(a => a.ScheduledStart)
+                .ToList();
+
+            pastAppointments = allAppointments
+                .Where(a => a.ScheduledStart < now || a.Status == "completed" || a.Status == "cancelled")
+                .OrderByDescending(a => a.ScheduledStart)
+                .ToList();
+
+            SetFilter(filterTab);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading appointments: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void SetFilter(string tab)
+    {
+        filterTab = tab;
+        filteredAppointments = tab switch
+        {
+            "upcoming" => upcomingAppointments,
+            "past" => pastAppointments,
+            _ => allAppointments
+        };
+    }
+
+    private bool CanCancel(Appointment appt)
+    {
+        // Can only cancel scheduled or confirmed appointments at least 24 hours in advance
+        if (appt.Status != "scheduled" && appt.Status != "confirmed")
+            return false;
+
+        return appt.ScheduledStart > DateTime.Now.AddHours(24);
+    }
+
+    private void ConfirmCancel(Appointment appt)
+    {
+        cancellingAppointment = appt;
+        showCancelDialog = true;
+    }
+
+    private void CloseCancelDialog()
+    {
+        showCancelDialog = false;
+        cancellingAppointment = null;
+    }
+
+    private async Task CancelAppointment()
+    {
+        if (cancellingAppointment == null) return;
+
+        isCancelling = true;
+        try
+        {
+            cancellingAppointment.Status = "cancelled";
+            await DbContext.SaveChangesAsync();
+
+            successMessage = "Appointment cancelled successfully.";
+            showCancelDialog = false;
+            cancellingAppointment = null;
+            await LoadAppointments();
+            _ = ClearSuccessMessage();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error cancelling appointment: {ex.Message}";
+        }
+        finally
+        {
+            isCancelling = false;
+        }
+    }
+
+    private string GetStatusColor(string? status) => status switch
+    {
+        "scheduled" => "#fff3cd",
+        "confirmed" => "#cce5ff",
+        "in-progress" => "#d4edda",
+        "completed" => "#d1e7dd",
+        "cancelled" => "#f8d7da",
+        "no-show" => "#e2e3e5",
+        _ => "#f5f5f5"
+    };
+
+    private string GetStatusText(string? status) => status switch
+    {
+        "scheduled" => "Scheduled",
+        "confirmed" => "Confirmed",
+        "in-progress" => "In Progress",
+        "completed" => "Completed",
+        "cancelled" => "Cancelled",
+        "no-show" => "No Show",
+        _ => "Unknown"
+    };
+
+    private async Task ClearSuccessMessage()
+    {
+        await Task.Delay(4000);
+        successMessage = null;
+        await InvokeAsync(StateHasChanged);
+    }
+}

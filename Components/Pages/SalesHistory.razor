@@ -1,0 +1,548 @@
+@page "/sales-history"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+
+<PageTitle>Sales History - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-receipt-cutoff"></span> Sales History</h3>
+                <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">View all past transactions</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                <input type="date" @bind="startDate" class="form-control" style="width: auto;" />
+                <input type="date" @bind="endDate" class="form-control" style="width: auto;" />
+                <select @bind="statusFilter" class="form-control" style="width: auto;">
+                    <option value="">All Status</option>
+                    <option value="paid">Paid</option>
+                    <option value="unpaid">Unpaid</option>
+                    <option value="partial">Partial</option>
+                </select>
+                <button class="btn btn-primary" @onclick="LoadSales">
+                    <span class="bi bi-search"></span> Search
+                </button>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="text-align: center; padding: 3rem;">
+                <div class="spinner-border" style="color: var(--spa-primary);"></div>
+                <p style="color: var(--spa-text-light); margin-top: 1rem;">Loading sales...</p>
+            </div>
+        }
+        else
+        {
+            <!-- Summary Cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                <div style="padding: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; color: white;">
+                    <p style="margin: 0; opacity: 0.9; font-size: 0.8rem;">Total Sales</p>
+                    <h3 style="margin: 0.25rem 0 0 0;">@sales.Count</h3>
+                </div>
+                <div style="padding: 1rem; background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); border-radius: 10px; color: white;">
+                    <p style="margin: 0; opacity: 0.9; font-size: 0.8rem;">Total Revenue</p>
+                    <h3 style="margin: 0.25rem 0 0 0;">₱@sales.Sum(s => s.TotalAmount).ToString("N0")</h3>
+                </div>
+                <div style="padding: 1rem; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 10px; color: white;">
+                    <p style="margin: 0; opacity: 0.9; font-size: 0.8rem;">Paid</p>
+                    <h3 style="margin: 0.25rem 0 0 0;">@sales.Count(s => s.PaymentStatus == "paid")</h3>
+                </div>
+                <div style="padding: 1rem; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 10px; color: white;">
+                    <p style="margin: 0; opacity: 0.9; font-size: 0.8rem;">Unpaid</p>
+                    <h3 style="margin: 0.25rem 0 0 0;">@sales.Count(s => s.PaymentStatus == "unpaid")</h3>
+                </div>
+            </div>
+
+            <!-- Search Box -->
+            <div class="table-search">
+                <input type="text" placeholder="Search by sale #, customer..." @bind="searchTerm" @bind:event="oninput" @onkeyup="OnSearchChanged" />
+            </div>
+
+            <!-- Sales Table -->
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("number")'>
+                                Sale # @GetSortIcon("number")
+                            </th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("date")'>
+                                Date @GetSortIcon("date")
+                            </th>
+                            <th>Customer</th>
+                            <th>Items</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("total")'>
+                                Total @GetSortIcon("total")
+                            </th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (GetPagedSales().Any())
+                        {
+                            @foreach (var sale in GetPagedSales())
+                            {
+                                <tr>
+                                    <td><strong>@(sale.SaleNumber ?? "N/A")</strong></td>
+                                    <td>@sale.CreatedAt.ToString("MMM dd, yyyy hh:mm tt")</td>
+                                    <td>@GetCustomerName(sale.Customer)</td>
+                                    <td>@sale.SaleItems.Count items</td>
+                                    <td><strong>₱@sale.TotalAmount.ToString("N2")</strong></td>
+                                    <td>
+                                        @if (sale.PaymentStatus == "paid")
+                                        {
+                                            <span class="badge bg-success">Paid</span>
+                                        }
+                                        else if (sale.PaymentStatus == "partial")
+                                        {
+                                            <span class="badge bg-warning">Partial</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger">Unpaid</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary" @onclick="() => ViewDetails(sale)">
+                                            <span class="bi bi-eye"></span> View
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 2rem; color: var(--spa-text-light);">
+                                    <span class="bi bi-inbox" style="font-size: 2rem;"></span>
+                                    <p style="margin: 0.5rem 0 0 0;">No sales found for the selected period</p>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            @if (filteredSales.Any())
+            {
+                <div class="table-pagination">
+                    <div class="pagination-info">
+                        Showing @(Math.Min((currentPage - 1) * pageSize + 1, filteredSales.Count)) to @(Math.Min(currentPage * pageSize, filteredSales.Count)) of @filteredSales.Count entries
+                    </div>
+                    <div class="pagination-controls">
+                        <button class="page-btn" @onclick="PreviousPage" disabled="@(currentPage <= 1)">‹ Prev</button>
+                        @for (int i = 1; i <= TotalPages; i++)
+                        {
+                            var pageNum = i;
+                            <button class="page-btn @(currentPage == pageNum ? "active" : "")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                        }
+                        <button class="page-btn" @onclick="NextPage" disabled="@(currentPage >= TotalPages)">Next ›</button>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    <!-- Sale Details Modal -->
+    @if (showModal && selectedSale != null)
+    {
+        <div class="modal-backdrop fade show"></div>
+        <div class="modal fade show" style="display: block;" tabindex="-1">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content" style="max-width: 900px; width: 95%;">
+                    <div class="modal-header" style="background: linear-gradient(135deg, #5a7a6b, #6d8a7d); color: white;">
+                        <h5 class="modal-title" style="font-weight: 600;">
+                            <span class="bi bi-receipt-cutoff" style="margin-right: 0.5rem;"></span> 
+                            Sale Details - @selectedSale.SaleNumber
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" @onclick="CloseModal"></button>
+                    </div>
+                    <div class="modal-body" style="padding: 1.5rem; max-height: 75vh; overflow-y: auto;">
+                        <!-- Sale Information Cards -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; border-left: 4px solid #5a7a6b;">
+                                <div style="font-size: 0.75rem; color: #6c757d; text-transform: uppercase; margin-bottom: 0.25rem;">Date & Time</div>
+                                <div style="font-weight: 600; color: #333;">@selectedSale.CreatedAt.ToString("MMMM dd, yyyy")</div>
+                                <div style="font-size: 0.875rem; color: #666;">@selectedSale.CreatedAt.ToString("hh:mm tt")</div>
+                            </div>
+                            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; border-left: 4px solid #17a2b8;">
+                                <div style="font-size: 0.75rem; color: #6c757d; text-transform: uppercase; margin-bottom: 0.25rem;">Customer</div>
+                                <div style="font-weight: 600; color: #333;">@GetCustomerName(selectedSale.Customer)</div>
+                                @if (selectedSale.Customer?.Person?.Email != null)
+                                {
+                                    <div style="font-size: 0.875rem; color: #666;">@selectedSale.Customer.Person.Email</div>
+                                }
+                            </div>
+                            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; border-left: 4px solid @(selectedSale.PaymentStatus == "paid" ? "#28a745" : selectedSale.PaymentStatus == "partial" ? "#ffc107" : "#dc3545");">
+                                <div style="font-size: 0.75rem; color: #6c757d; text-transform: uppercase; margin-bottom: 0.25rem;">Payment Status</div>
+                                @if (selectedSale.PaymentStatus == "paid")
+                                {
+                                    <span class="badge bg-success" style="font-size: 0.9rem; padding: 0.4rem 0.75rem;">
+                                        <span class="bi bi-check-circle"></span> PAID
+                                    </span>
+                                }
+                                else if (selectedSale.PaymentStatus == "partial")
+                                {
+                                    <span class="badge bg-warning text-dark" style="font-size: 0.9rem; padding: 0.4rem 0.75rem;">
+                                        <span class="bi bi-clock"></span> PARTIAL
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger" style="font-size: 0.9rem; padding: 0.4rem 0.75rem;">
+                                        <span class="bi bi-x-circle"></span> UNPAID
+                                    </span>
+                                }
+                            </div>
+                            <div style="background: linear-gradient(135deg, #5a7a6b, #6d8a7d); padding: 1rem; border-radius: 8px; color: white;">
+                                <div style="font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.25rem; opacity: 0.9;">Total Amount</div>
+                                <div style="font-size: 1.5rem; font-weight: 700;">₱@selectedSale.TotalAmount.ToString("N2")</div>
+                            </div>
+                        </div>
+
+                        <!-- Items Section -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <h6 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e9ecef;">
+                                <span class="bi bi-cart3" style="color: #5a7a6b;"></span> 
+                                Items (@selectedSale.SaleItems.Count)
+                            </h6>
+                            <div style="overflow-x: auto;">
+                                <table class="data-table" style="min-width: 100%;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 100px;">Type</th>
+                                            <th>Description</th>
+                                            <th style="text-align: center; width: 80px;">Qty</th>
+                                            <th style="text-align: right; width: 120px;">Unit Price</th>
+                                            <th style="text-align: right; width: 120px;">Line Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var item in selectedSale.SaleItems)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    @if (item.ItemType?.ToLower() == "service")
+                                                    {
+                                                        <span class="badge" style="background: linear-gradient(135deg, #5a7a6b, #6d8a7d); color: white; padding: 0.35rem 0.75rem; font-size: 0.75rem; font-weight: 600;">
+                                                            <span class="bi bi-scissors"></span> SERVICE
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge" style="background: linear-gradient(135deg, #17a2b8, #20c997); color: white; padding: 0.35rem 0.75rem; font-size: 0.75rem; font-weight: 600;">
+                                                            <span class="bi bi-box"></span> PRODUCT
+                                                        </span>
+                                                    }
+                                                </td>
+                                                <td style="font-weight: 500;">@(item.Service?.Name ?? item.Product?.Name ?? "Unknown Item")</td>
+                                                <td style="text-align: center;">@item.Qty.ToString("N2")</td>
+                                                <td style="text-align: right;">₱@item.UnitPrice.ToString("N2")</td>
+                                                <td style="text-align: right; font-weight: 600;">₱@item.LineTotal.ToString("N2")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                    <tfoot style="background: #f8f9fa;">
+                                        <tr>
+                                            <td colspan="3"></td>
+                                            <td style="text-align: right; font-weight: 600; padding: 0.75rem;">Subtotal:</td>
+                                            <td style="text-align: right; font-weight: 600; padding: 0.75rem;">₱@selectedSale.SaleItems.Sum(i => i.LineTotal).ToString("N2")</td>
+                                        </tr>
+                                        @{
+                                            var discount = selectedSale.SaleItems.Sum(i => i.LineTotal) - selectedSale.TotalAmount;
+                                            if (discount > 0)
+                                            {
+                                                <tr>
+                                                    <td colspan="3"></td>
+                                                    <td style="text-align: right; color: #dc3545; padding: 0.75rem;">Discount:</td>
+                                                    <td style="text-align: right; color: #dc3545; padding: 0.75rem;">-₱@discount.ToString("N2")</td>
+                                                </tr>
+                                            }
+                                        }
+                                        <tr style="font-size: 1.1rem;">
+                                            <td colspan="3"></td>
+                                            <td style="text-align: right; font-weight: 700; padding: 0.75rem; border-top: 2px solid #5a7a6b;">Grand Total:</td>
+                                            <td style="text-align: right; font-weight: 700; padding: 0.75rem; border-top: 2px solid #5a7a6b; color: #5a7a6b;">₱@selectedSale.TotalAmount.ToString("N2")</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Payments Section -->
+                        @if (selectedSale.Payments.Any())
+                        {
+                            <div style="margin-bottom: 1rem;">
+                                <h6 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e9ecef;">
+                                    <span class="bi bi-credit-card-2-front" style="color: #5a7a6b;"></span> 
+                                    Payment History (@selectedSale.Payments.Count)
+                                </h6>
+                                <div style="overflow-x: auto;">
+                                    <table class="data-table" style="min-width: 100%;">
+                                        <thead>
+                                            <tr>
+                                                <th>Date & Time</th>
+                                                <th>Payment Method</th>
+                                                <th style="text-align: right;">Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var payment in selectedSale.Payments.OrderBy(p => p.PaidAt))
+                                            {
+                                                <tr>
+                                                    <td>
+                                                        <div>@payment.PaidAt.ToString("MMM dd, yyyy")</div>
+                                                        <div style="font-size: 0.8rem; color: #6c757d;">@payment.PaidAt.ToString("hh:mm tt")</div>
+                                                    </td>
+                                                    <td>
+                                                        <span class="badge" style="background: #e9ecef; color: #495057; padding: 0.35rem 0.75rem; font-weight: 500;">
+                                                            @if (payment.PaymentMethod?.ToLower() == "cash")
+                                                            {
+                                                                <span class="bi bi-cash"></span>
+                                                            }
+                                                            else if (payment.PaymentMethod?.ToLower() == "card" || payment.PaymentMethod?.ToLower() == "credit card")
+                                                            {
+                                                                <span class="bi bi-credit-card"></span>
+                                                            }
+                                                            else if (payment.PaymentMethod?.ToLower() == "gcash")
+                                                            {
+                                                                <span class="bi bi-phone"></span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="bi bi-wallet2"></span>
+                                                            }
+                                                            @payment.PaymentMethod
+                                                        </span>
+                                                    </td>
+                                                    <td style="text-align: right; font-weight: 600; color: #28a745;">₱@payment.Amount.ToString("N2")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                        <tfoot style="background: #d4edda;">
+                                            <tr>
+                                                <td colspan="2" style="text-align: right; font-weight: 600; padding: 0.75rem;">Total Paid:</td>
+                                                <td style="text-align: right; font-weight: 700; padding: 0.75rem; color: #155724;">₱@selectedSale.Payments.Sum(p => p.Amount).ToString("N2")</td>
+                                            </tr>
+                                            @{
+                                                var balance = selectedSale.TotalAmount - selectedSale.Payments.Sum(p => p.Amount);
+                                                if (balance > 0)
+                                                {
+                                                    <tr style="background: #f8d7da;">
+                                                        <td colspan="2" style="text-align: right; font-weight: 600; padding: 0.75rem; color: #721c24;">Balance Due:</td>
+                                                        <td style="text-align: right; font-weight: 700; padding: 0.75rem; color: #721c24;">₱@balance.ToString("N2")</td>
+                                                    </tr>
+                                                }
+                                            }
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; display: flex; align-items: center; gap: 0.75rem;">
+                                <span class="bi bi-exclamation-triangle" style="color: #856404; font-size: 1.25rem;"></span>
+                                <div>
+                                    <strong style="color: #856404;">No payments recorded</strong>
+                                    <div style="font-size: 0.875rem; color: #856404;">This sale has not received any payments yet.</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="modal-footer" style="background: #f8f9fa; border-top: 1px solid #e9ecef;">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CloseModal">
+                            <span class="bi bi-x-lg"></span> Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<Sale> sales = new();
+    private List<Sale> filteredSales = new();
+    private Sale? selectedSale;
+    private bool isLoading = true;
+    private bool showModal = false;
+
+    private DateTime startDate = DateTime.Now.AddMonths(-1);
+    private DateTime endDate = DateTime.Now;
+    private string statusFilter = "";
+    private string searchTerm = "";
+    private string sortColumn = "date";
+    private bool sortAscending = false;
+
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int TotalPages => (int)Math.Ceiling((double)filteredSales.Count / pageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSales();
+    }
+
+    private async Task LoadSales()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var query = DbContext.Sales
+                .Include(s => s.Customer)
+                    .ThenInclude(c => c.Person)
+                .Include(s => s.SaleItems)
+                .Include(s => s.Payments)
+                .Where(s => s.CreatedAt.Date >= startDate.Date && s.CreatedAt.Date <= endDate.Date);
+
+            if (!string.IsNullOrEmpty(statusFilter))
+            {
+                query = query.Where(s => s.PaymentStatus == statusFilter);
+            }
+
+            sales = await query.OrderByDescending(s => s.CreatedAt).ToListAsync();
+            
+            // Load related Service and Product data for SaleItems
+            foreach (var sale in sales)
+            {
+                foreach (var item in sale.SaleItems)
+                {
+                    if (item.ServiceId.HasValue)
+                    {
+                        item.Service = await DbContext.Services.FindAsync(item.ServiceId.Value);
+                    }
+                    if (item.ProductId.HasValue)
+                    {
+                        item.Product = await DbContext.Products.FindAsync(item.ProductId.Value);
+                    }
+                }
+            }
+            
+            ApplyFilter();
+            currentPage = 1;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error loading sales: " + ex.Message);
+            sales = new List<Sale>();
+            filteredSales = new List<Sale>();
+        }
+
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private void ApplyFilter()
+    {
+        filteredSales = sales;
+        
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.ToLower();
+            filteredSales = filteredSales.Where(s => 
+                (s.SaleNumber?.ToLower().Contains(term) ?? false) ||
+                (GetCustomerName(s.Customer).ToLower().Contains(term))
+            ).ToList();
+        }
+
+        // Apply sorting
+        filteredSales = sortColumn switch
+        {
+            "number" => sortAscending 
+                ? filteredSales.OrderBy(s => s.SaleNumber).ToList()
+                : filteredSales.OrderByDescending(s => s.SaleNumber).ToList(),
+            "date" => sortAscending 
+                ? filteredSales.OrderBy(s => s.CreatedAt).ToList()
+                : filteredSales.OrderByDescending(s => s.CreatedAt).ToList(),
+            "total" => sortAscending 
+                ? filteredSales.OrderBy(s => s.TotalAmount).ToList()
+                : filteredSales.OrderByDescending(s => s.TotalAmount).ToList(),
+            _ => filteredSales
+        };
+
+        currentPage = 1;
+    }
+
+    private void OnSearchChanged()
+    {
+        ApplyFilter();
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+        ApplyFilter();
+    }
+
+    private string GetSortIcon(string column)
+    {
+        if (sortColumn != column) return "";
+        return sortAscending ? "▲" : "▼";
+    }
+
+    private List<Sale> GetPagedSales()
+    {
+        return filteredSales
+            .Skip((currentPage - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+    }
+
+    private void GoToPage(int page)
+    {
+        currentPage = page;
+    }
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1) currentPage--;
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < TotalPages) currentPage++;
+    }
+
+    private string GetCustomerName(Customer? customer)
+    {
+        if (customer?.Person == null) return "Walk-in";
+        return customer.Person.FirstName + " " + customer.Person.LastName;
+    }
+
+    private void ViewDetails(Sale sale)
+    {
+        selectedSale = sale;
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        selectedSale = null;
+    }
+}

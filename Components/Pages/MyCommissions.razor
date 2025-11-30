@@ -1,0 +1,438 @@
+@page "/my-commissions"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@using Spa_Management_System.Services
+@inject AppDbContext DbContext
+@inject IAuthStateService AuthState
+
+<div class="page-header">
+    <h1>My Commissions</h1>
+    <p class="subtitle">Track your earnings from services</p>
+</div>
+
+@if (isLoading)
+{
+    <div class="loading-spinner">
+        <div class="spinner"></div>
+        <p>Loading your commission data...</p>
+    </div>
+}
+else if (currentEmployee == null)
+{
+    <div class="alert alert-warning">
+        <span class="alert-icon"><span class="bi bi-exclamation-triangle"></span></span>
+        <span>Your account is not linked to an employee profile. Please contact your administrator.</span>
+    </div>
+}
+else
+{
+    <div class="filter-section">
+        <div class="filter-group">
+            <label>Period:</label>
+            <select @bind="selectedPeriod" @bind:after="LoadData" class="form-select">
+                <option value="this-week">This Week</option>
+                <option value="this-month">This Month</option>
+                <option value="last-month">Last Month</option>
+                <option value="this-year">This Year</option>
+                <option value="custom">Custom Range</option>
+            </select>
+        </div>
+        @if (selectedPeriod == "custom")
+        {
+            <div class="filter-group">
+                <label>From:</label>
+                <input type="date" @bind="startDate" @bind:after="LoadData" class="form-control" />
+            </div>
+            <div class="filter-group">
+                <label>To:</label>
+                <input type="date" @bind="endDate" @bind:after="LoadData" class="form-control" />
+            </div>
+        }
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="summary-cards">
+        <div class="summary-card earnings">
+            <div class="card-icon"><span class="bi bi-cash-coin"></span></div>
+            <div class="card-content">
+                <h3>Total Earnings</h3>
+                <p class="amount">₱@totalEarnings.ToString("N2")</p>
+            </div>
+        </div>
+        <div class="summary-card services">
+            <div class="card-icon"><span class="bi bi-star-fill"></span></div>
+            <div class="card-content">
+                <h3>Services Completed</h3>
+                <p class="amount">@totalServices</p>
+            </div>
+        </div>
+        <div class="summary-card avg">
+            <div class="card-icon"><span class="bi bi-bar-chart-line"></span></div>
+            <div class="card-content">
+                <h3>Average Per Service</h3>
+                <p class="amount">₱@(totalServices > 0 ? (totalEarnings / totalServices).ToString("N2") : "0.00")</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Commission Details Table -->
+    <div class="table-container">
+        <h3>Commission Details</h3>
+        @if (commissionItems.Count == 0)
+        {
+            <div class="empty-state">
+                <span class="empty-icon"><span class="bi bi-clipboard"></span></span>
+                <p>No commission records found for the selected period.</p>
+            </div>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Service</th>
+                        <th>Customer</th>
+                        <th>Service Price</th>
+                        <th>Commission Rate</th>
+                        <th>Earnings</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in commissionItems)
+                    {
+                        <tr>
+                            <td>@item.Date.ToString("MMM dd, yyyy")</td>
+                            <td>@item.ServiceName</td>
+                            <td>@item.CustomerName</td>
+                            <td>₱@item.ServicePrice.ToString("N2")</td>
+                            <td>@item.CommissionRate.ToString("N1")%</td>
+                            <td class="earnings">₱@item.CommissionAmount.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="5" style="text-align: right; font-weight: bold;">Total:</td>
+                        <td class="earnings" style="font-weight: bold;">₱@totalEarnings.ToString("N2")</td>
+                    </tr>
+                </tfoot>
+            </table>
+        }
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private Employee? currentEmployee;
+    private string selectedPeriod = "this-month";
+    private DateTime startDate = DateTime.Today.AddDays(-30);
+    private DateTime endDate = DateTime.Today;
+
+    private decimal totalEarnings;
+    private int totalServices;
+    private List<CommissionItem> commissionItems = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Get current user's employee ID
+            var currentUserId = AuthState.CurrentUser?.EmployeeId;
+            
+            if (currentUserId == null)
+            {
+                currentEmployee = null;
+                isLoading = false;
+                return;
+            }
+
+            // Load current employee
+            currentEmployee = await DbContext.Employees
+                .FirstOrDefaultAsync(e => e.EmployeeId == currentUserId);
+
+            if (currentEmployee == null)
+            {
+                isLoading = false;
+                return;
+            }
+
+            // Calculate date range based on selected period
+            CalculateDateRange();
+
+            // Load commission data for THIS THERAPIST ONLY
+            var commissions = await DbContext.AppointmentServices
+                .Include(a => a.Appointment)
+                    .ThenInclude(apt => apt.Customer)
+                        .ThenInclude(c => c.Person)
+                .Include(a => a.Service)
+                .Where(a => a.TherapistEmployeeId == currentUserId) // Filter by current therapist
+                .Where(a => a.Appointment.Status == "completed" || a.Appointment.Status == "paid")
+                .Where(a => a.Appointment.ScheduledStart >= startDate && a.Appointment.ScheduledStart <= endDate.AddDays(1))
+                .OrderByDescending(a => a.Appointment.ScheduledStart)
+                .ToListAsync();
+
+            // Get commission rates for the employee
+            var commissionRates = await DbContext.EmployeeServiceCommissions
+                .Where(c => c.EmployeeId == currentUserId && !c.IsArchived)
+                .ToDictionaryAsync(c => c.ServiceId, c => c.CommissionValue);
+
+            // Default commission rate (if not specifically set)
+            var defaultRate = 10m;
+
+            commissionItems = commissions.Select(c => {
+                var rate = commissionRates.ContainsKey(c.ServiceId) 
+                    ? commissionRates[c.ServiceId] 
+                    : defaultRate;
+                var commissionAmount = c.Price * (rate / 100);
+                
+                return new CommissionItem
+                {
+                    Date = c.Appointment.ScheduledStart,
+                    ServiceName = c.Service?.Name ?? "Unknown Service",
+                    CustomerName = c.Appointment.Customer?.Person != null 
+                        ? $"{c.Appointment.Customer.Person.FirstName} {c.Appointment.Customer.Person.LastName}"
+                        : "Walk-in",
+                    ServicePrice = c.Price,
+                    CommissionRate = rate,
+                    CommissionAmount = commissionAmount
+                };
+            }).ToList();
+
+            totalEarnings = commissionItems.Sum(c => c.CommissionAmount);
+            totalServices = commissionItems.Count;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading commissions: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CalculateDateRange()
+    {
+        var today = DateTime.Today;
+        
+        switch (selectedPeriod)
+        {
+            case "this-week":
+                var daysFromMonday = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+                startDate = today.AddDays(-daysFromMonday);
+                endDate = today;
+                break;
+            case "this-month":
+                startDate = new DateTime(today.Year, today.Month, 1);
+                endDate = today;
+                break;
+            case "last-month":
+                var lastMonth = today.AddMonths(-1);
+                startDate = new DateTime(lastMonth.Year, lastMonth.Month, 1);
+                endDate = new DateTime(lastMonth.Year, lastMonth.Month, DateTime.DaysInMonth(lastMonth.Year, lastMonth.Month));
+                break;
+            case "this-year":
+                startDate = new DateTime(today.Year, 1, 1);
+                endDate = today;
+                break;
+            // custom - use the dates as-is
+        }
+    }
+
+    private class CommissionItem
+    {
+        public DateTime Date { get; set; }
+        public string ServiceName { get; set; } = "";
+        public string CustomerName { get; set; } = "";
+        public decimal ServicePrice { get; set; }
+        public decimal CommissionRate { get; set; }
+        public decimal CommissionAmount { get; set; }
+    }
+}
+
+<style>
+    .page-header {
+        margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+        font-size: 2rem;
+        color: #2c3e50;
+        margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+        color: #6c757d;
+        margin: 0;
+    }
+
+    .filter-section {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .filter-group label {
+        font-weight: 500;
+        color: #495057;
+    }
+
+    .form-select, .form-control {
+        padding: 0.5rem 1rem;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        min-width: 150px;
+    }
+
+    .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .summary-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .summary-card.earnings {
+        border-left: 4px solid #28a745;
+    }
+
+    .summary-card.services {
+        border-left: 4px solid #007bff;
+    }
+
+    .summary-card.avg {
+        border-left: 4px solid #6f42c1;
+    }
+
+    .card-icon {
+        font-size: 2.5rem;
+    }
+
+    .card-content h3 {
+        font-size: 0.9rem;
+        color: #6c757d;
+        margin: 0 0 0.5rem 0;
+    }
+
+    .card-content .amount {
+        font-size: 1.8rem;
+        font-weight: bold;
+        color: #2c3e50;
+        margin: 0;
+    }
+
+    .table-container {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .table-container h3 {
+        margin: 0 0 1rem 0;
+        color: #2c3e50;
+    }
+
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .data-table th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #495057;
+    }
+
+    .data-table tr:hover {
+        background: #f8f9fa;
+    }
+
+    .data-table .earnings {
+        color: #28a745;
+        font-weight: 600;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: #6c757d;
+    }
+
+    .empty-icon {
+        font-size: 3rem;
+        display: block;
+        margin-bottom: 1rem;
+    }
+
+    .loading-spinner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .alert {
+        padding: 1rem;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .alert-warning {
+        background: #fff3cd;
+        color: #856404;
+    }
+</style>
