@@ -1,17 +1,29 @@
-﻿@inherits LayoutComponentBase
+﻿@using Spa_Management_System.Services
+@inherits LayoutComponentBase
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@implements IDisposable
 
 <div class="page">
     <div class="sidebar">
         <NavMenu />
     </div>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
-
-        <article class="content px-4">
+    <main class="main">
+        <article class="content">
             @Body
         </article>
     </main>
 </div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        AuthState.OnAuthStateChanged += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AuthState.OnAuthStateChanged -= StateHasChanged;
+    }
+}

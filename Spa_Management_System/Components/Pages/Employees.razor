@@ -1,0 +1,470 @@
+@page "/employees"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@inject IEmployeeService EmployeeService
+@inject IAuditLogService AuditLog
+@inject IAuthStateService AuthState
+@inject AppDbContext DbContext
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Employees - Serenity Spa</PageTitle>
+
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h3 class="card-title" style="margin: 0;"><span class="bi bi-person-badge"></span> Employees</h3>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" @bind="showInactive" @bind:after="LoadEmployees" style="width: 18px; height: 18px;" />
+                <span>Show Inactive</span>
+            </label>
+            <button class="btn btn-primary" @onclick="ShowAddDialog">
+                <span class="bi bi-plus-circle"></span> Add Employee
+            </button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div style="display: flex; align-items: center; gap: 1rem; padding: 2rem;">
+            <div class="loading"></div>
+            <p style="margin: 0;">Loading employees...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <span class="bi bi-x-circle-fill"></span>
+            <div>@errorMessage</div>
+        </div>
+    }
+    else if (!filteredEmployees.Any())
+    {
+        <div class="alert alert-info">
+            <span class="bi bi-info-circle-fill"></span>
+            <div>No employees found. Click "Add Employee" to create your first employee record.</div>
+        </div>
+    }
+    else
+    {
+        <div class="table-search">
+            <input type="text" placeholder="Search employees..." @bind="searchTerm" @bind:event="oninput" @bind:after="ApplyFilter" />
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th style="cursor: pointer;" @onclick='() => SortBy("name")'>Name @GetSortIcon("name")</th>
+                    <th style="cursor: pointer;" @onclick='() => SortBy("email")'>Email @GetSortIcon("email")</th>
+                    <th>Phone</th>
+                    <th style="cursor: pointer;" @onclick='() => SortBy("role")'>Role @GetSortIcon("role")</th>
+                    <th style="cursor: pointer;" @onclick='() => SortBy("hired")'>Hire Date @GetSortIcon("hired")</th>
+                    <th style="cursor: pointer;" @onclick='() => SortBy("status")'>Status @GetSortIcon("status")</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var emp in GetPagedEmployees())
+                {
+                    <tr>
+                        <td>
+                            <strong>@emp.Person.FirstName @emp.Person.LastName</strong>
+                        </td>
+                        <td>@emp.Person.Email</td>
+                        <td>@emp.Person.Phone</td>
+                        <td>
+                            <span class="badge badge-info">@emp.Role.Name</span>
+                        </td>
+                        <td>@emp.HireDate?.ToString("MMM dd, yyyy")</td>
+                        <td>
+                            @if (emp.Status == "active")
+                            {
+                                <span class="badge badge-success">Active</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-warning">Inactive</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-primary" @onclick="() => ViewEmployee(emp.EmployeeId)">
+                                    View
+                                </button>
+                                @if (emp.Status == "active")
+                                {
+                                    <button class="btn btn-sm btn-warning" @onclick="() => ArchiveEmployee(emp.EmployeeId)">
+                                        Archive
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-success" @onclick="() => RestoreEmployee(emp.EmployeeId)">
+                                        Restore
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <div class="table-pagination">
+            <div class="pagination-info">
+                Showing @(Math.Min((currentPage - 1) * pageSize + 1, filteredEmployees.Count)) to @(Math.Min(currentPage * pageSize, filteredEmployees.Count)) of @filteredEmployees.Count entries
+            </div>
+            <div class="pagination-controls">
+                <button class="page-btn" @onclick="PreviousPage" disabled="@(currentPage <= 1)">‹ Prev</button>
+                @for (int i = 1; i <= TotalPages; i++)
+                {
+                    var pageNum = i;
+                    <button class="page-btn @(currentPage == pageNum ? "active" : "")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                }
+                <button class="page-btn" @onclick="NextPage" disabled="@(currentPage >= TotalPages)">Next ›</button>
+            </div>
+        </div>
+    }
+</div>
+
+@if (showDialog)
+{
+    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; overflow-y: auto; padding: 2rem 0;">
+        <div class="card" style="width: 600px; max-width: 90vw; margin: auto;">
+            <h4 class="card-title">Add New Employee</h4>
+            
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">First Name <span style="color: var(--spa-danger);">*</span></label>
+                <input class="form-control" type="text" @bind="firstName" />
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">Last Name <span style="color: var(--spa-danger);">*</span></label>
+                <input class="form-control" type="text" @bind="lastName" />
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">Email</label>
+                <input class="form-control" type="email" @bind="email" />
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">Phone</label>
+                <input class="form-control" type="tel" @bind="phone" />
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">Role <span style="color: var(--spa-danger);">*</span></label>
+                <select class="form-control" @bind="selectedRoleId">
+                    <option value="0">-- Select Role --</option>
+                    @foreach (var role in roles)
+                    {
+                        <option value="@role.RoleId">@role.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">Hire Date</label>
+                <input class="form-control" type="date" @bind="hireDate" />
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">Notes</label>
+                <textarea class="form-control" rows="3" @bind="note" placeholder="Any additional notes about the employee"></textarea>
+            </div>
+
+            @if (!string.IsNullOrEmpty(dialogError))
+            {
+                <div class="alert alert-danger">
+                    <span class="bi bi-x-circle-fill"></span>
+                    <div>@dialogError</div>
+                </div>
+            }
+
+            @if (saveSuccess)
+            {
+                <div class="alert alert-success">
+                    <span class="bi bi-check-circle-fill"></span>
+                    <div>Employee created successfully!</div>
+                </div>
+            }
+
+            <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                <button class="btn btn-primary" @onclick="SaveEmployee" disabled="@isSaving">
+                    @if (isSaving)
+                    {
+                        <div class="loading" style="width: 1rem; height: 1rem;"></div>
+                    }
+                    else
+                    {
+                        <span class="bi bi-check-circle"></span>
+                    }
+                    Save Employee
+                </button>
+                <button class="btn btn-outline" @onclick="CloseDialog" disabled="@isSaving">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Employee> employees = new();
+    private List<Role> roles = new();
+    private bool isLoading = true;
+    private string? errorMessage;
+    private bool showDialog = false;
+    private bool isSaving = false;
+    private bool saveSuccess = false;
+    private string? dialogError;
+
+    // Pagination & Sorting
+    private string searchTerm = "";
+    private string sortColumn = "name";
+    private bool sortAscending = true;
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private List<Employee> filteredEmployees = new();
+    private int TotalPages => (int)Math.Ceiling(filteredEmployees.Count / (double)pageSize);
+
+    // Form fields
+    private string firstName = "";
+    private string lastName = "";
+    private string? email;
+    private string? phone;
+    private short selectedRoleId = 0;
+    private DateTime? hireDate = DateTime.Today;
+    private string? note;
+    private bool showInactive = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEmployees();
+        await LoadRoles();
+    }
+
+    private async Task LoadEmployees()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            if (showInactive)
+            {
+                employees = (await EmployeeService.GetAllEmployeesAsync()).ToList();
+            }
+            else
+            {
+                employees = (await EmployeeService.GetActiveEmployeesAsync()).ToList();
+            }
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading employees: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadRoles()
+    {
+        try
+        {
+            roles = await DbContext.Roles.ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading roles: {ex.Message}";
+        }
+    }
+
+    private void ShowAddDialog()
+    {
+        ClearForm();
+        showDialog = true;
+    }
+
+    private async Task SaveEmployee()
+    {
+        dialogError = null;
+        saveSuccess = false;
+
+        // Validation
+        if (string.IsNullOrWhiteSpace(firstName))
+        {
+            dialogError = "First name is required";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(lastName))
+        {
+            dialogError = "Last name is required";
+            return;
+        }
+
+        if (selectedRoleId == 0)
+        {
+            dialogError = "Please select a role";
+            return;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            await EmployeeService.CreateEmployeeAsync(
+                firstName.Trim(),
+                lastName.Trim(),
+                email?.Trim(),
+                phone?.Trim(),
+                selectedRoleId,
+                hireDate,
+                note?.Trim()
+            );
+
+            saveSuccess = true;
+            await LoadEmployees();
+            
+            // Close dialog after a brief delay
+            await Task.Delay(1500);
+            CloseDialog();
+        }
+        catch (Exception ex)
+        {
+            dialogError = $"Error saving employee: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ViewEmployee(long employeeId)
+    {
+        Navigation.NavigateTo($"/employees/{employeeId}");
+    }
+
+    private void CloseDialog()
+    {
+        showDialog = false;
+        ClearForm();
+    }
+
+    private void ClearForm()
+    {
+        firstName = "";
+        lastName = "";
+        email = null;
+        phone = null;
+        selectedRoleId = 0;
+        hireDate = DateTime.Today;
+        note = null;
+        dialogError = null;
+        saveSuccess = false;
+    }
+
+    private async Task ArchiveEmployee(long employeeId)
+    {
+        try
+        {
+            var employee = await DbContext.Employees.FindAsync(employeeId);
+            if (employee != null)
+            {
+                employee.Status = "archived";
+                await DbContext.SaveChangesAsync();
+                
+                var person = await DbContext.Persons.FindAsync(employee.PersonId);
+                await AuditLog.LogUpdateAsync("Employee", employeeId.ToString(), 
+                    $"Archived employee: {person?.FirstName} {person?.LastName}", 
+                    AuthState?.CurrentUser?.UserId);
+                
+                await LoadEmployees();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error archiving employee: {ex.Message}";
+        }
+    }
+
+    private async Task RestoreEmployee(long employeeId)
+    {
+        try
+        {
+            var employee = await DbContext.Employees.FindAsync(employeeId);
+            if (employee != null)
+            {
+                employee.Status = "active";
+                await DbContext.SaveChangesAsync();
+                
+                var person = await DbContext.Persons.FindAsync(employee.PersonId);
+                await AuditLog.LogUpdateAsync("Employee", employeeId.ToString(), 
+                    $"Restored employee: {person?.FirstName} {person?.LastName}", 
+                    AuthState?.CurrentUser?.UserId);
+                
+                await LoadEmployees();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error restoring employee: {ex.Message}";
+        }
+    }
+
+    // Filtering, Sorting, Pagination
+    private void ApplyFilter()
+    {
+        var query = employees.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.ToLower();
+            query = query.Where(e =>
+                e.Person.FirstName.ToLower().Contains(term) ||
+                e.Person.LastName.ToLower().Contains(term) ||
+                (e.Person.Email?.ToLower().Contains(term) ?? false) ||
+                (e.Person.Phone?.ToLower().Contains(term) ?? false) ||
+                e.Role.Name.ToLower().Contains(term)
+            );
+        }
+
+        query = sortColumn switch
+        {
+            "name" => sortAscending ? query.OrderBy(e => e.Person.FirstName).ThenBy(e => e.Person.LastName) : query.OrderByDescending(e => e.Person.FirstName).ThenByDescending(e => e.Person.LastName),
+            "email" => sortAscending ? query.OrderBy(e => e.Person.Email) : query.OrderByDescending(e => e.Person.Email),
+            "role" => sortAscending ? query.OrderBy(e => e.Role.Name) : query.OrderByDescending(e => e.Role.Name),
+            "hired" => sortAscending ? query.OrderBy(e => e.HireDate) : query.OrderByDescending(e => e.HireDate),
+            "status" => sortAscending ? query.OrderBy(e => e.Status) : query.OrderByDescending(e => e.Status),
+            _ => query.OrderBy(e => e.Person.FirstName)
+        };
+
+        filteredEmployees = query.ToList();
+        currentPage = 1;
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column)
+            sortAscending = !sortAscending;
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+        ApplyFilter();
+    }
+
+    private string GetSortIcon(string column) => sortColumn != column ? "" : (sortAscending ? "▲" : "▼");
+
+    private List<Employee> GetPagedEmployees() => filteredEmployees.Skip((currentPage - 1) * pageSize).Take(pageSize).ToList();
+
+    private void GoToPage(int page) => currentPage = page;
+    private void PreviousPage() { if (currentPage > 1) currentPage--; }
+    private void NextPage() { if (currentPage < TotalPages) currentPage++; }
+}

@@ -1,3 +1,30 @@
 ﻿@page "/"
+@using Spa_Management_System.Services
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
 
-<h1>Hello, world!</h1>
+<PageTitle>Kaye Spa</PageTitle>
+
+@code {
+    protected override void OnInitialized()
+    {
+        // Redirect based on authentication status
+        if (AuthState.IsAuthenticated)
+        {
+            var role = AuthState.GetUserRole();
+            
+            if (role.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+            {
+                Navigation.NavigateTo("/admin", forceLoad: true);
+            }
+            else
+            {
+                Navigation.NavigateTo("/dashboard", forceLoad: true);
+            }
+        }
+        else
+        {
+            Navigation.NavigateTo("/login", forceLoad: true);
+        }
+    }
+}

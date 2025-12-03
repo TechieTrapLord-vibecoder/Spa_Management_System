@@ -1,0 +1,776 @@
+@page "/customers/{CustomerId:long}"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+@inject ICustomerService CustomerService
+
+<PageTitle>Customer Details - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else if (isLoading)
+{
+    <div class="card">
+        <div style="padding: 2rem; text-align: center;">
+            <div class="loading"></div>
+            <p style="margin-top: 1rem; color: var(--spa-text-light);">Loading customer details...</p>
+        </div>
+    </div>
+}
+else if (customer == null)
+{
+    <div class="card">
+        <div class="alert alert-danger">
+            <span class="bi bi-exclamation-triangle-fill"></span>
+            <div>Customer not found.</div>
+        </div>
+        <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/customers")'>
+            <span class="bi bi-arrow-left"></span> Back to Customers
+        </button>
+    </div>
+}
+else
+{
+    <div style="margin-bottom: 1rem;">
+        <button class="btn btn-outline" @onclick='() => Navigation.NavigateTo("/customers")'>
+            <span class="bi bi-arrow-left"></span> Back to Customers
+        </button>
+    </div>
+
+    <!-- Customer Header Card -->
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: start;">
+            <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                    <div style="width: 80px; height: 80px; border-radius: 50%; background: #AA9478; display: flex; align-items: center; justify-content: center; color: white; font-size: 2rem; font-weight: bold;">
+                        @GetInitials(customer.Person)
+                    </div>
+                    <div>
+                        <h2 style="margin: 0; color: var(--spa-primary);">@customer.Person.FirstName @customer.Person.LastName</h2>
+                        <p style="margin: 0.25rem 0 0 0; color: var(--spa-text-light);">
+                            <strong>Customer Code:</strong> @customer.CustomerCode
+                        </p>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    @if (!string.IsNullOrEmpty(customer.Person.Email))
+                    {
+                        <div>
+                            <span class="bi bi-envelope" style="color: var(--spa-accent);"></span>
+                            <span style="margin-left: 0.5rem;">@customer.Person.Email</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(customer.Person.Phone))
+                    {
+                        <div>
+                            <span class="bi bi-telephone" style="color: var(--spa-accent);"></span>
+                            <span style="margin-left: 0.5rem;">@customer.Person.Phone</span>
+                        </div>
+                    }
+                    @if (customer.Person.Dob.HasValue)
+                    {
+                        <div>
+                            <span class="bi bi-calendar" style="color: var(--spa-accent);"></span>
+                            <span style="margin-left: 0.5rem;">@customer.Person.Dob.Value.ToString("MMM dd, yyyy")</span>
+                        </div>
+                    }
+                    <div>
+                        <span class="bi bi-calendar-check" style="color: var(--spa-accent);"></span>
+                        <span style="margin-left: 0.5rem;">Joined @customer.CreatedAt.ToString("MMM dd, yyyy")</span>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(customer.Person.Address))
+                {
+                    <div style="margin-top: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 8px;">
+                        <span class="bi bi-geo-alt" style="color: var(--spa-accent);"></span>
+                        <span style="margin-left: 0.5rem;">@customer.Person.Address</span>
+                    </div>
+                }
+            </div>
+
+            <div style="text-align: right;">
+                <button class="btn btn-primary" @onclick="OpenEditDialog">
+                    <span class="bi bi-pencil"></span> Edit
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="card" style="text-align: center; padding: 1.5rem;">
+            <div style="font-size: 2rem; color: var(--spa-primary); font-weight: bold;">@customer.LoyaltyPoints</div>
+            <div style="color: var(--spa-text-light);">Loyalty Points</div>
+            <button class="btn btn-sm btn-primary" style="margin-top: 0.5rem;" @onclick="OpenLoyaltyDialog">
+                <span class="bi bi-plus-circle"></span> Add Points
+            </button>
+        </div>
+
+        <div class="card" style="text-align: center; padding: 1.5rem;">
+            <div style="font-size: 2rem; color: var(--spa-success); font-weight: bold;">@totalAppointments</div>
+            <div style="color: var(--spa-text-light);">Total Appointments</div>
+        </div>
+
+        <div class="card" style="text-align: center; padding: 1.5rem;">
+            <div style="font-size: 2rem; color: var(--spa-accent); font-weight: bold;">₱@totalSpent.ToString("N2")</div>
+            <div style="color: var(--spa-text-light);">Total Spent</div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success">
+            <span class="bi bi-check-circle-fill"></span>
+            <div>@successMessage</div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <span class="bi bi-exclamation-triangle-fill"></span>
+            <div>@errorMessage</div>
+        </div>
+    }
+
+    <!-- Tabs -->
+    <div style="margin-bottom: 1.5rem;">
+        <div style="display: flex; gap: 1rem; border-bottom: 2px solid var(--spa-secondary);">
+            <button class="@(activeTab == "appointments" ? "tab-active" : "tab")" @onclick='() => activeTab = "appointments"'>
+                <span class="bi bi-calendar"></span> Appointments
+            </button>
+            <button class="@(activeTab == "sales" ? "tab-active" : "tab")" @onclick='() => activeTab = "sales"'>
+                <span class="bi bi-cart"></span> Sales History
+            </button>
+        </div>
+    </div>
+
+    <!-- Tab Content -->
+    @if (activeTab == "appointments")
+    {
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h4 style="margin: 0;">Appointment History</h4>
+                <button class="btn btn-primary" @onclick="CreateAppointment">
+                    <span class="bi bi-plus-circle"></span> New Appointment
+                </button>
+            </div>
+
+            @if (!appointments.Any())
+            {
+                <div class="alert alert-info">
+                    <span class="bi bi-info-circle-fill"></span>
+                    <div>No appointments yet. Create the first one!</div>
+                </div>
+            }
+            else
+            {
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date & Time</th>
+                                <th>Services</th>
+                                <th>Status</th>
+                                <th>Total</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var apt in appointments.OrderByDescending(a => a.ScheduledStart))
+                            {
+                                <tr>
+                                    <td>@apt.ScheduledStart.ToString("MMM dd, yyyy hh:mm tt")</td>
+                                    <td>
+                                        @if (apt.AppointmentServices.Any())
+                                        {
+                                            <div>@string.Join(", ", apt.AppointmentServices.Select(s => s.Service?.Name))</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span style="text-transform: uppercase; font-size: 0.8rem; font-weight: 500; color: @(apt.Status == "paid" ? "#2e7d32" : apt.Status == "cancelled" ? "#c62828" : "#5a7a6b");">@apt.Status.ToUpper()</span>
+                                    </td>
+                                    <td><strong>₱@apt.AppointmentServices.Sum(s => s.Price).ToString("N2")</strong></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline" @onclick='() => Navigation.NavigateTo($"/appointments/{apt.AppointmentId}")'>
+                                            <span class="bi bi-eye"></span> View
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+    else if (activeTab == "sales")
+    {
+        <div class="card">
+            <h4 style="margin-bottom: 1rem;">Purchase History</h4>
+
+            @if (!sales.Any())
+            {
+                <div class="alert alert-info">
+                    <span class="bi bi-info-circle-fill"></span>
+                    <div>No purchase history.</div>
+                </div>
+            }
+            else
+            {
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Sale #</th>
+                                <th>Date</th>
+                                <th>Items</th>
+                                <th>Total Amount</th>
+                                <th>Payment Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var sale in sales.OrderByDescending(s => s.CreatedAt))
+                            {
+                                <tr>
+                                    <td><strong>@sale.SaleNumber</strong></td>
+                                    <td>@sale.CreatedAt.ToString("MMM dd, yyyy")</td>
+                                    <td>@sale.SaleItems.Count items</td>
+                                    <td><strong>₱@sale.TotalAmount.ToString("N2")</strong></td>
+                                    <td>
+                                        @if (sale.PaymentStatus == "paid")
+                                        {
+                                            <span class="badge badge-success">Paid</span>
+                                        }
+                                        else if (sale.PaymentStatus == "partial")
+                                        {
+                                            <span class="badge" style="background: #ffc107; color: #000;">Partial</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge badge-danger">Unpaid</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline" @onclick='() => ViewSale(sale.SaleId)'>
+                                            <span class="bi bi-eye"></span>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+
+    <!-- Edit Customer Dialog -->
+    @if (showEditDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseEditDialog">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);">Edit Customer</h4>
+                    <button class="btn-close" @onclick="CloseEditDialog">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>First Name *</label>
+                        <input type="text" class="form-control" @bind="editFirstName" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Last Name *</label>
+                        <input type="text" class="form-control" @bind="editLastName" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" class="form-control" @bind="editEmail" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input type="tel" class="form-control" @bind="editPhone" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Date of Birth</label>
+                        <input type="date" class="form-control" value="@editDob" @onchange="@((e) => editDob = e.Value?.ToString())" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Address</label>
+                        <textarea class="form-control" @bind="editAddress" rows="3"></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseEditDialog">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-primary" @onclick="SaveCustomerEdits">
+                        <span class="bi bi-check-circle"></span> Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Add Loyalty Points Dialog -->
+    @if (showLoyaltyDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseLoyaltyDialog">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 400px;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);">Adjust Loyalty Points</h4>
+                    <button class="btn-close" @onclick="CloseLoyaltyDialog">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px; margin-bottom: 1rem; text-align: center;">
+                        <div style="font-size: 1.5rem; font-weight: bold; color: var(--spa-primary);">@customer.LoyaltyPoints</div>
+                        <div style="color: var(--spa-text-light);">Current Points</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Points to Add/Subtract</label>
+                        <input type="number" class="form-control" @bind="pointsToAdd" placeholder="Enter positive or negative number" />
+                        <small style="color: var(--spa-text-light);">Use negative numbers to subtract points</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Reason</label>
+                        <textarea class="form-control" @bind="pointsReason" rows="2" placeholder="Why are you adjusting points?"></textarea>
+                    </div>
+
+                    @if (pointsToAdd != 0)
+                    {
+                        <div class="alert alert-info">
+                            New balance will be: <strong>@(customer.LoyaltyPoints + pointsToAdd)</strong>
+                        </div>
+                    }
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseLoyaltyDialog">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-primary" @onclick="SaveLoyaltyPoints">
+                        <span class="bi bi-check-circle"></span> Update Points
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Add Note Dialog -->
+    @if (showAddNoteDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseAddNoteDialog">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);">Add Customer Note</h4>
+                    <button class="btn-close" @onclick="CloseAddNoteDialog">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Note *</label>
+                        <textarea class="form-control" @bind="newNoteText" rows="5" 
+                                  placeholder="Add notes about customer preferences, interactions, feedback, etc."></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseAddNoteDialog">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-primary" @onclick="SaveNote" disabled="@(string.IsNullOrWhiteSpace(newNoteText))">
+                        <span class="bi bi-check-circle"></span> Save Note
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Edit Note Dialog -->
+    @if (showEditNoteDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseEditNoteDialog">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);">Edit Note</h4>
+                    <button class="btn-close" @onclick="CloseEditNoteDialog">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Note *</label>
+                        <textarea class="form-control" @bind="editNoteText" rows="5"></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseEditNoteDialog">
+                        <span class="bi bi-x-circle"></span> Cancel
+                    </button>
+                    <button class="btn btn-primary" @onclick="UpdateNote" disabled="@(string.IsNullOrWhiteSpace(editNoteText))">
+                        <span class="bi bi-check-circle"></span> Update Note
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter]
+    public long CustomerId { get; set; }
+
+    private Customer? customer;
+    private List<Appointment> appointments = new();
+    private List<Sale> sales = new();
+    private List<CrmNote> notes = new();
+    private bool isLoading = true;
+    private string? successMessage;
+    private string? errorMessage;
+    private string activeTab = "appointments";
+
+    // Stats
+    private int totalAppointments = 0;
+    private decimal totalSpent = 0;
+    private int totalNotes = 0;
+
+    // Edit dialog
+    private bool showEditDialog = false;
+    private string editFirstName = "";
+    private string editLastName = "";
+    private string? editEmail;
+    private string? editPhone;
+    private string? editAddress;
+    private string? editDob;
+
+    // Loyalty dialog
+    private bool showLoyaltyDialog = false;
+    private int pointsToAdd = 0;
+    private string pointsReason = "";
+
+    // Note dialog
+    private bool showAddNoteDialog = false;
+    private string newNoteText = "";
+
+    // Edit note dialog
+    private bool showEditNoteDialog = false;
+    private long editNoteId = 0;
+    private string editNoteText = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomerData();
+    }
+
+    private async Task LoadCustomerData()
+    {
+        isLoading = true;
+        try
+        {
+            customer = await DbContext.Customers
+                .Include(c => c.Person)
+                .FirstOrDefaultAsync(c => c.CustomerId == CustomerId);
+
+            if (customer != null)
+            {
+                appointments = await DbContext.Appointments
+                    .Include(a => a.AppointmentServices)
+                        .ThenInclude(s => s.Service)
+                    .Where(a => a.CustomerId == CustomerId)
+                    .ToListAsync();
+
+                sales = await DbContext.Sales
+                    .Include(s => s.SaleItems)
+                    .Where(s => s.CustomerId == CustomerId)
+                    .ToListAsync();
+
+                notes = await DbContext.CrmNotes
+                    .Include(n => n.CreatedByUser)
+                        .ThenInclude(u => u!.Employee)
+                            .ThenInclude(e => e!.Person)
+                    .Where(n => n.CustomerId == CustomerId)
+                    .ToListAsync();
+
+                totalAppointments = appointments.Count;
+                totalSpent = sales.Sum(s => s.TotalAmount);
+                totalNotes = notes.Count;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading customer: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetInitials(Person person)
+    {
+        return $"{person.FirstName[0]}{person.LastName[0]}".ToUpper();
+    }
+
+    private void OpenEditDialog()
+    {
+        if (customer != null)
+        {
+            editFirstName = customer.Person.FirstName;
+            editLastName = customer.Person.LastName;
+            editEmail = customer.Person.Email;
+            editPhone = customer.Person.Phone;
+            editAddress = customer.Person.Address;
+            editDob = customer.Person.Dob?.ToString("yyyy-MM-dd");
+            showEditDialog = true;
+            ClearMessages();
+        }
+    }
+
+    private void CloseEditDialog()
+    {
+        showEditDialog = false;
+    }
+
+    private async Task SaveCustomerEdits()
+    {
+        try
+        {
+            ClearMessages();
+
+            if (customer?.Person == null) return;
+
+            customer.Person.FirstName = editFirstName.Trim();
+            customer.Person.LastName = editLastName.Trim();
+            customer.Person.Email = editEmail?.Trim();
+            customer.Person.Phone = editPhone?.Trim();
+            customer.Person.Address = editAddress?.Trim();
+            
+            if (!string.IsNullOrEmpty(editDob))
+            {
+                customer.Person.Dob = DateTime.Parse(editDob);
+            }
+
+            await DbContext.SaveChangesAsync();
+            successMessage = "Customer updated successfully!";
+            CloseEditDialog();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving customer: {ex.Message}";
+        }
+    }
+
+    private void OpenLoyaltyDialog()
+    {
+        pointsToAdd = 0;
+        pointsReason = "";
+        showLoyaltyDialog = true;
+        ClearMessages();
+    }
+
+    private void CloseLoyaltyDialog()
+    {
+        showLoyaltyDialog = false;
+    }
+
+    private async Task SaveLoyaltyPoints()
+    {
+        try
+        {
+            ClearMessages();
+
+            if (customer == null) return;
+
+            customer.LoyaltyPoints += pointsToAdd;
+            await DbContext.SaveChangesAsync();
+
+            // Optionally log this change
+            if (!string.IsNullOrWhiteSpace(pointsReason))
+            {
+                var note = new CrmNote
+                {
+                    CustomerId = CustomerId,
+                    CreatedByUserId = AuthState.CurrentUser?.UserId ?? 0,
+                    Note = $"Loyalty points adjusted: {(pointsToAdd > 0 ? "+" : "")}{pointsToAdd}. Reason: {pointsReason}",
+                    CreatedAt = DateTime.Now
+                };
+                DbContext.CrmNotes.Add(note);
+                await DbContext.SaveChangesAsync();
+                await LoadCustomerData();
+            }
+
+            successMessage = $"Loyalty points updated! New balance: {customer.LoyaltyPoints}";
+            CloseLoyaltyDialog();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error updating points: {ex.Message}";
+        }
+    }
+
+    private void OpenAddNoteDialog()
+    {
+        newNoteText = "";
+        showAddNoteDialog = true;
+        ClearMessages();
+    }
+
+    private void CloseAddNoteDialog()
+    {
+        showAddNoteDialog = false;
+    }
+
+    private async Task SaveNote()
+    {
+        try
+        {
+            ClearMessages();
+
+            var note = new CrmNote
+            {
+                CustomerId = CustomerId,
+                CreatedByUserId = AuthState.CurrentUser?.UserId ?? 0,
+                Note = newNoteText.Trim(),
+                CreatedAt = DateTime.Now
+            };
+
+            DbContext.CrmNotes.Add(note);
+            await DbContext.SaveChangesAsync();
+
+            successMessage = "Note added successfully!";
+            CloseAddNoteDialog();
+            await LoadCustomerData();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving note: {ex.Message}";
+        }
+    }
+
+    private async Task DeleteNote(long noteId)
+    {
+        try
+        {
+            ClearMessages();
+            var note = await DbContext.CrmNotes.FindAsync(noteId);
+            if (note != null)
+            {
+                DbContext.CrmNotes.Remove(note);
+                await DbContext.SaveChangesAsync();
+                successMessage = "Note deleted successfully!";
+                await LoadCustomerData();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting note: {ex.Message}";
+        }
+    }
+
+    private void OpenEditNoteDialog(CrmNote note)
+    {
+        editNoteId = note.NoteId;
+        editNoteText = note.Note ?? "";
+        showEditNoteDialog = true;
+        ClearMessages();
+    }
+
+    private void CloseEditNoteDialog()
+    {
+        showEditNoteDialog = false;
+    }
+
+    private async Task UpdateNote()
+    {
+        try
+        {
+            ClearMessages();
+            var note = await DbContext.CrmNotes.FindAsync(editNoteId);
+            if (note != null)
+            {
+                note.Note = editNoteText.Trim();
+                await DbContext.SaveChangesAsync();
+                successMessage = "Note updated successfully!";
+                CloseEditNoteDialog();
+                await LoadCustomerData();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error updating note: {ex.Message}";
+        }
+    }
+
+    private void CreateAppointment()
+    {
+        Navigation.NavigateTo($"/appointments/new?customerId={CustomerId}");
+    }
+
+    private void ViewSale(long saleId)
+    {
+        Navigation.NavigateTo($"/sales/{saleId}");
+    }
+
+    private void ClearMessages()
+    {
+        successMessage = null;
+        errorMessage = null;
+    }
+}
+
+<style>
+    .tab {
+        padding: 0.75rem 1.5rem;
+        background: transparent;
+        border: none;
+        border-bottom: 3px solid transparent;
+        color: var(--spa-text-light);
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .tab:hover {
+        color: var(--spa-primary);
+        background: rgba(179, 157, 219, 0.1);
+    }
+
+    .tab-active {
+        padding: 0.75rem 1.5rem;
+        background: transparent;
+        border: none;
+        border-bottom: 3px solid var(--spa-primary);
+        color: var(--spa-primary);
+        cursor: pointer;
+        font-weight: 600;
+    }
+</style>

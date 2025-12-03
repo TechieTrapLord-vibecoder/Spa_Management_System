@@ -1,0 +1,886 @@
+@page "/purchase-orders"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+@inject IAccountingService AccountingService
+
+<PageTitle>Purchase Orders - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-cart"></span> Purchase Orders</h3>
+                <p style="color: var(--spa-text-light); margin: 0.5rem 0 0 0;">Order stock from suppliers and manage deliveries</p>
+            </div>
+            <button class="btn btn-primary" @onclick="OpenCreateDialog">
+                <span class="bi bi-plus-circle"></span> Create PO
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success">
+                <span class="bi bi-check-circle-fill"></span>
+                <div>@successMessage</div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">
+                <span class="bi bi-exclamation-triangle-fill"></span>
+                <div>@errorMessage</div>
+            </div>
+        }
+
+        <!-- Summary Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="padding: 1rem; background: #DCD8CE; border-radius: 12px; text-align: center;">
+                <div style="font-size: 1.5rem; font-weight: bold; color: var(--spa-warning);">@purchaseOrders.Count(p => p.Status == "pending")</div>
+                <div style="font-size: 0.85rem; color: #454F4A;">Pending</div>
+            </div>
+            <div style="padding: 1rem; background: #DCD8CE; border-radius: 12px; text-align: center;">
+                <div style="font-size: 1.5rem; font-weight: bold; color: var(--spa-info);">@purchaseOrders.Count(p => p.Status == "ordered")</div>
+                <div style="font-size: 0.85rem; color: #454F4A;">Ordered</div>
+            </div>
+            <div style="padding: 1rem; background: #DCD8CE; border-radius: 12px; text-align: center;">
+                <div style="font-size: 1.5rem; font-weight: bold; color: var(--spa-accent);">@purchaseOrders.Count(p => p.Status == "in-transit")</div>
+                <div style="font-size: 0.85rem; color: #454F4A;">In Transit</div>
+            </div>
+            <div style="padding: 1rem; background: #DCD8CE; border-radius: 12px; text-align: center;">
+                <div style="font-size: 1.5rem; font-weight: bold; color: var(--spa-success);">@purchaseOrders.Count(p => p.Status == "received")</div>
+                <div style="font-size: 0.85rem; color: #454F4A;">Received</div>
+            </div>
+        </div>
+
+        <!-- Filter -->
+        <div style="margin-bottom: 1rem;">
+            <select class="form-control" @onchange="OnStatusFilterChanged" style="max-width: 200px;">
+                <option value="">All Orders</option>
+                <option value="pending">Pending</option>
+                <option value="ordered">Ordered</option>
+                <option value="in-transit">In Transit</option>
+                <option value="received">Received</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="padding: 2rem; text-align: center;">
+                <div class="loading"></div>
+                <p style="margin-top: 1rem; color: var(--spa-text-light);">Loading purchase orders...</p>
+            </div>
+        }
+        else if (!filteredOrders.Any())
+        {
+            <div class="alert alert-info">
+                <span class="bi bi-info-circle-fill"></span>
+                <div>
+                    <strong>No Purchase Orders</strong><br />
+                    Create your first purchase order to start ordering from suppliers.
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="table-search">
+                <input type="text" placeholder="Search PO or supplier..." @bind="searchTerm" @bind:event="oninput" @bind:after="ApplyFilter" />
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("ponumber")'>PO Number @GetSortIcon("ponumber")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("supplier")'>Supplier @GetSortIcon("supplier")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("date")'>Date @GetSortIcon("date")</th>
+                            <th style="cursor: pointer; text-align: center;" @onclick='() => SortBy("items")'>Items @GetSortIcon("items")</th>
+                            <th style="cursor: pointer; text-align: right;" @onclick='() => SortBy("total")'>Total @GetSortIcon("total")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("status")'>Status @GetSortIcon("status")</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var po in GetPagedOrders())
+                        {
+                            var poTotal = po.PurchaseOrderItems?.Sum(i => i.QtyOrdered * i.UnitCost) ?? 0;
+                            <tr>
+                                <td><strong>@po.PoNumber</strong></td>
+                                <td>@po.Supplier?.Name</td>
+                                <td>@po.CreatedAt.ToString("MMM dd, yyyy")</td>
+                                <td style="text-align: center;">@(po.PurchaseOrderItems?.Count ?? 0)</td>
+                                <td style="text-align: right;">₱@poTotal.ToString("N2")</td>
+                                <td>
+                                    @{
+                                        var (badgeClass, statusText) = GetStatusBadge(po.Status ?? "pending");
+                                    }
+                                    <span class="badge @badgeClass">@statusText</span>
+                                </td>
+                                <td>
+                                    <div class="btn-group">
+                                        <button class="btn btn-sm btn-light" @onclick="() => ViewPO(po)">
+                                            View
+                                        </button>
+                                        @if (po.Status == "pending")
+                                        {
+                                            <button class="btn btn-sm btn-primary" @onclick="() => UpdatePOStatus(po, STATUS_ORDERED)">
+                                                Send
+                                            </button>
+                                        }
+                                        else if (po.Status == "ordered")
+                                        {
+                                            <button class="btn btn-sm btn-info" @onclick="() => UpdatePOStatus(po, STATUS_IN_TRANSIT)">
+                                                In Transit
+                                            </button>
+                                        }
+                                        else if (po.Status == "in-transit")
+                                        {
+                                            <button class="btn btn-sm btn-success" @onclick="() => ReceivePO(po)">
+                                                Receive
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-pagination">
+                <span>Showing @(Math.Min((currentPage - 1) * pageSize + 1, filteredOrders.Count))-@(Math.Min(currentPage * pageSize, filteredOrders.Count)) of @filteredOrders.Count entries</span>
+                <div class="pagination-buttons">
+                    <button class="btn btn-sm btn-light" disabled="@(currentPage <= 1)" @onclick="PreviousPage">Previous</button>
+                    @for (int i = 1; i <= TotalPages; i++)
+                    {
+                        var pageNum = i;
+                        <button class="btn btn-sm @(pageNum == currentPage ? "btn-primary" : "btn-light")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                    }
+                    <button class="btn btn-sm btn-light" disabled="@(currentPage >= TotalPages)" @onclick="NextPage">Next</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Create PO Dialog -->
+    @if (showCreateDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseCreateDialog">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);"><span class="bi bi-cart-plus"></span> Create Purchase Order</h4>
+                    <button class="btn-close" @onclick="CloseCreateDialog">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Supplier <span style="color: var(--spa-danger);">*</span></label>
+                        <select class="form-control" @bind="selectedSupplierId">
+                            <option value="0">-- Select Supplier --</option>
+                            @foreach (var supplier in suppliers)
+                            {
+                                <option value="@supplier.SupplierId">@supplier.Name</option>
+                            }
+                        </select>
+                    </div>
+
+                    <h5 style="color: var(--spa-primary); margin: 1.5rem 0 1rem 0;"><span class="bi bi-box"></span> Order Items</h5>
+                    
+                    <!-- Product Selection or Add New -->
+                    @if (!showAddProductForm)
+                    {
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <select class="form-control" @bind="selectedProductId" style="flex: 2;">
+                                <option value="0">-- Select Existing Product --</option>
+                                @foreach (var product in products)
+                                {
+                                    <option value="@product.ProductId">@product.Name (@product.Sku) - ₱@product.CostPrice.ToString("N2")</option>
+                                }
+                            </select>
+                            <input type="number" class="form-control" @bind="itemQty" placeholder="Qty" min="1" style="width: 100px;" />
+                            <button class="btn btn-secondary" @onclick="AddItemToOrder" disabled="@(selectedProductId == 0)">
+                                <span class="bi bi-plus"></span> Add
+                            </button>
+                        </div>
+                        <div style="margin-bottom: 1rem;">
+                            <button class="btn btn-sm btn-outline" @onclick="ShowAddProductForm" style="font-size: 0.85rem;">
+                                <span class="bi bi-plus-circle"></span> Product not in list? Add New Product
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Add New Product Form -->
+                        <div style="border: 2px solid var(--spa-accent); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: rgba(170, 148, 120, 0.05);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                <strong style="color: var(--spa-primary);"><span class="bi bi-plus-circle"></span> Add New Product</strong>
+                                <button class="btn btn-sm btn-secondary" @onclick="CancelAddProduct">Cancel</button>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                                <div class="form-group" style="margin-bottom: 0.5rem;">
+                                    <label style="font-size: 0.85rem;">Product Name <span style="color: var(--spa-danger);">*</span></label>
+                                    <input type="text" class="form-control" @bind="newProductName" placeholder="e.g., Avon Lotion 250ml" />
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0.5rem;">
+                                    <label style="font-size: 0.85rem;">SKU</label>
+                                    <input type="text" class="form-control" @bind="newProductSku" placeholder="e.g., AVN-LOT-250" />
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0.5rem;">
+                                    <label style="font-size: 0.85rem;">Cost Price (Supplier) <span style="color: var(--spa-danger);">*</span></label>
+                                    <input type="number" class="form-control" @bind="newProductCostPrice" step="0.01" min="0" />
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0.5rem;">
+                                    <label style="font-size: 0.85rem;">Selling Price</label>
+                                    <input type="number" class="form-control" @bind="newProductUnitPrice" step="0.01" min="0" />
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0.5rem;">
+                                    <label style="font-size: 0.85rem;">Unit</label>
+                                    <select class="form-control" @bind="newProductUnit">
+                                        <option value="pcs">pcs</option>
+                                        <option value="bottle">bottle</option>
+                                        <option value="box">box</option>
+                                        <option value="pack">pack</option>
+                                        <option value="ml">ml</option>
+                                        <option value="g">g</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0.5rem;">
+                                    <label style="font-size: 0.85rem;">Quantity to Order <span style="color: var(--spa-danger);">*</span></label>
+                                    <input type="number" class="form-control" @bind="itemQty" min="1" />
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" @onclick="AddNewProductAndOrder" style="margin-top: 0.75rem;">
+                                <span class="bi bi-check-circle"></span> Create Product & Add to Order
+                            </button>
+                        </div>
+                    }
+
+                    @if (orderItems.Any())
+                    {
+                        <div style="border: 1px solid var(--spa-secondary); border-radius: 8px; overflow: hidden;">
+                            @foreach (var item in orderItems)
+                            {
+                                <div style="padding: 0.75rem 1rem; border-bottom: 1px solid var(--spa-secondary); display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <strong>@item.Product.Name</strong>
+                                        <span style="color: var(--spa-text-light);"> x @item.Quantity</span>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 1rem;">
+                                        <span>₱@item.LineTotal.ToString("N2")</span>
+                                        <button class="btn btn-sm btn-danger" @onclick="() => RemoveOrderItem(item)" style="padding: 0.25rem 0.5rem;">
+                                            <span class="bi bi-trash"></span>
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                            <div style="padding: 0.75rem 1rem; background: var(--spa-light); display: flex; justify-content: space-between; font-weight: bold;">
+                                <span>Total:</span>
+                                <span>₱@orderItems.Sum(i => i.LineTotal).ToString("N2")</span>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="padding: 1rem; text-align: center; color: var(--spa-text-light); border: 1px dashed var(--spa-secondary); border-radius: 8px;">
+                            Add products to your order
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(dialogError))
+                    {
+                        <div class="alert alert-danger" style="margin-top: 1rem;">@dialogError</div>
+                    }
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseCreateDialog">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SavePurchaseOrder" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <div class="loading" style="width: 1rem; height: 1rem; display: inline-block;"></div>
+                        }
+                        else
+                        {
+                            <span class="bi bi-check-circle"></span>
+                        }
+                        Create PO
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- View PO Dialog -->
+    @if (showViewDialog && viewingPO != null)
+    {
+        <div class="modal-overlay" @onclick="CloseViewDialog">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);"><span class="bi bi-file-text"></span> @viewingPO.PoNumber</h4>
+                    <button class="btn-close" @onclick="CloseViewDialog">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                        <div>
+                            <label style="color: var(--spa-text-light); font-size: 0.85rem;">Supplier</label>
+                            <div style="font-weight: 500;">@viewingPO.Supplier?.Name</div>
+                        </div>
+                        <div>
+                            <label style="color: var(--spa-text-light); font-size: 0.85rem;">Status</label>
+                            <div>
+                                @{
+                                    var (badgeClass, statusText) = GetStatusBadge(viewingPO.Status ?? "pending");
+                                }
+                                <span class="badge @badgeClass">@statusText</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label style="color: var(--spa-text-light); font-size: 0.85rem;">Created</label>
+                            <div>@viewingPO.CreatedAt.ToString("MMM dd, yyyy")</div>
+                        </div>
+                    </div>
+
+                    <h5 style="color: var(--spa-primary); margin-bottom: 0.75rem;">Order Items</h5>
+                    <div style="border: 1px solid var(--spa-secondary); border-radius: 8px; overflow: hidden;">
+                        @{
+                            var viewTotal = 0m;
+                        }
+                        @foreach (var item in viewingPO.PurchaseOrderItems ?? new List<PurchaseOrderItem>())
+                        {
+                            var lineTotal = item.QtyOrdered * item.UnitCost;
+                            viewTotal += lineTotal;
+                            <div style="padding: 0.75rem 1rem; border-bottom: 1px solid var(--spa-secondary); display: flex; justify-content: space-between;">
+                                <span>@item.Product?.Name x @item.QtyOrdered</span>
+                                <strong>₱@lineTotal.ToString("N2")</strong>
+                            </div>
+                        }
+                        <div style="padding: 0.75rem 1rem; background: var(--spa-light); display: flex; justify-content: space-between; font-weight: bold; font-size: 1.1rem;">
+                            <span>Total:</span>
+                            <span>₱@viewTotal.ToString("N2")</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseViewDialog">Close</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private const string STATUS_ORDERED = "ordered";
+    private const string STATUS_IN_TRANSIT = "in-transit";
+    private const string STATUS_RECEIVED = "received";
+
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string? successMessage;
+    private string? errorMessage;
+    private string? dialogError;
+    private string statusFilter = "";
+
+    private List<PurchaseOrder> purchaseOrders = new();
+    private List<PurchaseOrder> filteredOrders = new();
+    private List<Supplier> suppliers = new();
+    private List<Product> products = new();
+
+    // Pagination and sorting
+    private string searchTerm = "";
+    private string sortColumn = "date";
+    private bool sortAscending = false;
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int TotalPages => (int)Math.Ceiling((double)filteredOrders.Count / pageSize);
+
+    // Create PO Dialog
+    private bool showCreateDialog = false;
+    private long selectedSupplierId = 0;
+    private long selectedProductId = 0;
+    private int itemQty = 1;
+    private List<OrderItemTemp> orderItems = new();
+
+    // Add New Product (inline in PO)
+    private bool showAddProductForm = false;
+    private string newProductName = "";
+    private string newProductSku = "";
+    private decimal newProductCostPrice = 0;
+    private decimal newProductUnitPrice = 0;
+    private string newProductUnit = "pcs";
+
+    // View PO Dialog
+    private bool showViewDialog = false;
+    private PurchaseOrder? viewingPO;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            purchaseOrders = await DbContext.PurchaseOrders
+                .Include(p => p.Supplier)
+                .Include(p => p.PurchaseOrderItems)
+                    .ThenInclude(i => i.Product)
+                .OrderByDescending(p => p.CreatedAt)
+                .ToListAsync();
+
+            suppliers = await DbContext.Suppliers.OrderBy(s => s.Name).ToListAsync();
+            products = await DbContext.Products.Where(p => p.Active).OrderBy(p => p.Name).ToListAsync();
+
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading data: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        filteredOrders = purchaseOrders;
+
+        // Search filter
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var search = searchTerm.ToLower();
+            filteredOrders = filteredOrders.Where(p => 
+                (p.PoNumber?.ToLower().Contains(search) ?? false) ||
+                (p.Supplier?.Name?.ToLower().Contains(search) ?? false)
+            ).ToList();
+        }
+
+        // Status filter
+        if (!string.IsNullOrEmpty(statusFilter))
+        {
+            filteredOrders = filteredOrders.Where(p => p.Status == statusFilter).ToList();
+        }
+
+        // Apply sorting
+        filteredOrders = sortColumn switch
+        {
+            "ponumber" => sortAscending 
+                ? filteredOrders.OrderBy(p => p.PoNumber).ToList()
+                : filteredOrders.OrderByDescending(p => p.PoNumber).ToList(),
+            "supplier" => sortAscending 
+                ? filteredOrders.OrderBy(p => p.Supplier?.Name).ToList()
+                : filteredOrders.OrderByDescending(p => p.Supplier?.Name).ToList(),
+            "date" => sortAscending 
+                ? filteredOrders.OrderBy(p => p.CreatedAt).ToList()
+                : filteredOrders.OrderByDescending(p => p.CreatedAt).ToList(),
+            "items" => sortAscending 
+                ? filteredOrders.OrderBy(p => p.PurchaseOrderItems?.Count ?? 0).ToList()
+                : filteredOrders.OrderByDescending(p => p.PurchaseOrderItems?.Count ?? 0).ToList(),
+            "total" => sortAscending 
+                ? filteredOrders.OrderBy(p => p.PurchaseOrderItems?.Sum(i => i.QtyOrdered * i.UnitCost) ?? 0).ToList()
+                : filteredOrders.OrderByDescending(p => p.PurchaseOrderItems?.Sum(i => i.QtyOrdered * i.UnitCost) ?? 0).ToList(),
+            "status" => sortAscending 
+                ? filteredOrders.OrderBy(p => p.Status).ToList()
+                : filteredOrders.OrderByDescending(p => p.Status).ToList(),
+            _ => filteredOrders
+        };
+
+        currentPage = 1;
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+        ApplyFilter();
+    }
+
+    private string GetSortIcon(string column)
+    {
+        if (sortColumn != column) return "";
+        return sortAscending ? "▲" : "▼";
+    }
+
+    private List<PurchaseOrder> GetPagedOrders()
+    {
+        return filteredOrders
+            .Skip((currentPage - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+    }
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+        }
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < TotalPages)
+        {
+            currentPage++;
+        }
+    }
+
+    private void GoToPage(int page)
+    {
+        currentPage = page;
+    }
+
+    private void OnStatusFilterChanged(ChangeEventArgs e)
+    {
+        statusFilter = e.Value?.ToString() ?? "";
+        ApplyFilter();
+    }
+
+    private void OpenCreateDialog()
+    {
+        selectedSupplierId = 0;
+        selectedProductId = 0;
+        itemQty = 1;
+        orderItems.Clear();
+        dialogError = null;
+        showAddProductForm = false;
+        ResetNewProductFields();
+        showCreateDialog = true;
+    }
+
+    private void CloseCreateDialog() => showCreateDialog = false;
+
+    private void ShowAddProductForm()
+    {
+        showAddProductForm = true;
+        ResetNewProductFields();
+    }
+
+    private void CancelAddProduct()
+    {
+        showAddProductForm = false;
+        ResetNewProductFields();
+    }
+
+    private void ResetNewProductFields()
+    {
+        newProductName = "";
+        newProductSku = "";
+        newProductCostPrice = 0;
+        newProductUnitPrice = 0;
+        newProductUnit = "pcs";
+        itemQty = 1;
+    }
+
+    private async Task AddNewProductAndOrder()
+    {
+        // Validate
+        if (string.IsNullOrWhiteSpace(newProductName))
+        {
+            dialogError = "Product name is required.";
+            return;
+        }
+        if (newProductCostPrice <= 0)
+        {
+            dialogError = "Cost price must be greater than 0.";
+            return;
+        }
+        if (itemQty <= 0)
+        {
+            dialogError = "Quantity must be at least 1.";
+            return;
+        }
+
+        try
+        {
+            // Create the new product
+            var newProduct = new Product
+            {
+                Name = newProductName.Trim(),
+                Sku = string.IsNullOrWhiteSpace(newProductSku) ? GenerateProductSku(newProductName) : newProductSku.Trim(),
+                CostPrice = newProductCostPrice,
+                UnitPrice = newProductUnitPrice > 0 ? newProductUnitPrice : newProductCostPrice * 1.5m, // Default 50% markup
+                Unit = newProductUnit,
+                Active = true
+            };
+
+            DbContext.Products.Add(newProduct);
+            await DbContext.SaveChangesAsync();
+
+            // Add to products list
+            products.Add(newProduct);
+
+            // Add to order
+            orderItems.Add(new OrderItemTemp
+            {
+                Product = newProduct,
+                Quantity = itemQty,
+                UnitCost = newProductCostPrice,
+                LineTotal = itemQty * newProductCostPrice
+            });
+
+            // Reset form
+            showAddProductForm = false;
+            ResetNewProductFields();
+            dialogError = null;
+        }
+        catch (Exception ex)
+        {
+            dialogError = $"Error creating product: {ex.Message}";
+        }
+    }
+
+    private string GenerateProductSku(string productName)
+    {
+        // Generate a simple SKU from product name
+        var prefix = new string(productName.Where(char.IsLetter).Take(3).ToArray()).ToUpper();
+        if (string.IsNullOrEmpty(prefix)) prefix = "PRD";
+        return $"{prefix}-{DateTime.Now:yyyyMMdd}-{new Random().Next(100, 999)}";
+    }
+
+    private void AddItemToOrder()
+    {
+        if (selectedProductId == 0 || itemQty <= 0) return;
+
+        var product = products.First(p => p.ProductId == selectedProductId);
+        var existing = orderItems.FirstOrDefault(i => i.Product.ProductId == selectedProductId);
+        
+        if (existing != null)
+        {
+            existing.Quantity += itemQty;
+            existing.LineTotal = existing.Quantity * existing.UnitCost;
+        }
+        else
+        {
+            orderItems.Add(new OrderItemTemp
+            {
+                Product = product,
+                Quantity = itemQty,
+                UnitCost = product.CostPrice,
+                LineTotal = itemQty * product.CostPrice
+            });
+        }
+
+        selectedProductId = 0;
+        itemQty = 1;
+    }
+
+    private void RemoveOrderItem(OrderItemTemp item)
+    {
+        orderItems.Remove(item);
+    }
+
+    private async Task SavePurchaseOrder()
+    {
+        dialogError = null;
+
+        if (selectedSupplierId == 0)
+        {
+            dialogError = "Please select a supplier.";
+            return;
+        }
+        if (!orderItems.Any())
+        {
+            dialogError = "Please add at least one item.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            var po = new PurchaseOrder
+            {
+                SupplierId = selectedSupplierId,
+                PoNumber = $"PO-{DateTime.Now:yyyyMMdd}-{DateTime.Now:HHmmss}",
+                Status = "pending",
+                CreatedAt = DateTime.Now,
+                CreatedByUserId = AuthState.CurrentUser?.UserId
+            };
+
+            DbContext.PurchaseOrders.Add(po);
+            await DbContext.SaveChangesAsync();
+
+            foreach (var item in orderItems)
+            {
+                var poItem = new PurchaseOrderItem
+                {
+                    PoId = po.PoId,
+                    ProductId = item.Product.ProductId,
+                    QtyOrdered = item.Quantity,
+                    UnitCost = item.UnitCost
+                };
+                DbContext.PurchaseOrderItems.Add(poItem);
+            }
+            await DbContext.SaveChangesAsync();
+
+            successMessage = $"Purchase Order {po.PoNumber} created successfully!";
+            showCreateDialog = false;
+            await LoadData();
+
+            _ = ClearSuccessMessage();
+        }
+        catch (Exception ex)
+        {
+            dialogError = $"Error creating PO: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task UpdatePOStatus(PurchaseOrder po, string newStatus)
+    {
+        try
+        {
+            po.Status = newStatus;
+            await DbContext.SaveChangesAsync();
+            successMessage = $"PO {po.PoNumber} updated to {newStatus}";
+            _ = ClearSuccessMessage();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error updating status: {ex.Message}";
+        }
+    }
+
+    private async Task ReceivePO(PurchaseOrder po)
+    {
+        try
+        {
+            po.Status = STATUS_RECEIVED;
+
+            // Update inventory AND product cost price
+            foreach (var item in po.PurchaseOrderItems ?? new List<PurchaseOrderItem>())
+            {
+                // Update Product cost price (weighted average costing)
+                var product = await DbContext.Products.FirstOrDefaultAsync(p => p.ProductId == item.ProductId);
+                if (product != null)
+                {
+                    var inventory = await DbContext.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId);
+                    var currentQty = inventory?.QuantityOnHand ?? 0;
+                    var currentCost = product.CostPrice;
+                    var newQty = item.QtyOrdered;
+                    var newCost = item.UnitCost;
+                    
+                    // Calculate weighted average cost
+                    if (currentQty + newQty > 0)
+                    {
+                        product.CostPrice = ((currentCost * currentQty) + (newCost * newQty)) / (currentQty + newQty);
+                    }
+                    else
+                    {
+                        product.CostPrice = newCost;
+                    }
+                }
+
+                // Update inventory
+                var inv = await DbContext.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId);
+                if (inv != null)
+                {
+                    inv.QuantityOnHand += item.QtyOrdered;
+                    inv.LastCountedAt = DateTime.Now;
+                }
+                else
+                {
+                    var newInventory = new Spa_Management_System.Models.Inventory();
+                    newInventory.ProductId = item.ProductId;
+                    newInventory.QuantityOnHand = item.QtyOrdered;
+                    newInventory.ReorderLevel = 10;
+                    newInventory.LastCountedAt = DateTime.Now;
+                    DbContext.Inventories.Add(newInventory);
+                }
+
+                // Record stock transaction
+                var stockTx = new StockTransaction();
+                stockTx.ProductId = item.ProductId;
+                stockTx.TxType = "purchase";
+                stockTx.Qty = item.QtyOrdered;
+                stockTx.UnitCost = item.UnitCost;
+                stockTx.Reference = $"PO:{po.PoNumber}";
+                stockTx.CreatedAt = DateTime.Now;
+                stockTx.CreatedByUserId = AuthState.CurrentUser?.UserId;
+                DbContext.StockTransactions.Add(stockTx);
+            }
+
+            await DbContext.SaveChangesAsync();
+            
+            // === AUTO-CREATE JOURNAL ENTRY ===
+            // Debit: Inventory (asset increases)
+            // Credit: Accounts Payable (liability increases - we owe supplier)
+            await AccountingService.CreatePurchaseJournalEntriesAsync(po, AuthState.CurrentUser?.UserId);
+            
+            successMessage = $"PO {po.PoNumber} received! Inventory & product costs updated.";
+            await LoadData();
+            _ = ClearSuccessMessage();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error receiving PO: {ex.Message}";
+        }
+    }
+
+    private void ViewPO(PurchaseOrder po)
+    {
+        viewingPO = po;
+        showViewDialog = true;
+    }
+
+    private void CloseViewDialog()
+    {
+        showViewDialog = false;
+        viewingPO = null;
+    }
+
+    private async Task ClearSuccessMessage()
+    {
+        await Task.Delay(3000);
+        successMessage = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private (string badgeClass, string text) GetStatusBadge(string status) => status switch
+    {
+        "pending" => ("badge-warning", "Pending"),
+        "ordered" => ("badge-info", "Ordered"),
+        "in-transit" => ("badge-secondary", "In Transit"),
+        "received" => ("badge-success", "Received"),
+        "cancelled" => ("badge-danger", "Cancelled"),
+        _ => ("badge-secondary", status)
+    };
+
+    private class OrderItemTemp
+    {
+        public Product Product { get; set; } = null!;
+        public int Quantity { get; set; }
+        public decimal UnitCost { get; set; }
+        public decimal LineTotal { get; set; }
+    }
+}

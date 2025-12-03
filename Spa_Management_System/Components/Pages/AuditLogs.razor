@@ -1,0 +1,343 @@
+@page "/audit-logs"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+
+<PageTitle>Audit Logs - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else if (!HasAccess())
+{
+    <div class="card">
+        <div class="alert alert-danger">
+            <span class="bi bi-exclamation-triangle-fill"></span>
+            <div>Access denied. Only SuperAdmin, Managers and Accountants can view audit logs.</div>
+        </div>
+        <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/")'>
+            <span class="bi bi-house"></span> Go Home
+        </button>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-clipboard-check"></span> Audit Logs</h3>
+                <p style="color: var(--spa-text-light); margin: 0.5rem 0 0 0;">Track all changes made in the system</p>
+            </div>
+            <button class="btn btn-outline" @onclick="RefreshLogs">
+                <span class="bi bi-arrow-clockwise"></span> Refresh
+            </button>
+        </div>
+
+        <!-- Filters -->
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; padding: 1rem; background: var(--spa-light); border-radius: 8px;">
+            <div style="flex: 1; min-width: 200px;">
+                <label style="display: block; font-weight: 500; margin-bottom: 0.25rem;">Entity Type</label>
+                <select class="form-control" @bind="filterEntity">
+                    <option value="">All Entities</option>
+                    @foreach (var entity in entityTypes)
+                    {
+                        <option value="@entity">@entity</option>
+                    }
+                </select>
+            </div>
+
+            <div style="flex: 1; min-width: 150px;">
+                <label style="display: block; font-weight: 500; margin-bottom: 0.25rem;">Action</label>
+                <select class="form-control" @bind="filterAction">
+                    <option value="">All Actions</option>
+                    <option value="create">Create</option>
+                    <option value="update">Update</option>
+                    <option value="delete">Delete</option>
+                </select>
+            </div>
+
+            <div style="flex: 1; min-width: 150px;">
+                <label style="display: block; font-weight: 500; margin-bottom: 0.25rem;">Date Range</label>
+                <select class="form-control" @bind="filterDays">
+                    <option value="1">Last 24 hours</option>
+                    <option value="7">Last 7 days</option>
+                    <option value="30">Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                    <option value="0">All Time</option>
+                </select>
+            </div>
+
+            <div style="flex: 1; min-width: 200px;">
+                <label style="display: block; font-weight: 500; margin-bottom: 0.25rem;">Search</label>
+                <input type="text" class="form-control" placeholder="Search in summary..." @bind="searchText" @bind:event="oninput" />
+            </div>
+
+            <div style="display: flex; align-items: flex-end;">
+                <button class="btn btn-primary" @onclick="ApplyFilters">
+                    <span class="bi bi-filter"></span> Apply
+                </button>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="padding: 2rem; text-align: center;">
+                <div class="loading"></div>
+                <p style="margin-top: 1rem; color: var(--spa-text-light);">Loading audit logs...</p>
+            </div>
+        }
+        else if (!filteredLogs.Any())
+        {
+            <div class="alert alert-info">
+                <span class="bi bi-info-circle-fill"></span>
+                <div>No audit logs found matching your filters.</div>
+            </div>
+        }
+        else
+        {
+            <div style="font-size: 0.9rem; color: var(--spa-text-light); margin-bottom: 1rem;">
+                Showing @(((currentPage - 1) * pageSize) + 1)-@(Math.Min(currentPage * pageSize, filteredLogs.Count)) of @filteredLogs.Count logs
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th @onclick='() => SortBy("Timestamp")' style="width: 150px; cursor: pointer;">Timestamp @GetSortIcon("Timestamp")</th>
+                            <th @onclick='() => SortBy("Action")' style="width: 100px; cursor: pointer;">Action @GetSortIcon("Action")</th>
+                            <th @onclick='() => SortBy("Entity")' style="width: 130px; cursor: pointer;">Entity @GetSortIcon("Entity")</th>
+                            <th style="width: 80px;">ID</th>
+                            <th>Summary</th>
+                            <th @onclick='() => SortBy("User")' style="width: 120px; cursor: pointer;">User @GetSortIcon("User")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var log in GetPagedLogs())
+                        {
+                            <tr>
+                                <td>
+                                    <div style="font-size: 0.85rem;">@log.CreatedAt.ToString("MMM dd, yyyy")</div>
+                                    <div style="font-size: 0.75rem; color: var(--spa-text-light);">@log.CreatedAt.ToString("hh:mm:ss tt")</div>
+                                </td>
+                                <td>
+                                    @if (log.Action == "create")
+                                    {
+                                        <span class="badge badge-success">
+                                            <span class="bi bi-plus-circle"></span> Create
+                                        </span>
+                                    }
+                                    else if (log.Action == "update")
+                                    {
+                                        <span class="badge" style="background: var(--spa-info); color: white;">
+                                            <span class="bi bi-pencil"></span> Update
+                                        </span>
+                                    }
+                                    else if (log.Action == "delete")
+                                    {
+                                        <span class="badge badge-danger">
+                                            <span class="bi bi-trash"></span> Delete
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-secondary">@log.Action</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge badge-secondary">@log.EntityName</span>
+                                </td>
+                                <td style="font-family: monospace; font-size: 0.85rem;">@log.EntityId</td>
+                                <td style="max-width: 400px; word-wrap: break-word;">
+                                    @if (!string.IsNullOrEmpty(log.ChangeSummary))
+                                    {
+                                        @log.ChangeSummary
+                                    }
+                                    else
+                                    {
+                                        <span style="color: var(--spa-text-light); font-style: italic;">No details</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (log.ChangedByUser?.Employee?.Person != null)
+                                    {
+                                        <span>@log.ChangedByUser.Employee.Person.FirstName @log.ChangedByUser.Employee.Person.LastName</span>
+                                    }
+                                    else if (log.ChangedByUser != null)
+                                    {
+                                        <span>@log.ChangedByUser.Username</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: var(--spa-text-light);">System</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            @if (TotalPages > 1)
+            {
+                <div class="table-pagination">
+                    <span>Showing @(((currentPage - 1) * pageSize) + 1)-@(Math.Min(currentPage * pageSize, filteredLogs.Count)) of @filteredLogs.Count entries</span>
+                    <div style="display: flex; gap: 0.25rem;">
+                        <button class="btn btn-sm btn-outline" @onclick="PreviousPage" disabled="@(currentPage == 1)">‹ Prev</button>
+                        @for (int i = Math.Max(1, currentPage - 2); i <= Math.Min(TotalPages, currentPage + 2); i++)
+                        {
+                            var pageNum = i;
+                            <button class="btn btn-sm @(currentPage == pageNum ? "btn-primary" : "btn-outline")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                        }
+                        <button class="btn btn-sm btn-outline" @onclick="NextPage" disabled="@(currentPage == TotalPages)">Next ›</button>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+}
+
+@code {
+    private List<AuditLog> allLogs = new();
+    private List<AuditLog> filteredLogs = new();
+    private bool isLoading = true;
+
+    // Pagination & Sorting
+    private int pageSize = 10;
+    private int currentPage = 1;
+    private string sortColumn = "Timestamp";
+    private bool sortAscending = false;
+
+    private int TotalPages => (int)Math.Ceiling(filteredLogs.Count / (double)pageSize);
+
+    private IEnumerable<AuditLog> GetPagedLogs()
+    {
+        var sorted = sortColumn switch
+        {
+            "Timestamp" => sortAscending ? filteredLogs.OrderBy(l => l.CreatedAt) : filteredLogs.OrderByDescending(l => l.CreatedAt),
+            "Action" => sortAscending ? filteredLogs.OrderBy(l => l.Action) : filteredLogs.OrderByDescending(l => l.Action),
+            "Entity" => sortAscending ? filteredLogs.OrderBy(l => l.EntityName) : filteredLogs.OrderByDescending(l => l.EntityName),
+            "User" => sortAscending ? filteredLogs.OrderBy(l => l.ChangedByUser?.Username) : filteredLogs.OrderByDescending(l => l.ChangedByUser?.Username),
+            _ => filteredLogs.OrderByDescending(l => l.CreatedAt)
+        };
+        return sorted.Skip((currentPage - 1) * pageSize).Take(pageSize);
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column) sortAscending = !sortAscending;
+        else { sortColumn = column; sortAscending = true; }
+        currentPage = 1;
+    }
+
+    private string GetSortIcon(string column) => sortColumn == column ? (sortAscending ? "▲" : "▼") : "";
+
+    private void PreviousPage() { if (currentPage > 1) currentPage--; }
+    private void NextPage() { if (currentPage < TotalPages) currentPage++; }
+    private void GoToPage(int page) { currentPage = page; }
+
+    // Filters
+    private string filterEntity = "";
+    private string filterAction = "";
+    private int filterDays = 7;
+    private string searchText = "";
+
+    private List<string> entityTypes = new()
+    {
+        "Appointment", "Customer", "Employee", "Service", "ServiceCategory",
+        "Product", "Inventory", "PurchaseOrder", "Sale", "Payment",
+        "JournalEntry", "LedgerAccount", "UserAccount", "CrmNote", "StockTransaction"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogs();
+    }
+
+
+    private bool HasAccess()
+    {
+        var role = AuthState.GetUserRole()?.ToLower();
+        return role == "superadmin" || role == "manager" || role == "accountant";
+    }
+
+    private async Task LoadLogs()
+    {
+        isLoading = true;
+        try
+        {
+            allLogs = await DbContext.AuditLogs
+                .Include(a => a.ChangedByUser)
+                    .ThenInclude(u => u!.Employee)
+                        .ThenInclude(e => e!.Person)
+                .OrderByDescending(a => a.CreatedAt)
+                .Take(500)
+                .ToListAsync();
+
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading audit logs: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        var query = allLogs.AsEnumerable();
+
+        if (!string.IsNullOrEmpty(filterEntity))
+        {
+            query = query.Where(a => a.EntityName == filterEntity);
+        }
+
+        if (!string.IsNullOrEmpty(filterAction))
+        {
+            query = query.Where(a => a.Action == filterAction);
+        }
+
+        if (filterDays > 0)
+        {
+            var cutoff = DateTime.Now.AddDays(-filterDays);
+            query = query.Where(a => a.CreatedAt >= cutoff);
+        }
+
+        if (!string.IsNullOrEmpty(searchText))
+        {
+            var search = searchText.ToLower();
+            query = query.Where(a =>
+                (a.ChangeSummary?.ToLower().Contains(search) ?? false) ||
+                (a.EntityId?.ToLower().Contains(search) ?? false) ||
+                (a.EntityName?.ToLower().Contains(search) ?? false)
+            );
+        }
+
+        filteredLogs = query.ToList();
+    }
+
+    private async Task RefreshLogs()
+    {
+        await LoadLogs();
+    }
+}
+
+<style>
+    .table th {
+        background: var(--spa-light);
+        position: sticky;
+        top: 0;
+    }
+
+    .table tbody tr:hover {
+        background: rgba(179, 157, 219, 0.05);
+    }
+</style>

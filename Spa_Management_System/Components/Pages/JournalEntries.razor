@@ -1,0 +1,744 @@
+@page "/journal-entries"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@using Spa_Management_System.Services
+@inject AppDbContext DbContext
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+
+<PageTitle>Journal Entries - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <h3 class="card-title" style="margin: 0;"><span class="bi bi-journal-bookmark"></span> Journal Entries</h3>
+            <button class="btn btn-primary" @onclick="ShowNewEntryDialog">
+                <span class="bi bi-plus-circle"></span> New Entry
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success" style="margin-bottom: 1rem;">
+                <span class="bi bi-check-circle-fill"></span> @successMessage
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger" style="margin-bottom: 1rem;">
+                <span class="bi bi-exclamation-circle-fill"></span> @errorMessage
+            </div>
+        }
+
+        <!-- Filters -->
+        <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: end;">
+            <div style="flex: 1; min-width: 200px;">
+                <label class="form-label">From Date</label>
+                <input type="date" class="form-control" @bind="filterFromDate" @bind:event="onchange" @bind:after="LoadEntries" />
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+                <label class="form-label">To Date</label>
+                <input type="date" class="form-control" @bind="filterToDate" @bind:event="onchange" @bind:after="LoadEntries" />
+            </div>
+            <div style="flex: 2; min-width: 200px;">
+                <label class="form-label">Search</label>
+                <input type="text" class="form-control" placeholder="Search by journal # or description..." @bind="searchTerm" @bind:event="oninput" @bind:after="LoadEntries" />
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="text-align: center; padding: 3rem;">
+                <div class="spinner-border" style="color: var(--spa-primary);"></div>
+                <p style="color: var(--spa-text-light); margin-top: 1rem;">Loading journal entries...</p>
+            </div>
+        }
+        else if (!journalEntries.Any())
+        {
+            <div class="alert alert-info">
+                <span class="bi bi-info-circle-fill"></span>
+                No journal entries found. Click "New Entry" to create one.
+            </div>
+        }
+        else
+        {
+            <!-- Journal Entries List -->
+            <div style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("journalno")'>Journal # @GetSortIcon("journalno")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("date")'>Date @GetSortIcon("date")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("description")'>Description @GetSortIcon("description")</th>
+                            <th style="cursor: pointer; text-align: right;" @onclick='() => SortBy("debit")'>Total Debit @GetSortIcon("debit")</th>
+                            <th style="cursor: pointer; text-align: right;" @onclick='() => SortBy("credit")'>Total Credit @GetSortIcon("credit")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("createdby")'>Created By @GetSortIcon("createdby")</th>
+                            <th style="text-align: center;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var entry in GetPagedEntries())
+                        {
+                            var totalDebit = entry.JournalEntryLines?.Sum(l => l.Debit) ?? 0;
+                            var totalCredit = entry.JournalEntryLines?.Sum(l => l.Credit) ?? 0;
+                            <tr>
+                                <td><strong>@entry.JournalNo</strong></td>
+                                <td>@entry.Date.ToString("MMM dd, yyyy")</td>
+                                <td>@(entry.Description ?? "-")</td>
+                                <td style="text-align: right; color: #28a745; font-weight: 600;">₱@totalDebit.ToString("N2")</td>
+                                <td style="text-align: right; color: #dc3545; font-weight: 600;">₱@totalCredit.ToString("N2")</td>
+                                <td>@(entry.CreatedByUser?.Username ?? "-")</td>
+                                <td style="text-align: center;">
+                                    <button class="btn btn-outline btn-sm" @onclick="() => ViewEntry(entry)" title="View Details">
+                                        <span class="bi bi-eye"></span> View
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => ConfirmDelete(entry)" title="Delete" style="margin-left: 0.25rem;">
+                                        <span class="bi bi-trash"></span> Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-pagination">
+                <span>Showing @(Math.Min((currentPage - 1) * pageSize + 1, journalEntries.Count))-@(Math.Min(currentPage * pageSize, journalEntries.Count)) of @journalEntries.Count entries</span>
+                <div class="pagination-buttons">
+                    <button class="btn btn-sm btn-light" disabled="@(currentPage <= 1)" @onclick="PreviousPage">Previous</button>
+                    @for (int i = 1; i <= TotalPages; i++)
+                    {
+                        var pageNum = i;
+                        <button class="btn btn-sm @(pageNum == currentPage ? "btn-primary" : "btn-light")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                    }
+                    <button class="btn btn-sm btn-light" disabled="@(currentPage >= TotalPages)" @onclick="NextPage">Next</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- New/Edit Entry Dialog -->
+    @if (showEntryDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseEntryDialog">
+            <div class="modal-content" style="max-width: 900px;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h4>@(isEditing ? "Edit Journal Entry" : "New Journal Entry")</h4>
+                    <button class="btn-close" @onclick="CloseEntryDialog"></button>
+                </div>
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 1rem; margin-bottom: 1.5rem;">
+                        <div>
+                            <label class="form-label">Journal # *</label>
+                            <input type="text" class="form-control" @bind="currentEntry.JournalNo" placeholder="JE-001" />
+                        </div>
+                        <div>
+                            <label class="form-label">Date *</label>
+                            <input type="date" class="form-control" @bind="entryDate" />
+                        </div>
+                        <div>
+                            <label class="form-label">Description</label>
+                            <input type="text" class="form-control" @bind="currentEntry.Description" placeholder="Transaction description..." />
+                        </div>
+                    </div>
+
+                    <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-journal-text"></span> Entry Lines</h5>
+
+                    <!-- Line Items -->
+                    <div style="overflow-x: auto;">
+                        <table class="data-table" style="min-width: 600px;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40%;">Account</th>
+                                    <th style="width: 20%; text-align: right;">Debit</th>
+                                    <th style="width: 20%; text-align: right;">Credit</th>
+                                    <th style="width: 15%;">Memo</th>
+                                    <th style="width: 5%;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (int i = 0; i < entryLines.Count; i++)
+                                {
+                                    var line = entryLines[i];
+                                    var index = i;
+                                    <tr>
+                                        <td>
+                                            <select class="form-control" @bind="line.LedgerAccountId">
+                                                <option value="0">-- Select Account --</option>
+                                                @foreach (var account in ledgerAccounts)
+                                                {
+                                                    <option value="@account.LedgerAccountId">@account.Code - @account.Name</option>
+                                                }
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control" style="text-align: right;" step="0.01" min="0" @bind="line.Debit" @bind:event="oninput" @bind:after="() => OnDebitChanged(index)" />
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control" style="text-align: right;" step="0.01" min="0" @bind="line.Credit" @bind:event="oninput" @bind:after="() => OnCreditChanged(index)" />
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control" @bind="line.LineMemo" placeholder="Memo" />
+                                        </td>
+                                        <td>
+                                            @if (entryLines.Count > 2)
+                                            {
+                                                <button class="btn btn-outline-danger btn-sm" @onclick="() => RemoveLine(index)">
+                                                    <span class="bi bi-trash"></span>
+                                                </button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr style="background: var(--spa-background);">
+                                    <td style="text-align: right; font-weight: 600;">Totals:</td>
+                                    <td style="text-align: right; font-weight: 600; color: #28a745;">₱@TotalDebit.ToString("N2")</td>
+                                    <td style="text-align: right; font-weight: 600; color: #dc3545;">₱@TotalCredit.ToString("N2")</td>
+                                    <td colspan="2"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <button class="btn btn-outline btn-sm" @onclick="AddLine" style="margin-top: 0.5rem;">
+                        <span class="bi bi-plus-circle"></span> Add Line
+                    </button>
+
+                    <!-- Balance Check -->
+                    <div style="margin-top: 1rem; padding: 1rem; border-radius: 8px; background: @(IsBalanced ? "#d4edda" : "#f8d7da");">
+                        @if (IsBalanced)
+                        {
+                            <span class="bi bi-check-circle-fill" style="color: #28a745; margin-right: 0.5rem;"></span>
+                            <strong style="color: #28a745;">Entry is balanced!</strong>
+                        }
+                        else
+                        {
+                            <span class="bi bi-exclamation-triangle-fill" style="color: #dc3545; margin-right: 0.5rem;"></span>
+                            <strong style="color: #dc3545;">Entry is NOT balanced!</strong>
+                            <span style="margin-left: 0.5rem;">Difference: ₱@Math.Abs(TotalDebit - TotalCredit).ToString("N2")</span>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" @onclick="CloseEntryDialog">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveEntry" disabled="@(!IsBalanced || isSaving)">
+                        @if (isSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                        else
+                        {
+                            <span class="bi bi-check-circle"></span>
+                        }
+                        Save Entry
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- View Entry Dialog -->
+    @if (showViewDialog && viewingEntry != null)
+    {
+        <div class="modal-overlay" @onclick="CloseViewDialog">
+            <div class="modal-content" style="max-width: 800px;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h4><span class="bi bi-journal-bookmark"></span> Journal Entry: @viewingEntry.JournalNo</h4>
+                    <button class="btn-close" @onclick="CloseViewDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                        <div>
+                            <span style="color: var(--spa-text-light); font-size: 0.85rem;">Date</span>
+                            <p style="font-weight: 600; margin: 0;">@viewingEntry.Date.ToString("MMMM dd, yyyy")</p>
+                        </div>
+                        <div>
+                            <span style="color: var(--spa-text-light); font-size: 0.85rem;">Created By</span>
+                            <p style="font-weight: 600; margin: 0;">@(viewingEntry.CreatedByUser?.Username ?? "N/A")</p>
+                        </div>
+                        <div>
+                            <span style="color: var(--spa-text-light); font-size: 0.85rem;">Created At</span>
+                            <p style="font-weight: 600; margin: 0;">@viewingEntry.CreatedAt.ToString("MMM dd, yyyy hh:mm tt")</p>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(viewingEntry.Description))
+                    {
+                        <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--spa-background); border-radius: 8px;">
+                            <span style="color: var(--spa-text-light); font-size: 0.85rem;">Description</span>
+                            <p style="margin: 0.25rem 0 0 0;">@viewingEntry.Description</p>
+                        </div>
+                    }
+
+                    <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-journal-text"></span> Entry Lines</h5>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Account</th>
+                                <th style="text-align: right;">Debit</th>
+                                <th style="text-align: right;">Credit</th>
+                                <th>Memo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var line in viewingEntry.JournalEntryLines ?? new List<JournalEntryLine>())
+                            {
+                                <tr>
+                                    <td>
+                                        <strong>@(line.LedgerAccount?.Code ?? "")</strong> - @(line.LedgerAccount?.Name ?? "Unknown")
+                                    </td>
+                                    <td style="text-align: right; color: @(line.Debit > 0 ? "#28a745" : "inherit"); font-weight: @(line.Debit > 0 ? "600" : "normal");">
+                                        @(line.Debit > 0 ? $"₱{line.Debit:N2}" : "-")
+                                    </td>
+                                    <td style="text-align: right; color: @(line.Credit > 0 ? "#dc3545" : "inherit"); font-weight: @(line.Credit > 0 ? "600" : "normal");">
+                                        @(line.Credit > 0 ? $"₱{line.Credit:N2}" : "-")
+                                    </td>
+                                    <td style="color: var(--spa-text-light);">@(line.LineMemo ?? "-")</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr style="background: var(--spa-background); font-weight: 600;">
+                                <td style="text-align: right;">Totals:</td>
+                                <td style="text-align: right; color: #28a745;">₱@((viewingEntry.JournalEntryLines?.Sum(l => l.Debit) ?? 0).ToString("N2"))</td>
+                                <td style="text-align: right; color: #dc3545;">₱@((viewingEntry.JournalEntryLines?.Sum(l => l.Credit) ?? 0).ToString("N2"))</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" @onclick="CloseViewDialog">Close</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Delete Confirmation Dialog -->
+    @if (showDeleteDialog && deletingEntry != null)
+    {
+        <div class="modal-overlay" @onclick="CloseDeleteDialog">
+            <div class="modal-content" style="max-width: 400px;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h4><span class="bi bi-exclamation-triangle"></span> Delete Journal Entry</h4>
+                    <button class="btn-close" @onclick="CloseDeleteDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete journal entry <strong>@deletingEntry.JournalNo</strong>?</p>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem;">This will permanently remove the entry and all its line items.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" @onclick="CloseDeleteDialog">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteEntry" disabled="@isDeleting">
+                        @if (isDeleting)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                        else
+                        {
+                            <span class="bi bi-trash"></span>
+                        }
+                        Delete Entry
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    // Data
+    private List<JournalEntry> journalEntries = new();
+    private List<LedgerAccount> ledgerAccounts = new();
+    
+    // Current entry being edited
+    private JournalEntry currentEntry = new();
+    private List<JournalEntryLine> entryLines = new();
+    private DateTime entryDate = DateTime.Today;
+    
+    // View/Delete entry
+    private JournalEntry? viewingEntry;
+    private JournalEntry? deletingEntry;
+    
+    // Filters
+    private DateTime? filterFromDate;
+    private DateTime? filterToDate;
+    private string searchTerm = "";
+    
+    // UI State
+    private bool isLoading = true;
+    private bool showEntryDialog = false;
+    private bool showViewDialog = false;
+    private bool showDeleteDialog = false;
+    private bool isEditing = false;
+    private bool isSaving = false;
+    private bool isDeleting = false;
+    private string? successMessage;
+    private string? errorMessage;
+
+    // Pagination and sorting
+    private string sortColumn = "date";
+    private bool sortAscending = false;
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int TotalPages => (int)Math.Ceiling((double)journalEntries.Count / pageSize);
+    
+    // Computed properties
+    private decimal TotalDebit => entryLines.Sum(l => l.Debit);
+    private decimal TotalCredit => entryLines.Sum(l => l.Credit);
+    private bool IsBalanced => TotalDebit == TotalCredit && TotalDebit > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Set default date range to current month
+        var now = DateTime.Today;
+        filterFromDate = new DateTime(now.Year, now.Month, 1);
+        filterToDate = now;
+        
+        await LoadLedgerAccounts();
+        await LoadEntries();
+    }
+
+    private async Task LoadLedgerAccounts()
+    {
+        try
+        {
+            ledgerAccounts = await DbContext.LedgerAccounts
+                .OrderBy(a => a.Code)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading accounts: {ex.Message}";
+        }
+    }
+
+    private async Task LoadEntries()
+    {
+        isLoading = true;
+        try
+        {
+            var query = DbContext.JournalEntries
+                .Include(j => j.JournalEntryLines)
+                    .ThenInclude(l => l.LedgerAccount)
+                .Include(j => j.CreatedByUser)
+                .AsQueryable();
+
+            if (filterFromDate.HasValue)
+            {
+                query = query.Where(j => j.Date >= filterFromDate.Value);
+            }
+
+            if (filterToDate.HasValue)
+            {
+                query = query.Where(j => j.Date <= filterToDate.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                var term = searchTerm.ToLower();
+                query = query.Where(j => 
+                    (j.JournalNo != null && j.JournalNo.ToLower().Contains(term)) ||
+                    (j.Description != null && j.Description.ToLower().Contains(term)));
+            }
+
+            journalEntries = await query
+                .OrderByDescending(j => j.Date)
+                .ThenByDescending(j => j.JournalId)
+                .ToListAsync();
+
+            ApplySorting();
+            currentPage = 1;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading entries: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ApplySorting()
+    {
+        journalEntries = sortColumn switch
+        {
+            "journalno" => sortAscending 
+                ? journalEntries.OrderBy(j => j.JournalNo).ToList()
+                : journalEntries.OrderByDescending(j => j.JournalNo).ToList(),
+            "date" => sortAscending 
+                ? journalEntries.OrderBy(j => j.Date).ToList()
+                : journalEntries.OrderByDescending(j => j.Date).ToList(),
+            "description" => sortAscending 
+                ? journalEntries.OrderBy(j => j.Description).ToList()
+                : journalEntries.OrderByDescending(j => j.Description).ToList(),
+            "debit" => sortAscending 
+                ? journalEntries.OrderBy(j => j.JournalEntryLines?.Sum(l => l.Debit) ?? 0).ToList()
+                : journalEntries.OrderByDescending(j => j.JournalEntryLines?.Sum(l => l.Debit) ?? 0).ToList(),
+            "credit" => sortAscending 
+                ? journalEntries.OrderBy(j => j.JournalEntryLines?.Sum(l => l.Credit) ?? 0).ToList()
+                : journalEntries.OrderByDescending(j => j.JournalEntryLines?.Sum(l => l.Credit) ?? 0).ToList(),
+            "createdby" => sortAscending 
+                ? journalEntries.OrderBy(j => j.CreatedByUser?.Username).ToList()
+                : journalEntries.OrderByDescending(j => j.CreatedByUser?.Username).ToList(),
+            _ => journalEntries
+        };
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+        ApplySorting();
+    }
+
+    private string GetSortIcon(string column)
+    {
+        if (sortColumn != column) return "";
+        return sortAscending ? "▲" : "▼";
+    }
+
+    private List<JournalEntry> GetPagedEntries()
+    {
+        return journalEntries
+            .Skip((currentPage - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+    }
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+        }
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < TotalPages)
+        {
+            currentPage++;
+        }
+    }
+
+    private void GoToPage(int page)
+    {
+        currentPage = page;
+    }
+
+    private void ShowNewEntryDialog()
+    {
+        currentEntry = new JournalEntry();
+        entryDate = DateTime.Today;
+        entryLines = new List<JournalEntryLine>
+        {
+            new JournalEntryLine { Debit = 0, Credit = 0 },
+            new JournalEntryLine { Debit = 0, Credit = 0 }
+        };
+        isEditing = false;
+        errorMessage = null;
+        showEntryDialog = true;
+        
+        // Generate next journal number
+        GenerateJournalNumber();
+    }
+
+    private void GenerateJournalNumber()
+    {
+        var today = DateTime.Today;
+        var prefix = $"JE-{today:yyyyMM}-";
+        var lastEntry = journalEntries
+            .Where(j => j.JournalNo != null && j.JournalNo.StartsWith(prefix))
+            .OrderByDescending(j => j.JournalNo)
+            .FirstOrDefault();
+        
+        int nextNumber = 1;
+        if (lastEntry?.JournalNo != null)
+        {
+            var numPart = lastEntry.JournalNo.Replace(prefix, "");
+            if (int.TryParse(numPart, out var num))
+            {
+                nextNumber = num + 1;
+            }
+        }
+        
+        currentEntry.JournalNo = $"{prefix}{nextNumber:D3}";
+    }
+
+    private void CloseEntryDialog()
+    {
+        showEntryDialog = false;
+        currentEntry = new JournalEntry();
+        entryLines.Clear();
+    }
+
+    private void AddLine()
+    {
+        entryLines.Add(new JournalEntryLine { Debit = 0, Credit = 0 });
+    }
+
+    private void RemoveLine(int index)
+    {
+        if (entryLines.Count > 2)
+        {
+            entryLines.RemoveAt(index);
+        }
+    }
+
+    private void OnDebitChanged(int index)
+    {
+        // If user enters a debit, clear credit
+        if (entryLines[index].Debit > 0)
+        {
+            entryLines[index].Credit = 0;
+        }
+    }
+
+    private void OnCreditChanged(int index)
+    {
+        // If user enters a credit, clear debit
+        if (entryLines[index].Credit > 0)
+        {
+            entryLines[index].Debit = 0;
+        }
+    }
+
+    private async Task SaveEntry()
+    {
+        errorMessage = null;
+        
+        // Validate
+        if (string.IsNullOrWhiteSpace(currentEntry.JournalNo))
+        {
+            errorMessage = "Journal number is required.";
+            return;
+        }
+
+        var validLines = entryLines.Where(l => l.LedgerAccountId > 0 && (l.Debit > 0 || l.Credit > 0)).ToList();
+        if (validLines.Count < 2)
+        {
+            errorMessage = "At least 2 valid line items are required.";
+            return;
+        }
+
+        if (!IsBalanced)
+        {
+            errorMessage = "Entry must be balanced (debits must equal credits).";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            currentEntry.Date = entryDate;
+            currentEntry.CreatedByUserId = AuthState.CurrentUser?.UserId;
+            currentEntry.CreatedAt = DateTime.Now;
+
+            DbContext.JournalEntries.Add(currentEntry);
+            await DbContext.SaveChangesAsync();
+
+            // Add lines
+            foreach (var line in validLines)
+            {
+                line.JournalId = currentEntry.JournalId;
+                DbContext.JournalEntryLines.Add(line);
+            }
+            await DbContext.SaveChangesAsync();
+
+            successMessage = $"Journal entry {currentEntry.JournalNo} saved successfully!";
+            showEntryDialog = false;
+            await LoadEntries();
+            _ = ClearSuccessMessage();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving entry: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ViewEntry(JournalEntry entry)
+    {
+        viewingEntry = entry;
+        showViewDialog = true;
+    }
+
+    private void CloseViewDialog()
+    {
+        showViewDialog = false;
+        viewingEntry = null;
+    }
+
+    private void ConfirmDelete(JournalEntry entry)
+    {
+        deletingEntry = entry;
+        showDeleteDialog = true;
+    }
+
+    private void CloseDeleteDialog()
+    {
+        showDeleteDialog = false;
+        deletingEntry = null;
+    }
+
+    private async Task DeleteEntry()
+    {
+        if (deletingEntry == null) return;
+
+        isDeleting = true;
+        try
+        {
+            // Delete lines first
+            var lines = await DbContext.JournalEntryLines
+                .Where(l => l.JournalId == deletingEntry.JournalId)
+                .ToListAsync();
+            DbContext.JournalEntryLines.RemoveRange(lines);
+
+            // Delete entry
+            DbContext.JournalEntries.Remove(deletingEntry);
+            await DbContext.SaveChangesAsync();
+
+            successMessage = $"Journal entry {deletingEntry.JournalNo} deleted.";
+            showDeleteDialog = false;
+            deletingEntry = null;
+            await LoadEntries();
+            _ = ClearSuccessMessage();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting entry: {ex.Message}";
+        }
+        finally
+        {
+            isDeleting = false;
+        }
+    }
+
+    private async Task ClearSuccessMessage()
+    {
+        await Task.Delay(4000);
+        successMessage = null;
+        await InvokeAsync(StateHasChanged);
+    }
+}

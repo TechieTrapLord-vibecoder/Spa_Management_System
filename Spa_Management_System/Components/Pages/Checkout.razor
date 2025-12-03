@@ -1,0 +1,1681 @@
+@page "/checkout"
+@page "/checkout/{AppointmentId:long}"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@inject IAuthStateService AuthState
+@inject IAuditLogService AuditLog
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+@inject IAccountingService AccountingService
+
+<PageTitle>POS - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card pos-card">
+        <div class="pos-header">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-cart3"></span> Point of Sale</h3>
+                <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0; font-size: 0.9rem;">Process sales, checkout appointments, and manage transactions</p>
+            </div>
+        </div>
+
+        <div class="pos-container">
+            <!-- LEFT SIDE: Products & Categories -->
+            <div class="pos-left">
+                <!-- Search Bar -->
+                <div class="pos-search">
+                    <input type="text" placeholder="Search products or services..." 
+                           @bind="searchTerm" @bind:event="oninput" class="search-input" />
+                </div>
+
+                <!-- Tabs: Products / Appointments -->
+                <div class="pos-tabs">
+                    <button class="tab-btn @(activeTab == "products" ? "active" : "")" @onclick='() => activeTab = "products"'>
+                        <span class="bi bi-bag"></span> Products
+                    </button>
+                    <button class="tab-btn @(activeTab == "appointments" ? "active" : "")" @onclick='() => activeTab = "appointments"'>
+                        <span class="bi bi-calendar"></span> Appointments
+                        @if (pendingAppointments.Any())
+                        {
+                            <span class="badge">@pendingAppointments.Count</span>
+                        }
+                    </button>
+                </div>
+
+                <!-- Content Area -->
+                <div class="pos-items">
+                    @if (isLoading)
+                    {
+                        <div class="loading-state">
+                            <div class="spinner"></div>
+                            <p>Loading...</p>
+                        </div>
+                    }
+                    else if (activeTab == "products")
+                    {
+                        @if (FilteredProducts.Any())
+                        {
+                            <div class="items-grid">
+                                @foreach (var product in FilteredProducts)
+                                {
+                                    var stock = GetStockLevel(product.ProductId);
+                                    var isOutOfStock = stock <= 0;
+                                    <div class="item-card @(isOutOfStock ? "out-of-stock" : "")" @onclick="() => AddProductToCart(product)">
+                                        <div class="item-icon"><span class="bi bi-box"></span></div>
+                                        <div class="item-name">@product.Name</div>
+                                        <div class="item-price">₱@product.UnitPrice.ToString("N0")</div>
+                                        @if (isOutOfStock)
+                                        {
+                                            <div class="stock-warning">Out of Stock</div>
+                                        }
+                                        else if (stock <= GetReorderLevel(product.ProductId))
+                                        {
+                                            <div class="stock-low">@stock.ToString("N0") left</div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="empty-state">
+                                <span class="bi bi-box" style="font-size: 2rem;"></span>
+                                <p>No products found</p>
+                            </div>
+                        }
+                    }
+                    else if (activeTab == "appointments")
+                    {
+                        @if (pendingAppointments.Any())
+                        {
+                            <div class="appointments-list">
+                                @foreach (var appt in pendingAppointments)
+                                {
+                                    <div class="appointment-card" @onclick="() => LoadAppointmentToCart(appt)">
+                                        <div class="appt-customer">
+                                            <span class="customer-avatar"><span class="bi bi-person"></span></span>
+                                            <div>
+                                                <div class="customer-name">@appt.Customer?.Person?.FirstName @appt.Customer?.Person?.LastName</div>
+                                                <div class="customer-time">@appt.ScheduledStart.ToString("h:mm tt")</div>
+                                            </div>
+                                        </div>
+                                        <div class="appt-services">
+                                            @foreach (var svc in appt.AppointmentServices ?? new List<Models.AppointmentService>())
+                                            {
+                                                <span class="service-tag">@svc.Service?.Name</span>
+                                            }
+                                        </div>
+                                        <div class="appt-total">
+                                            ₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N0"))
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="empty-state">
+                                <span class="bi bi-calendar" style="font-size: 2rem;"></span>
+                                <p>No pending appointments</p>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <!-- RIGHT SIDE: Cart & Checkout -->
+            <div class="pos-right">
+                <!-- Customer Section -->
+                <div class="customer-section">
+                    @if (selectedCustomer != null)
+                    {
+                        <div class="customer-info">
+                            <div class="customer-avatar-large">@GetInitials(selectedCustomer)</div>
+                            <div class="customer-details">
+                                <div class="customer-name-large">@selectedCustomer.Person?.FirstName @selectedCustomer.Person?.LastName</div>
+                                <div class="customer-points"><span class="bi bi-star-fill"></span> @selectedCustomer.LoyaltyPoints points</div>
+                            </div>
+                            <button class="btn-icon" @onclick="ClearCustomer" title="Remove customer"><span class="bi bi-x"></span></button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="no-customer">
+                            <button class="add-customer-btn" @onclick="ShowCustomerSelector">
+                                <span class="icon"><span class="bi bi-person-plus"></span></span>
+                                <span>Add Customer (Optional)</span>
+                            </button>
+                            <div class="walk-in-note">Customer/Walk-in</div>
+                        </div>
+                    }
+                </div>
+
+            <!-- Cart Items -->
+            <div class="cart-section">
+                <div class="cart-header">
+                    <span><span class="bi bi-cart3"></span> Cart</span>
+                    @if (cartItems.Any())
+                    {
+                        <button class="clear-cart-btn" @onclick="ClearCart">Clear All</button>
+                    }
+                </div>
+
+                @if (!cartItems.Any())
+                {
+                    <div class="cart-empty">
+                        <span class="bi bi-cart3" style="font-size: 3rem;"></span>
+                        <p>Cart is empty</p>
+                        <p class="hint">Select products or services to add</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="cart-items">
+                        @foreach (var item in cartItems)
+                        {
+                            <div class="cart-item">
+                                <div class="cart-item-info">
+                                    <div class="cart-item-name">@item.Name</div>
+                                    <div class="cart-item-price">₱@item.UnitPrice.ToString("N0") each</div>
+                                </div>
+                                <div class="cart-item-controls">
+                                    <button class="qty-btn" @onclick="() => UpdateQty(item, -1)">−</button>
+                                    <span class="qty">@item.Quantity</span>
+                                    <button class="qty-btn" @onclick="() => UpdateQty(item, 1)">+</button>
+                                </div>
+                                <div class="cart-item-total">₱@item.LineTotal.ToString("N0")</div>
+                                <button class="remove-btn" @onclick="() => RemoveItem(item)"><span class="bi bi-trash"></span></button>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Totals & Discount Combined -->
+            <div class="totals-section">
+                @if (cartItems.Any())
+                {
+                    <div class="discount-inline">
+                        <span class="discount-label">Disc %</span>
+                        <input type="number" @bind="discountPercent" min="0" max="100" class="discount-input" />
+                        <span class="discount-label">Fixed ₱</span>
+                        <input type="number" @bind="discountAmount" min="0" class="discount-input" />
+                        @if (selectedCustomer != null && selectedCustomer.LoyaltyPoints > 0)
+                        {
+                            <span class="discount-label">Pts</span>
+                            <input type="number" @bind="pointsToRedeem" min="0" max="@maxRedeemablePoints" class="discount-input" />
+                        }
+                    </div>
+                }
+                <div class="total-row subtotal-row">
+                    <span>Subtotal</span>
+                    <span>₱@subtotal.ToString("N2")</span>
+                </div>
+                @if (totalDiscount > 0)
+                {
+                    <div class="total-row discount">
+                        <span>Discount</span>
+                        <span>-₱@totalDiscount.ToString("N2")</span>
+                    </div>
+                }
+                <div class="total-row grand-total">
+                    <span>TOTAL</span>
+                    <span>₱@grandTotal.ToString("N2")</span>
+                </div>
+            </div>
+
+            <!-- Payment Section -->
+            @if (cartItems.Any())
+            {
+                <div class="payment-section">
+                    <div class="payment-methods">
+                        <button class="payment-btn @(paymentMethod == "cash" ? "active" : "")" @onclick='() => paymentMethod = "cash"'>
+                            <span class="bi bi-cash"></span> Cash
+                        </button>
+                        <button class="payment-btn @(paymentMethod == "card" ? "active" : "")" @onclick='() => paymentMethod = "card"'>
+                            <span class="bi bi-credit-card"></span> Card
+                        </button>
+                        <button class="payment-btn @(paymentMethod == "gcash" ? "active" : "")" @onclick='() => paymentMethod = "gcash"'>
+                            <span class="bi bi-phone"></span> GCash
+                        </button>
+                    </div>
+
+                    @if (paymentMethod == "cash")
+                    {
+                        <div class="cash-section">
+                            <label>Amount Tendered</label>
+                            <input type="number" @bind="amountTendered" class="amount-input" placeholder="Enter amount..." />
+                            @if (amountTendered.HasValue && amountTendered.Value >= grandTotal && grandTotal > 0)
+                            {
+                                <div class="change-display">
+                                    Change: <strong>₱@((amountTendered.Value - grandTotal).ToString("N2"))</strong>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="error-message">@errorMessage</div>
+                    }
+
+                    <button class="checkout-btn" @onclick="ProcessPayment" disabled="@(!CanProcess || isProcessing)">
+                        @if (isProcessing)
+                        {
+                            <span class="spinner-small"></span>
+                        }
+                        else
+                        {
+                            <span><span class="bi bi-check-lg"></span> Complete Sale - ₱@grandTotal.ToString("N2")</span>
+                        }
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+    </div>
+
+    <!-- Customer Selector Modal -->
+    @if (showCustomerSelector)
+    {
+        <div class="modal-overlay" @onclick="CloseCustomerSelector">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h3>Select Customer</h3>
+                    <button class="close-btn" @onclick="CloseCustomerSelector"><span class="bi bi-x-lg"></span></button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" placeholder="Search by name or phone..." 
+                           @bind="customerSearchTerm" @bind:event="oninput" class="modal-search" />
+                    
+                    <div class="customer-list">
+                        @foreach (var customer in FilteredCustomers)
+                        {
+                            <div class="customer-option" @onclick="() => SelectCustomer(customer)">
+                                <div class="customer-avatar">@GetInitials(customer)</div>
+                                <div class="customer-info-modal">
+                                    <div class="customer-name">@customer.Person?.FirstName @customer.Person?.LastName</div>
+                                    <div class="customer-phone">@customer.Person?.Phone</div>
+                                </div>
+                                <div class="customer-points-badge"><span class="bi bi-star-fill"></span> @customer.LoyaltyPoints</div>
+                            </div>
+                        }
+                        @if (!FilteredCustomers.Any() && !string.IsNullOrWhiteSpace(customerSearchTerm))
+                        {
+                            <div class="no-results">No customers found</div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Therapist Selector Modal (for services) -->
+    @if (showTherapistSelector)
+    {
+        <div class="modal-overlay" @onclick="CloseTherapistSelector">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h3>Select Therapist for @pendingService?.Name</h3>
+                    <button class="close-btn" @onclick="CloseTherapistSelector"><span class="bi bi-x-lg"></span></button>
+                </div>
+                <div class="modal-body">
+                    <div class="therapist-list">
+                        @foreach (var therapist in availableTherapists)
+                        {
+                            <div class="therapist-option" @onclick="() => AssignTherapist(therapist)">
+                                <div class="therapist-avatar">@GetTherapistInitials(therapist)</div>
+                                <div class="therapist-name">@therapist.Person?.FirstName @therapist.Person?.LastName</div>
+                            </div>
+                        }
+                    </div>
+                    <button class="skip-therapist-btn" @onclick="SkipTherapistSelection">Skip (No Therapist)</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Receipt Modal -->
+    @if (showReceipt && lastSale != null)
+    {
+        <div class="modal-overlay">
+            <div class="receipt-modal" @onclick:stopPropagation="true">
+                <div class="receipt-header">
+                    <div class="receipt-logo"><span class="bi bi-heart"></span></div>
+                    <div class="receipt-title">SERENITY SPA</div>
+                    <div class="receipt-subtitle">Thank you for your visit!</div>
+                </div>
+                
+                <div class="receipt-info">
+                    <div>Receipt #: @lastSale.SaleNumber</div>
+                    <div>@DateTime.Now.ToString("MMM dd, yyyy h:mm tt")</div>
+                    @if (lastSale.Customer?.Person != null)
+                    {
+                        <div>Customer: @lastSale.Customer.Person.FirstName @lastSale.Customer.Person.LastName</div>
+                    }
+                </div>
+
+                <div class="receipt-items">
+                    @foreach (var item in lastSale.SaleItems)
+                    {
+                        <div class="receipt-item">
+                            <span>@(item.ItemType == "service" ? item.Service?.Name : item.Product?.Name) x@(item.Qty)</span>
+                            <span>₱@item.LineTotal.ToString("N2")</span>
+                        </div>
+                    }
+                </div>
+
+                <div class="receipt-total">
+                    <span>TOTAL</span>
+                    <span>₱@lastSale.TotalAmount.ToString("N2")</span>
+                </div>
+
+                <div class="receipt-footer">
+                    <div>Payment: @lastSale.Payments.FirstOrDefault()?.PaymentMethod.ToUpper()</div>
+                    <div class="receipt-thanks">See you again soon!</div>
+                </div>
+
+                <button class="receipt-done-btn" @onclick="CloseReceipt">Done</button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public long? AppointmentId { get; set; }
+
+    // State
+    private bool isLoading = true;
+    private bool isProcessing = false;
+    private string? errorMessage;
+    private string activeTab = "products";
+    private string searchTerm = "";
+    private string customerSearchTerm = "";
+
+    // Data
+    private List<Product> products = new();
+    private List<Service> services = new();
+    private List<Appointment> pendingAppointments = new();
+    private List<Customer> customers = new();
+    private List<Employee> availableTherapists = new();
+    private Dictionary<long, Models.Inventory> inventory = new();
+
+    // Cart
+    private List<CartItem> cartItems = new();
+    private Customer? selectedCustomer;
+    private Appointment? linkedAppointment;
+
+    // Payment
+    private string paymentMethod = "cash";
+    private decimal discountPercent = 0;
+    private decimal discountAmount = 0;
+    private decimal? amountTendered;
+    private int pointsToRedeem = 0;
+
+    // Modals
+    private bool showCustomerSelector = false;
+    private bool showTherapistSelector = false;
+    private bool showReceipt = false;
+    private Service? pendingService;
+    private Sale? lastSale;
+
+    // Computed
+    private decimal subtotal => cartItems.Sum(i => i.LineTotal);
+    private decimal percentDiscount => subtotal * (discountPercent / 100);
+    private decimal pointsRedemptionValue => pointsToRedeem * 1.00m; // 1 point = ₱1
+    private decimal totalDiscount => percentDiscount + discountAmount + pointsRedemptionValue;
+    private decimal grandTotal => Math.Max(0, subtotal - totalDiscount);
+    private int pointsToEarn => selectedCustomer != null ? (int)(grandTotal / 100) : 0; // Earn 1 point per ₱100 spent
+    private int maxRedeemablePoints => selectedCustomer != null 
+        ? Math.Min(selectedCustomer.LoyaltyPoints, (int)subtotal) // Can redeem up to subtotal amount
+        : 0;
+
+    private bool CanProcess => cartItems.Any() && 
+                               !string.IsNullOrEmpty(paymentMethod) &&
+                               (paymentMethod != "cash" || (amountTendered.HasValue && amountTendered.Value >= grandTotal)) &&
+                               grandTotal > 0;
+
+    private IEnumerable<Product> FilteredProducts => string.IsNullOrWhiteSpace(searchTerm)
+        ? products
+        : products.Where(p => p.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<Service> FilteredServices => string.IsNullOrWhiteSpace(searchTerm)
+        ? services
+        : services.Where(s => s.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<Customer> FilteredCustomers => string.IsNullOrWhiteSpace(customerSearchTerm)
+        ? customers.Take(10)
+        : customers.Where(c =>
+            (c.Person?.FirstName?.Contains(customerSearchTerm, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (c.Person?.LastName?.Contains(customerSearchTerm, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (c.Person?.Phone?.Contains(customerSearchTerm, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        if (AppointmentId.HasValue)
+        {
+            var appt = pendingAppointments.FirstOrDefault(a => a.AppointmentId == AppointmentId.Value);
+            if (appt != null) LoadAppointmentToCart(appt);
+        }
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            products = await DbContext.Products.Where(p => p.Active).OrderBy(p => p.Name).ToListAsync();
+            services = await DbContext.Services.Where(s => s.Active).OrderBy(s => s.Name).ToListAsync();
+            
+            var today = DateTime.Today;
+            pendingAppointments = await DbContext.Appointments
+                .Include(a => a.Customer).ThenInclude(c => c.Person)
+                .Include(a => a.AppointmentServices).ThenInclude(s => s.Service)
+                .Where(a => a.Status == "completed" && a.ScheduledStart >= today.AddDays(-7))
+                .OrderByDescending(a => a.ScheduledStart)
+                .ToListAsync();
+
+            customers = await DbContext.Customers
+                .Include(c => c.Person)
+                .OrderBy(c => c.Person.FirstName)
+                .ToListAsync();
+
+            // Get therapists - employees with role that contains 'therapist'
+            availableTherapists = await DbContext.Employees
+                .Include(e => e.Person)
+                .Include(e => e.Role)
+                .Where(e => e.Status == "active" && e.Role.Name.ToLower().Contains("therapist"))
+                .ToListAsync();
+
+            var invList = await DbContext.Inventories.ToListAsync();
+            inventory = invList.ToDictionary(i => i.ProductId, i => i);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading data: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private decimal GetStockLevel(long productId) => inventory.TryGetValue(productId, out var inv) ? inv.QuantityOnHand : 0;
+    private decimal GetReorderLevel(long productId) => inventory.TryGetValue(productId, out var inv) ? inv.ReorderLevel : 5;
+
+    private string GetInitials(Customer? customer)
+    {
+        if (customer?.Person == null) return "?";
+        var first = customer.Person.FirstName?.FirstOrDefault() ?? '?';
+        var last = customer.Person.LastName?.FirstOrDefault() ?? '?';
+        return $"{first}{last}".ToUpper();
+    }
+
+    private string GetTherapistInitials(Employee? emp)
+    {
+        if (emp?.Person == null) return "?";
+        var first = emp.Person.FirstName?.FirstOrDefault() ?? '?';
+        var last = emp.Person.LastName?.FirstOrDefault() ?? '?';
+        return $"{first}{last}".ToUpper();
+    }
+
+    private void AddProductToCart(Product product)
+    {
+        var stock = GetStockLevel(product.ProductId);
+        var existing = cartItems.FirstOrDefault(i => i.ProductId == product.ProductId && i.Type == "product");
+        var currentQty = existing?.Quantity ?? 0;
+
+        if (stock <= 0)
+        {
+            errorMessage = $"{product.Name} is out of stock!";
+            ClearErrorAfterDelay();
+            return;
+        }
+
+        if (currentQty + 1 > stock)
+        {
+            errorMessage = $"Only {stock:N0} {product.Name} in stock!";
+            ClearErrorAfterDelay();
+            return;
+        }
+
+        if (existing != null)
+        {
+            existing.Quantity++;
+            existing.LineTotal = existing.Quantity * existing.UnitPrice;
+        }
+        else
+        {
+            cartItems.Add(new CartItem
+            {
+                Type = "product",
+                ProductId = product.ProductId,
+                Name = product.Name,
+                UnitPrice = product.UnitPrice,
+                Quantity = 1,
+                LineTotal = product.UnitPrice
+            });
+        }
+    }
+
+    private void AddServiceToCart(Service service)
+    {
+        pendingService = service;
+        showTherapistSelector = true;
+    }
+
+    private void AssignTherapist(Employee therapist)
+    {
+        if (pendingService == null) return;
+        
+        cartItems.Add(new CartItem
+        {
+            Type = "service",
+            ServiceId = pendingService.ServiceId,
+            Name = pendingService.Name,
+            UnitPrice = pendingService.Price,
+            Quantity = 1,
+            LineTotal = pendingService.Price,
+            TherapistId = therapist.EmployeeId,
+            TherapistName = $"{therapist.Person?.FirstName} {therapist.Person?.LastName}"
+        });
+
+        CloseTherapistSelector();
+    }
+
+    private void SkipTherapistSelection()
+    {
+        if (pendingService == null) return;
+        
+        cartItems.Add(new CartItem
+        {
+            Type = "service",
+            ServiceId = pendingService.ServiceId,
+            Name = pendingService.Name,
+            UnitPrice = pendingService.Price,
+            Quantity = 1,
+            LineTotal = pendingService.Price
+        });
+
+        CloseTherapistSelector();
+    }
+
+    private void CloseTherapistSelector()
+    {
+        showTherapistSelector = false;
+        pendingService = null;
+    }
+
+    private void LoadAppointmentToCart(Appointment appt)
+    {
+        cartItems.Clear();
+        linkedAppointment = appt;
+        selectedCustomer = appt.Customer;
+
+        if (appt.AppointmentServices != null)
+        {
+            foreach (var svc in appt.AppointmentServices)
+            {
+                cartItems.Add(new CartItem
+                {
+                    Type = "service",
+                    ServiceId = svc.ServiceId,
+                    Name = svc.Service?.Name ?? "Service",
+                    UnitPrice = svc.Price,
+                    Quantity = 1,
+                    LineTotal = svc.Price,
+                    TherapistId = svc.TherapistEmployeeId,
+                    AppointmentServiceId = svc.ApptSrvId
+                });
+            }
+        }
+
+        activeTab = "products"; // Switch to products for upselling
+    }
+
+    private void UpdateQty(CartItem item, int change)
+    {
+        if (item.Type == "product")
+        {
+            var stock = GetStockLevel(item.ProductId ?? 0);
+            if (item.Quantity + change > stock)
+            {
+                errorMessage = $"Only {stock:N0} in stock!";
+                ClearErrorAfterDelay();
+                return;
+            }
+        }
+
+        item.Quantity += change;
+        if (item.Quantity <= 0)
+            cartItems.Remove(item);
+        else
+            item.LineTotal = item.Quantity * item.UnitPrice;
+    }
+
+    private void RemoveItem(CartItem item) => cartItems.Remove(item);
+    private void ClearCart()
+    {
+        cartItems.Clear();
+        linkedAppointment = null;
+        discountPercent = 0;
+        discountAmount = 0;
+        pointsToRedeem = 0;
+    }
+
+    private void ShowCustomerSelector() => showCustomerSelector = true;
+    private void CloseCustomerSelector() { showCustomerSelector = false; customerSearchTerm = ""; }
+    
+    private void SelectCustomer(Customer customer)
+    {
+        selectedCustomer = customer;
+        CloseCustomerSelector();
+    }
+
+    private void ClearCustomer()
+    {
+        selectedCustomer = null;
+        pointsToRedeem = 0;
+    }
+
+    private void UseMaxPoints() => pointsToRedeem = maxRedeemablePoints;
+
+    private decimal[] GetQuickCashAmounts()
+    {
+        var total = grandTotal;
+        var amounts = new List<decimal> { 100, 200, 500, 1000, 2000, 5000 };
+        // Add exact amount rounded up
+        var roundedUp = Math.Ceiling(total / 100) * 100;
+        if (roundedUp > 0 && !amounts.Contains(roundedUp))
+            amounts.Insert(0, roundedUp);
+        return amounts.Where(a => a >= total).Take(6).ToArray();
+    }
+
+    private async void ClearErrorAfterDelay()
+    {
+        await Task.Delay(3000);
+        await InvokeAsync(() => { errorMessage = null; StateHasChanged(); });
+    }
+
+    private async Task ProcessPayment()
+    {
+        if (!CanProcess) return;
+
+        isProcessing = true;
+        errorMessage = null;
+
+        try
+        {
+            // Create Sale
+            var sale = new Sale
+            {
+                CustomerId = selectedCustomer?.CustomerId,
+                CreatedByUserId = AuthState.CurrentUser?.UserId,
+                SaleNumber = $"SL-{DateTime.Now:yyyyMMdd-HHmmss}",
+                TotalAmount = grandTotal,
+                PaymentStatus = "paid",
+                CreatedAt = DateTime.Now
+            };
+
+            DbContext.Sales.Add(sale);
+            await DbContext.SaveChangesAsync();
+
+            // Add Sale Items
+            foreach (var item in cartItems)
+            {
+                var saleItem = new SaleItem
+                {
+                    SaleId = sale.SaleId,
+                    ItemType = item.Type,
+                    ServiceId = item.ServiceId,
+                    ProductId = item.ProductId,
+                    Qty = item.Quantity,
+                    UnitPrice = item.UnitPrice,
+                    LineTotal = item.LineTotal,
+                    TherapistEmployeeId = item.TherapistId
+                };
+                DbContext.SaleItems.Add(saleItem);
+
+                // Deduct inventory for products
+                if (item.Type == "product" && item.ProductId.HasValue)
+                {
+                    var inv = await DbContext.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId);
+                    if (inv != null) inv.QuantityOnHand -= item.Quantity;
+
+                    DbContext.StockTransactions.Add(new StockTransaction
+                    {
+                        ProductId = item.ProductId.Value,
+                        TxType = "sale",
+                        Qty = -item.Quantity,
+                        Reference = $"Sale #{sale.SaleNumber}",
+                        CreatedByUserId = AuthState.CurrentUser?.UserId,
+                        CreatedAt = DateTime.Now
+                    });
+                }
+            }
+
+            // Add Payment
+            DbContext.Payments.Add(new Payment
+            {
+                SaleId = sale.SaleId,
+                PaymentMethod = paymentMethod,
+                Amount = grandTotal,
+                PaidAt = DateTime.Now,
+                RecordedByUserId = AuthState.CurrentUser?.UserId
+            });
+
+            // Update loyalty points
+            if (selectedCustomer != null)
+            {
+                if (pointsToRedeem > 0) selectedCustomer.LoyaltyPoints -= pointsToRedeem;
+                if (pointsToEarn > 0) selectedCustomer.LoyaltyPoints += pointsToEarn;
+            }
+
+            // Mark appointment as paid if linked
+            if (linkedAppointment != null)
+            {
+                linkedAppointment.Status = "paid";
+            }
+
+            await DbContext.SaveChangesAsync();
+
+            // Create accounting entries (includes discount and loyalty points tracking for proper accounting)
+            await AccountingService.CreateSaleJournalEntriesAsync(
+                sale, 
+                paymentMethod, 
+                AuthState.CurrentUser?.UserId, 
+                linkedAppointment?.AppointmentId,
+                discountAmount + percentDiscount, // Total discount amount
+                pointsToRedeem // Loyalty points redeemed
+            );
+            
+            // Audit log
+            var customerName = selectedCustomer != null 
+                ? $"{selectedCustomer.Person?.FirstName} {selectedCustomer.Person?.LastName}" 
+                : "Walk-in";
+            await AuditLog.LogCreateAsync("Sale", sale.SaleId.ToString(), 
+                $"Completed sale {sale.SaleNumber} for {customerName}: ₱{grandTotal:N2}" + 
+                (pointsToRedeem > 0 ? $" (Redeemed {pointsToRedeem} points)" : ""), 
+                AuthState.CurrentUser?.UserId);
+
+            // Load receipt data
+            lastSale = await DbContext.Sales
+                .Include(s => s.Customer!).ThenInclude(c => c.Person)
+                .Include(s => s.SaleItems).ThenInclude(si => si.Service)
+                .Include(s => s.SaleItems).ThenInclude(si => si.Product)
+                .Include(s => s.Payments)
+                .FirstOrDefaultAsync(s => s.SaleId == sale.SaleId);
+
+            showReceipt = true;
+
+            // Reset
+            cartItems.Clear();
+            linkedAppointment = null;
+            selectedCustomer = null;
+            discountPercent = 0;
+            discountAmount = 0;
+            amountTendered = null;
+            pointsToRedeem = 0;
+
+            await LoadData(); // Refresh appointments
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private void CloseReceipt()
+    {
+        showReceipt = false;
+        lastSale = null;
+    }
+
+    private class CartItem
+    {
+        public string Type { get; set; } = "product";
+        public long? ProductId { get; set; }
+        public long? ServiceId { get; set; }
+        public long? AppointmentServiceId { get; set; }
+        public long? TherapistId { get; set; }
+        public string? TherapistName { get; set; }
+        public string Name { get; set; } = "";
+        public decimal UnitPrice { get; set; }
+        public int Quantity { get; set; }
+        public decimal LineTotal { get; set; }
+    }
+}
+
+<style>
+    /* POS Card wrapper */
+    .pos-card {
+        padding: 0 !important;
+        overflow: hidden;
+    }
+    
+    .pos-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid #e0e0e0;
+        background: white;
+    }
+    
+    .pos-header-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    /* Main POS Layout */
+    .pos-container {
+        display: grid;
+        grid-template-columns: 1fr 420px;
+        gap: 0;
+        height: calc(100vh - 140px);
+        background: #f5f5f5;
+    }
+
+    /* Left Panel - Scrollable products */
+    .pos-left {
+        display: flex;
+        flex-direction: column;
+        background: white;
+        border-right: 1px solid #e0e0e0;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .pos-search {
+        padding: 1rem;
+        border-bottom: 1px solid #e0e0e0;
+        flex-shrink: 0;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 1rem;
+    }
+
+    .search-input:focus {
+        outline: none;
+        border-color: #4a7c59;
+    }
+
+    .pos-tabs {
+        display: flex;
+        border-bottom: 1px solid #e0e0e0;
+        flex-shrink: 0;
+    }
+
+    .tab-btn {
+        flex: 1;
+        padding: 1rem;
+        border: none;
+        background: #f5f5f5;
+        cursor: pointer;
+        font-size: 0.95rem;
+        transition: all 0.2s;
+        position: relative;
+    }
+
+    .tab-btn.active {
+        background: white;
+        border-bottom: 3px solid #4a7c59;
+        font-weight: 600;
+    }
+
+    .tab-btn .badge {
+        background: #dc3545;
+        color: white;
+        padding: 0.15rem 0.5rem;
+        border-radius: 10px;
+        font-size: 0.75rem;
+        margin-left: 0.5rem;
+    }
+
+    .pos-items {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        min-height: 0;
+    }
+
+    .items-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 1rem;
+    }
+
+    .item-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 1rem;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .item-card:hover {
+        border-color: #4a7c59;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .item-card.out-of-stock {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .item-card.service-card {
+        border-color: #d4a574;
+    }
+
+    .item-icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .item-name {
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 0.25rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .item-price {
+        color: #4a7c59;
+        font-weight: 700;
+        font-size: 1rem;
+    }
+
+    .item-duration {
+        font-size: 0.75rem;
+        color: #888;
+    }
+
+    .stock-warning {
+        font-size: 0.7rem;
+        color: #dc3545;
+        font-weight: 600;
+    }
+
+    .stock-low {
+        font-size: 0.7rem;
+        color: #f59e0b;
+    }
+
+    /* Appointments List */
+    .appointments-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .appointment-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .appointment-card:hover {
+        border-color: #4a7c59;
+        background: #f8faf8;
+    }
+
+    .appt-customer {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .customer-avatar {
+        font-size: 1.5rem;
+    }
+
+    .customer-name {
+        font-weight: 600;
+    }
+
+    .customer-time {
+        font-size: 0.85rem;
+        color: #888;
+    }
+
+    .appt-services {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .service-tag {
+        background: #e8f4ec;
+        color: #4a7c59;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+    }
+
+    .appt-total {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: #4a7c59;
+        text-align: right;
+    }
+
+    /* Right Panel - Fixed, no scroll */
+    .pos-right {
+        display: flex;
+        flex-direction: column;
+        background: white;
+        height: calc(100vh - 180px);
+        overflow: hidden;
+    }
+
+    .customer-section {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #e0e0e0;
+        flex-shrink: 0;
+    }
+
+    .customer-info {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .customer-avatar-large {
+        width: 40px;
+        height: 40px;
+        background: #4a7c59;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 1rem;
+    }
+
+    .customer-details {
+        flex: 1;
+    }
+
+    .customer-name-large {
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+
+    .customer-points {
+        color: #f59e0b;
+        font-size: 0.8rem;
+    }
+
+    .btn-icon {
+        background: none;
+        border: none;
+        font-size: 1rem;
+        cursor: pointer;
+        color: #888;
+    }
+
+    .no-customer {
+        text-align: center;
+    }
+
+    .add-customer-btn {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px dashed #ccc;
+        border-radius: 8px;
+        background: #f8f8f8;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .add-customer-btn:hover {
+        border-color: #4a7c59;
+        background: #f0f8f0;
+    }
+
+    .walk-in-note {
+        font-size: 0.75rem;
+        color: #888;
+        margin-top: 0.25rem;
+    }
+
+    /* Cart - Scrollable content area */
+    .cart-section {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-height: 0;
+        max-height: calc(100% - 280px);
+    }
+
+    .cart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #e0e0e0;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    .clear-cart-btn {
+        background: none;
+        border: none;
+        color: #dc3545;
+        cursor: pointer;
+        font-size: 0.85rem;
+    }
+
+    .cart-empty {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #888;
+    }
+
+    .cart-empty .bi {
+        margin-bottom: 1rem;
+    }
+
+    .cart-empty .hint {
+        font-size: 0.85rem;
+    }
+
+    .cart-items {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 100px;
+    }
+
+    .cart-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .cart-item-info {
+        flex: 1;
+    }
+
+    .cart-item-name {
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+
+    .cart-item-price {
+        font-size: 0.8rem;
+        color: #888;
+    }
+
+    .cart-item-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .qty-btn {
+        width: 28px;
+        height: 28px;
+        border: 1px solid #ddd;
+        background: white;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+    }
+
+    .qty-btn:hover {
+        background: #f0f0f0;
+    }
+
+    .qty {
+        width: 24px;
+        text-align: center;
+        font-weight: 600;
+    }
+
+    .cart-item-total {
+        font-weight: 600;
+        min-width: 70px;
+        text-align: right;
+    }
+
+    .remove-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        opacity: 0.6;
+    }
+
+    .remove-btn:hover {
+        opacity: 1;
+    }
+
+    /* Inline Discount Fields - Single Row */
+    .discount-inline {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px dashed #ddd;
+    }
+
+    .discount-label {
+        font-size: 0.75rem;
+        color: #666;
+        white-space: nowrap;
+    }
+
+    .discount-inline .discount-input {
+        width: 60px;
+        padding: 0.35rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        text-align: center;
+    }
+
+    /* Totals - Compact */
+    .totals-section {
+        padding: 0.5rem 1rem;
+        border-top: 1px solid #e0e0e0;
+        flex-shrink: 0;
+        background: #fafafa;
+    }
+
+    .total-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.9rem;
+    }
+
+    .total-row.subtotal-row {
+        margin-bottom: 0.25rem;
+        color: #666;
+    }
+
+    .total-row.discount {
+        color: #4a7c59;
+        margin-bottom: 0.25rem;
+    }
+
+    .total-row.grand-total {
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #2c3e50;
+        padding-top: 0.5rem;
+        margin-top: 0.25rem;
+        border-top: 2px solid #e0e0e0;
+    }
+
+    /* Payment - Compact */
+    .payment-section {
+        padding: 0.75rem 1rem;
+        border-top: 1px solid #e0e0e0;
+        background: #f8f8f8;
+        flex-shrink: 0;
+    }
+
+    .payment-methods {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .payment-btn {
+        padding: 0.5rem;
+        border: 2px solid #ddd;
+        background: white;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+    }
+
+    .payment-btn.active {
+        border-color: #4a7c59;
+        background: #e8f4ec;
+    }
+
+    .cash-section {
+        margin-bottom: 0.75rem;
+    }
+
+    .cash-section label {
+        display: block;
+        font-size: 0.8rem;
+        margin-bottom: 0.25rem;
+        color: #666;
+    }
+
+    .amount-input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 2px solid #ddd;
+        border-radius: 6px;
+        font-size: 1.1rem;
+        text-align: right;
+    }
+
+    .change-display {
+        margin-top: 0.5rem;
+        padding: 0.5rem;
+        background: #f0f9f4;
+        color: #2d5a3d;
+        border: 2px dashed #4a7c59;
+        border-radius: 6px;
+        text-align: center;
+        font-size: 1rem;
+    }
+
+    .error-message {
+        background: #fee2e2;
+        color: #dc3545;
+        padding: 0.5rem;
+        border-radius: 6px;
+        margin-bottom: 0.5rem;
+        text-align: center;
+        font-size: 0.85rem;
+    }
+
+    .checkout-btn {
+        width: 100%;
+        padding: 0.75rem;
+        background: #4a7c59;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .checkout-btn:hover:not(:disabled) {
+        background: #3d6a4a;
+    }
+
+    .checkout-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    /* Loading & Empty States */
+    .loading-state, .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 200px;
+        color: #888;
+    }
+
+    .empty-state span {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f0f0f0;
+        border-top-color: #4a7c59;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    .spinner-small {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    /* Modals */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 500px;
+        max-height: 80vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #888;
+    }
+
+    .modal-body {
+        padding: 1rem;
+        overflow-y: auto;
+    }
+
+    .modal-search {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+
+    .customer-list, .therapist-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .customer-option, .therapist-option {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.75rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+
+    .customer-option:hover, .therapist-option:hover {
+        background: #f8f8f8;
+        border-color: #4a7c59;
+    }
+
+    .customer-info-modal {
+        flex: 1;
+    }
+
+    .customer-phone {
+        font-size: 0.85rem;
+        color: #888;
+    }
+
+    .customer-points-badge {
+        background: #fef3c7;
+        color: #92400e;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.85rem;
+    }
+
+    .therapist-avatar {
+        width: 40px;
+        height: 40px;
+        background: #d4a574;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+    }
+
+    .skip-therapist-btn {
+        width: 100%;
+        padding: 0.75rem;
+        margin-top: 1rem;
+        border: 2px dashed #ddd;
+        background: white;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+
+    .no-results {
+        text-align: center;
+        padding: 2rem;
+        color: #888;
+    }
+
+    /* Receipt Modal */
+    .receipt-modal {
+        background: white;
+        border-radius: 12px;
+        width: 350px;
+        padding: 1.5rem;
+    }
+
+    .receipt-header {
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+
+    .receipt-logo {
+        font-size: 3rem;
+    }
+
+    .receipt-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+    }
+
+    .receipt-subtitle {
+        color: #888;
+    }
+
+    .receipt-info {
+        font-size: 0.85rem;
+        color: #666;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px dashed #ddd;
+    }
+
+    .receipt-items {
+        margin-bottom: 1rem;
+    }
+
+    .receipt-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+    }
+
+    .receipt-total {
+        display: flex;
+        justify-content: space-between;
+        font-weight: 700;
+        font-size: 1.2rem;
+        padding-top: 0.75rem;
+        border-top: 2px solid #333;
+    }
+
+    .receipt-footer {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px dashed #ddd;
+        text-align: center;
+        font-size: 0.9rem;
+        color: #666;
+    }
+
+    .receipt-thanks {
+        margin-top: 0.5rem;
+        font-weight: 600;
+    }
+
+    .receipt-done-btn {
+        width: 100%;
+        padding: 1rem;
+        margin-top: 1rem;
+        background: #4a7c59;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        cursor: pointer;
+    }
+</style>

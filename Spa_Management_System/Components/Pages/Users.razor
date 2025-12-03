@@ -1,0 +1,555 @@
+@page "/users"
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@inject IAuthService AuthService
+@inject IEmployeeService EmployeeService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>User Accounts - Serenity Spa</PageTitle>
+
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h3 class="card-title" style="margin: 0;"><span class="bi bi-shield-lock"></span> User Accounts</h3>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" @bind="showInactive" @bind:after="LoadUsers" style="width: 18px; height: 18px;" />
+                <span>Show Inactive</span>
+            </label>
+            <button class="btn btn-primary" @onclick="ShowAddDialog">
+                <span class="bi bi-plus-circle"></span> Create User Account
+            </button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div style="display: flex; align-items: center; gap: 1rem; padding: 2rem;">
+            <div class="loading"></div>
+            <p style="margin: 0;">Loading user accounts...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <span class="bi bi-x-circle-fill"></span>
+            <div>@errorMessage</div>
+        </div>
+    }
+    else if (!filteredUsers.Any())
+    {
+        <div class="alert alert-info">
+            <span class="bi bi-info-circle-fill"></span>
+            <div>No user accounts found. Click "Create User Account" to add login credentials for employees.</div>
+        </div>
+    }
+    else
+    {
+        <div class="table-search">
+            <input type="text" placeholder="Search users..." @bind="searchTerm" @bind:event="oninput" @bind:after="ApplyFilter" />
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th style="cursor: pointer;" @onclick='() => SortBy("username")'>Username @GetSortIcon("username")</th>
+                    <th style="cursor: pointer;" @onclick='() => SortBy("employee")'>Employee @GetSortIcon("employee")</th>
+                    <th style="cursor: pointer;" @onclick='() => SortBy("role")'>Role @GetSortIcon("role")</th>
+                    <th style="cursor: pointer;" @onclick='() => SortBy("login")'>Last Login @GetSortIcon("login")</th>
+                    <th style="cursor: pointer;" @onclick='() => SortBy("status")'>Status @GetSortIcon("status")</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in GetPagedUsers())
+                {
+                    <tr>
+                        <td>
+                            <span class="bi bi-person-circle"></span>
+                            <strong>@user.Username</strong>
+                        </td>
+                        <td>
+                            @if (user.Employee != null)
+                            {
+                                @user.Employee.Person.FirstName @user.Employee.Person.LastName
+                            }
+                            else
+                            {
+                                <span style="color: var(--spa-text-light);">No employee linked</span>
+                            }
+                        </td>
+                        <td>
+                            @if (user.Employee != null)
+                            {
+                                <span class="badge badge-info">@user.Employee.Role.Name</span>
+                            }
+                        </td>
+                        <td>
+                            @if (user.LastLogin.HasValue)
+                            {
+                                @user.LastLogin.Value.ToString("MMM dd, yyyy HH:mm")
+                            }
+                            else
+                            {
+                                <span style="color: var(--spa-text-light);">Never</span>
+                            }
+                        </td>
+                        <td>
+                            @if (user.IsActive)
+                            {
+                                <span class="badge badge-success">Active</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-warning">Inactive</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-light" @onclick="() => ShowResetPasswordDialog(user)">
+                                    Reset
+                                </button>
+                                @if (user.IsActive)
+                                {
+                                    <button class="btn btn-sm btn-warning" @onclick="() => DeactivateUser(user.UserId)">
+                                        Deactivate
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-success" @onclick="() => ActivateUser(user.UserId)">
+                                        Activate
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <div class="table-pagination">
+            <div class="pagination-info">
+                Showing @(Math.Min((currentPage - 1) * pageSize + 1, filteredUsers.Count)) to @(Math.Min(currentPage * pageSize, filteredUsers.Count)) of @filteredUsers.Count entries
+            </div>
+            <div class="pagination-controls">
+                <button class="page-btn" @onclick="PreviousPage" disabled="@(currentPage <= 1)">‹ Prev</button>
+                @for (int i = 1; i <= TotalPages; i++)
+                {
+                    var pageNum = i;
+                    <button class="page-btn @(currentPage == pageNum ? "active" : "")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                }
+                <button class="page-btn" @onclick="NextPage" disabled="@(currentPage >= TotalPages)">Next ›</button>
+            </div>
+        </div>
+    }
+</div>
+
+@* Add User Dialog *@
+@if (showAddDialog)
+{
+    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+        <div class="card" style="width: 500px; max-width: 90vw;">
+            <h4 class="card-title">Create User Account</h4>
+            
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">Employee <span style="color: var(--spa-danger);">*</span></label>
+                <select class="form-control" @bind="selectedEmployeeId">
+                    <option value="0">-- Select Employee --</option>
+                    @foreach (var emp in employees)
+                    {
+                        <option value="@emp.EmployeeId">@emp.Person.FirstName @emp.Person.LastName (@emp.Role.Name)</option>
+                    }
+                </select>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">Username <span style="color: var(--spa-danger);">*</span></label>
+                <input class="form-control" type="text" @bind="username" placeholder="Enter username" />
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">Password <span style="color: var(--spa-danger);">*</span></label>
+                <input class="form-control" type="password" @bind="password" placeholder="Enter password" />
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">Confirm Password <span style="color: var(--spa-danger);">*</span></label>
+                <input class="form-control" type="password" @bind="confirmPassword" placeholder="Re-enter password" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(dialogError))
+            {
+                <div class="alert alert-danger">
+                    <span class="bi bi-x-circle-fill"></span>
+                    <div>@dialogError</div>
+                </div>
+            }
+
+            @if (saveSuccess)
+            {
+                <div class="alert alert-success">
+                    <span class="bi bi-check-circle-fill"></span>
+                    <div>User account created successfully!</div>
+                </div>
+            }
+
+            <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                <button class="btn btn-primary" @onclick="SaveUser" disabled="@isSaving">
+                    @if (isSaving)
+                    {
+                        <div class="loading" style="width: 1rem; height: 1rem;"></div>
+                    }
+                    else
+                    {
+                        <span class="bi bi-check-circle"></span>
+                    }
+                    Create Account
+                </button>
+                <button class="btn btn-outline" @onclick="CloseAddDialog" disabled="@isSaving">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Reset Password Dialog *@
+@if (showResetDialog && selectedUser != null)
+{
+    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+        <div class="card" style="width: 500px; max-width: 90vw;">
+            <h4 class="card-title">Reset Password for @selectedUser.Username</h4>
+            
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">New Password <span style="color: var(--spa-danger);">*</span></label>
+                <input class="form-control" type="password" @bind="newPassword" placeholder="Enter new password" />
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label class="form-label">Confirm New Password <span style="color: var(--spa-danger);">*</span></label>
+                <input class="form-control" type="password" @bind="confirmNewPassword" placeholder="Re-enter new password" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(resetError))
+            {
+                <div class="alert alert-danger">
+                    <span class="bi bi-x-circle-fill"></span>
+                    <div>@resetError</div>
+                </div>
+            }
+
+            @if (resetSuccess)
+            {
+                <div class="alert alert-success">
+                    <span class="bi bi-check-circle-fill"></span>
+                    <div>Password reset successfully!</div>
+                </div>
+            }
+
+            <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                <button class="btn btn-primary" @onclick="ResetPassword" disabled="@isResetting">
+                    @if (isResetting)
+                    {
+                        <div class="loading" style="width: 1rem; height: 1rem;"></div>
+                    }
+                    else
+                    {
+                        <span class="bi bi-key"></span>
+                    }
+                    Reset Password
+                </button>
+                <button class="btn btn-outline" @onclick="CloseResetDialog" disabled="@isResetting">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<UserAccount> users = new();
+    private List<Employee> employees = new();
+    private bool isLoading = true;
+    private string? errorMessage;
+    private bool showInactive = false;
+    
+    // Pagination & Sorting
+    private string searchTerm = "";
+    private string sortColumn = "username";
+    private bool sortAscending = true;
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private List<UserAccount> filteredUsers = new();
+    private int TotalPages => (int)Math.Ceiling(filteredUsers.Count / (double)pageSize);
+    
+    // Add user dialog
+    private bool showAddDialog = false;
+    private bool isSaving = false;
+    private bool saveSuccess = false;
+    private string? dialogError;
+    private long selectedEmployeeId = 0;
+    private string username = "";
+    private string password = "";
+    private string confirmPassword = "";
+
+    // Reset password dialog
+    private bool showResetDialog = false;
+    private bool isResetting = false;
+    private bool resetSuccess = false;
+    private string? resetError;
+    private UserAccount? selectedUser;
+    private string newPassword = "";
+    private string confirmNewPassword = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsers();
+        await LoadEmployees();
+    }
+
+    private async Task LoadUsers()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            if (showInactive)
+            {
+                users = (await AuthService.GetAllUsersWithInactiveAsync()).ToList();
+            }
+            else
+            {
+                users = (await AuthService.GetAllUsersAsync()).ToList();
+            }
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading users: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadEmployees()
+    {
+        try
+        {
+            employees = (await EmployeeService.GetActiveEmployeesAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading employees: {ex.Message}";
+        }
+    }
+
+    private void ShowAddDialog()
+    {
+        selectedEmployeeId = 0;
+        username = "";
+        password = "";
+        confirmPassword = "";
+        dialogError = null;
+        saveSuccess = false;
+        showAddDialog = true;
+    }
+
+    private async Task SaveUser()
+    {
+        dialogError = null;
+        saveSuccess = false;
+
+        // Validation
+        if (selectedEmployeeId == 0)
+        {
+            dialogError = "Please select an employee";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            dialogError = "Username is required";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            dialogError = "Password is required";
+            return;
+        }
+
+        if (password != confirmPassword)
+        {
+            dialogError = "Passwords do not match";
+            return;
+        }
+
+        if (password.Length < 6)
+        {
+            dialogError = "Password must be at least 6 characters";
+            return;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            await AuthService.CreateUserAccountAsync(selectedEmployeeId, username.Trim(), password);
+            saveSuccess = true;
+            await LoadUsers();
+            
+            await Task.Delay(1500);
+            CloseAddDialog();
+        }
+        catch (Exception ex)
+        {
+            dialogError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ShowResetPasswordDialog(UserAccount user)
+    {
+        selectedUser = user;
+        newPassword = "";
+        confirmNewPassword = "";
+        resetError = null;
+        resetSuccess = false;
+        showResetDialog = true;
+    }
+
+    private async Task ResetPassword()
+    {
+        resetError = null;
+        resetSuccess = false;
+
+        if (string.IsNullOrWhiteSpace(newPassword))
+        {
+            resetError = "New password is required";
+            return;
+        }
+
+        if (newPassword != confirmNewPassword)
+        {
+            resetError = "Passwords do not match";
+            return;
+        }
+
+        if (newPassword.Length < 6)
+        {
+            resetError = "Password must be at least 6 characters";
+            return;
+        }
+
+        isResetting = true;
+
+        try
+        {
+            await AuthService.ResetPasswordAsync(selectedUser!.UserId, newPassword);
+            resetSuccess = true;
+            
+            await Task.Delay(1500);
+            CloseResetDialog();
+        }
+        catch (Exception ex)
+        {
+            resetError = ex.Message;
+        }
+        finally
+        {
+            isResetting = false;
+        }
+    }
+
+    private async Task DeactivateUser(long userId)
+    {
+        try
+        {
+            await AuthService.DeactivateUserAsync(userId);
+            await LoadUsers();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deactivating user: {ex.Message}";
+        }
+    }
+
+    private async Task ActivateUser(long userId)
+    {
+        try
+        {
+            await AuthService.ActivateUserAsync(userId);
+            await LoadUsers();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error activating user: {ex.Message}";
+        }
+    }
+
+    private void CloseAddDialog()
+    {
+        showAddDialog = false;
+        selectedEmployeeId = 0;
+        username = "";
+        password = "";
+        confirmPassword = "";
+        dialogError = null;
+        saveSuccess = false;
+    }
+
+    private void CloseResetDialog()
+    {
+        showResetDialog = false;
+        selectedUser = null;
+        newPassword = "";
+        confirmNewPassword = "";
+        resetError = null;
+        resetSuccess = false;
+    }
+
+    // Filtering, Sorting, Pagination
+    private void ApplyFilter()
+    {
+        var query = users.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.ToLower();
+            query = query.Where(u =>
+                u.Username.ToLower().Contains(term) ||
+                (u.Employee?.Person?.FirstName?.ToLower().Contains(term) ?? false) ||
+                (u.Employee?.Person?.LastName?.ToLower().Contains(term) ?? false) ||
+                (u.Employee?.Role?.Name?.ToLower().Contains(term) ?? false)
+            );
+        }
+
+        query = sortColumn switch
+        {
+            "username" => sortAscending ? query.OrderBy(u => u.Username) : query.OrderByDescending(u => u.Username),
+            "employee" => sortAscending ? query.OrderBy(u => u.Employee?.Person?.FirstName) : query.OrderByDescending(u => u.Employee?.Person?.FirstName),
+            "role" => sortAscending ? query.OrderBy(u => u.Employee?.Role?.Name) : query.OrderByDescending(u => u.Employee?.Role?.Name),
+            "login" => sortAscending ? query.OrderBy(u => u.LastLogin) : query.OrderByDescending(u => u.LastLogin),
+            "status" => sortAscending ? query.OrderBy(u => u.IsActive) : query.OrderByDescending(u => u.IsActive),
+            _ => query.OrderBy(u => u.Username)
+        };
+
+        filteredUsers = query.ToList();
+        currentPage = 1;
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column) sortAscending = !sortAscending;
+        else { sortColumn = column; sortAscending = true; }
+        ApplyFilter();
+    }
+
+    private string GetSortIcon(string column) => sortColumn != column ? "" : (sortAscending ? "▲" : "▼");
+    private List<UserAccount> GetPagedUsers() => filteredUsers.Skip((currentPage - 1) * pageSize).Take(pageSize).ToList();
+    private void GoToPage(int page) => currentPage = page;
+    private void PreviousPage() { if (currentPage > 1) currentPage--; }
+    private void NextPage() { if (currentPage < TotalPages) currentPage++; }
+}

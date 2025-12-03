@@ -1,0 +1,438 @@
+@page "/my-schedule"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@using Spa_Management_System.Services
+@inject AppDbContext DbContext
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+
+<PageTitle>My Schedule - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else if (currentEmployee == null)
+{
+    <div class="card">
+        <div class="alert alert-warning">
+            <span class="bi bi-exclamation-triangle-fill"></span>
+            <strong>No Employee Profile Found</strong>
+            <p style="margin: 0.5rem 0 0 0;">Your account is not linked to an employee profile. Please contact your administrator.</p>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-clock"></span> My Schedule</h3>
+                <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">
+                    Welcome, @currentEmployee.Person?.FirstName! Here are your appointments.
+                </p>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-outline-secondary" @onclick="PreviousWeek">
+                    <span class="bi bi-chevron-left"></span>
+                </button>
+                <button class="btn btn-outline" @onclick="GoToToday">Today</button>
+                <button class="btn btn-outline-secondary" @onclick="NextWeek">
+                    <span class="bi bi-chevron-right"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Week View Header -->
+        <div style="text-align: center; margin-bottom: 1.5rem;">
+            <h4 style="color: var(--spa-primary); margin: 0;">
+                @weekStart.ToString("MMMM dd") - @weekEnd.ToString("MMMM dd, yyyy")
+            </h4>
+        </div>
+
+        <!-- Summary Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+            <div style="padding: 1rem; background: rgba(40, 167, 69, 0.1); border-radius: 8px; text-align: center;">
+                <h4 style="color: #28a745; margin: 0;">@weekAppointments.Count</h4>
+                <p style="color: var(--spa-text-light); font-size: 0.85rem; margin: 0;">Appointments This Week</p>
+            </div>
+            <div style="padding: 1rem; background: rgba(23, 162, 184, 0.1); border-radius: 8px; text-align: center;">
+                <h4 style="color: #17a2b8; margin: 0;">@todayAppointments.Count</h4>
+                <p style="color: var(--spa-text-light); font-size: 0.85rem; margin: 0;">Today's Appointments</p>
+            </div>
+            <div style="padding: 1rem; background: rgba(255, 193, 7, 0.1); border-radius: 8px; text-align: center;">
+                <h4 style="color: #856404; margin: 0;">@GetTotalHours()</h4>
+                <p style="color: var(--spa-text-light); font-size: 0.85rem; margin: 0;">Hours Booked</p>
+            </div>
+            <div style="padding: 1rem; background: rgba(170, 148, 120, 0.1); border-radius: 8px; text-align: center;">
+                <h4 style="color: var(--spa-primary); margin: 0;">₱@GetWeeklyEarnings().ToString("N0")</h4>
+                <p style="color: var(--spa-text-light); font-size: 0.85rem; margin: 0;">Expected Earnings</p>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="text-align: center; padding: 3rem;">
+                <div class="spinner-border" style="color: var(--spa-primary);"></div>
+                <p style="color: var(--spa-text-light); margin-top: 1rem;">Loading schedule...</p>
+            </div>
+        }
+        else
+        {
+            <!-- Week Days Grid -->
+            <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem; margin-bottom: 1rem;">
+                @foreach (var day in weekDays)
+                {
+                    var isToday = day.Date == DateTime.Today;
+                    var dayAppts = weekAppointments.Where(a => a.ScheduledStart.Date == day.Date).OrderBy(a => a.ScheduledStart).ToList();
+                    <div style="min-height: 200px; border: 2px solid @(isToday ? "var(--spa-primary)" : "var(--spa-secondary)"); border-radius: 8px; overflow: hidden; background: @(isToday ? "rgba(170, 148, 120, 0.05)" : "white");">
+                        <!-- Day Header -->
+                        <div style="padding: 0.5rem; background: @(isToday ? "var(--spa-primary)" : "var(--spa-background)"); text-align: center;">
+                            <p style="margin: 0; font-weight: 600; color: @(isToday ? "white" : "var(--spa-text-dark)");">
+                                @day.ToString("ddd")
+                            </p>
+                            <p style="margin: 0; font-size: 0.85rem; color: @(isToday ? "rgba(255,255,255,0.8)" : "var(--spa-text-light)");">
+                                @day.ToString("MMM dd")
+                            </p>
+                        </div>
+
+                        <!-- Appointments -->
+                        <div style="padding: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem;">
+                            @if (!dayAppts.Any())
+                            {
+                                <p style="color: var(--spa-text-light); font-size: 0.75rem; text-align: center; margin: 0.5rem 0;">
+                                    No appointments
+                                </p>
+                            }
+                            else
+                            {
+                                @foreach (var appt in dayAppts)
+                                {
+                                    <div style="padding: 0.4rem; background: @GetStatusColor(appt.Status); border-radius: 4px; font-size: 0.75rem; cursor: pointer;" @onclick="() => ViewAppointment(appt)">
+                                        <p style="margin: 0; font-weight: 600;">@appt.ScheduledStart.ToString("hh:mm tt")</p>
+                                        <p style="margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                            @(appt.Customer?.Person?.FirstName ?? "Walk-in")
+                                        </p>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Today's Detail List -->
+            <h4 style="color: var(--spa-primary); margin: 1.5rem 0 1rem 0;"><span class="bi bi-list-check"></span> Today's Appointments - @DateTime.Today.ToString("dddd, MMMM dd")</h4>
+            
+            @if (!todayAppointments.Any())
+            {
+                <div class="alert alert-info">
+                    <span class="bi bi-calendar-check"></span>
+                    You have no appointments scheduled for today. Enjoy your free time!
+                </div>
+            }
+            else
+            {
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    @foreach (var appt in todayAppointments.OrderBy(a => a.ScheduledStart))
+                    {
+                        var services = appt.AppointmentServices?.ToList() ?? new List<AppointmentService>();
+                        <div style="padding: 1rem; border: 1px solid var(--spa-secondary); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                            <div style="display: flex; gap: 1rem; align-items: center;">
+                                <div style="padding: 0.75rem 1rem; background: var(--spa-primary); color: white; border-radius: 8px; text-align: center; min-width: 80px;">
+                                    <p style="margin: 0; font-weight: 600;">@appt.ScheduledStart.ToString("hh:mm")</p>
+                                    <p style="margin: 0; font-size: 0.75rem;">@(appt.ScheduledStart.Hour >= 12 ? "PM" : "AM")</p>
+                                </div>
+                                <div>
+                                    <h5 style="margin: 0; color: var(--spa-text-dark);">
+                                        @(appt.Customer?.Person?.FirstName ?? "Walk-in") @(appt.Customer?.Person?.LastName ?? "Customer")
+                                    </h5>
+                                    <p style="margin: 0; color: var(--spa-text-light); font-size: 0.9rem;">
+                                        @string.Join(", ", services.Select(s => s.Service?.Name ?? "Service"))
+                                    </p>
+                                    <p style="margin: 0.25rem 0 0 0; font-size: 0.85rem;">
+                                        <span style="padding: 0.15rem 0.5rem; border-radius: 12px; background: @GetStatusColor(appt.Status); font-size: 0.75rem;">
+                                            @GetStatusText(appt.Status)
+                                        </span>
+                                        <span style="color: var(--spa-text-light); margin-left: 0.5rem;">
+                                            Duration: @GetAppointmentDuration(appt) mins
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                @if (appt.Status == "scheduled" || appt.Status == "confirmed")
+                                {
+                                    <button class="btn btn-outline-success btn-sm" @onclick="() => StartAppointment(appt)">
+                                        <span class="bi bi-play-fill"></span> Start
+                                    </button>
+                                }
+                                @if (appt.Status == "in-progress")
+                                {
+                                    <button class="btn btn-outline btn-sm" @onclick="() => CompleteAppointment(appt)">
+                                        <span class="bi bi-check-circle"></span> Complete
+                                    </button>
+                                }
+                                <button class="btn btn-outline-secondary btn-sm" @onclick="() => ViewAppointment(appt)">
+                                    <span class="bi bi-eye"></span> View
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    <!-- Appointment Details Dialog -->
+    @if (showDetailsDialog && selectedAppointment != null)
+    {
+        <div class="modal-overlay" @onclick="CloseDetailsDialog">
+            <div class="modal-content" style="max-width: 500px;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h4><span class="bi bi-calendar-event"></span> Appointment Details</h4>
+                    <button class="btn-close" @onclick="CloseDetailsDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <div style="padding: 1rem; background: var(--spa-background); border-radius: 8px; margin-bottom: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h5 style="margin: 0; color: var(--spa-primary);">
+                                    @selectedAppointment.ScheduledStart.ToString("dddd, MMMM dd, yyyy")
+                                </h5>
+                                <p style="margin: 0.25rem 0 0 0; font-size: 1.1rem; font-weight: 600;">
+                                    @selectedAppointment.ScheduledStart.ToString("hh:mm tt") - @selectedAppointment.ScheduledEnd?.ToString("hh:mm tt")
+                                </p>
+                            </div>
+                            <span style="padding: 0.25rem 0.75rem; border-radius: 20px; background: @GetStatusColor(selectedAppointment.Status); font-weight: 600;">
+                                @GetStatusText(selectedAppointment.Status)
+                            </span>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 1rem;">
+                        <span style="color: var(--spa-text-light); font-size: 0.85rem;">Customer</span>
+                        <p style="margin: 0; font-weight: 600;">
+                            @(selectedAppointment.Customer?.Person?.FirstName ?? "Walk-in") @(selectedAppointment.Customer?.Person?.LastName ?? "Customer")
+                        </p>
+                        @if (!string.IsNullOrEmpty(selectedAppointment.Customer?.Person?.Phone))
+                        {
+                            <p style="margin: 0; color: var(--spa-text-light);"><span class="bi bi-telephone"></span> @selectedAppointment.Customer.Person.Phone</p>
+                        }
+                    </div>
+
+                    <div style="margin-bottom: 1rem;">
+                        <span style="color: var(--spa-text-light); font-size: 0.85rem;">Services</span>
+                        @foreach (var svc in selectedAppointment.AppointmentServices ?? new List<AppointmentService>())
+                        {
+                            <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--spa-background);">
+                                <span>@(svc.Service?.Name ?? "Service")</span>
+                                <span style="font-weight: 600;">₱@svc.Price.ToString("N0")</span>
+                            </div>
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(selectedAppointment.Notes))
+                    {
+                        <div style="margin-bottom: 1rem;">
+                            <span style="color: var(--spa-text-light); font-size: 0.85rem;">Notes</span>
+                            <p style="margin: 0; padding: 0.5rem; background: #fff3cd; border-radius: 4px;">
+                                @selectedAppointment.Notes
+                            </p>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    @if (selectedAppointment.Status == "scheduled" || selectedAppointment.Status == "confirmed")
+                    {
+                        <button class="btn btn-success" @onclick="() => StartAppointment(selectedAppointment)">
+                            <span class="bi bi-play-fill"></span> Start Session
+                        </button>
+                    }
+                    @if (selectedAppointment.Status == "in-progress")
+                    {
+                        <button class="btn btn-primary" @onclick="() => CompleteAppointment(selectedAppointment)">
+                            <span class="bi bi-check-circle"></span> Complete
+                        </button>
+                    }
+                    <button class="btn btn-outline-secondary" @onclick="CloseDetailsDialog">Close</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private Employee? currentEmployee;
+    private List<Appointment> weekAppointments = new();
+    private List<Appointment> todayAppointments = new();
+    private List<DateTime> weekDays = new();
+    private DateTime weekStart;
+    private DateTime weekEnd;
+    
+    private Appointment? selectedAppointment;
+    
+    private bool isLoading = true;
+    private bool showDetailsDialog = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEmployeeProfile();
+        SetCurrentWeek(DateTime.Today);
+        await LoadSchedule();
+    }
+
+    private async Task LoadEmployeeProfile()
+    {
+        if (AuthState.CurrentUser == null) return;
+
+        // Find employee linked to current user via UserAccount
+        currentEmployee = await DbContext.Employees
+            .Include(e => e.Person)
+            .Include(e => e.UserAccounts)
+            .FirstOrDefaultAsync(e => e.UserAccounts.Any(u => u.UserId == AuthState.CurrentUser.UserId));
+    }
+
+    private void SetCurrentWeek(DateTime date)
+    {
+        // Get Monday of the week
+        var dayOfWeek = (int)date.DayOfWeek;
+        var diff = dayOfWeek == 0 ? -6 : 1 - dayOfWeek; // Adjust for Sunday
+        weekStart = date.AddDays(diff);
+        weekEnd = weekStart.AddDays(6);
+        
+        weekDays = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
+    }
+
+    private async Task LoadSchedule()
+    {
+        if (currentEmployee == null) return;
+
+        isLoading = true;
+        try
+        {
+            // Get appointments where this employee is assigned to any service
+            weekAppointments = await DbContext.Appointments
+                .Include(a => a.Customer)
+                    .ThenInclude(c => c!.Person)
+                .Include(a => a.AppointmentServices)
+                    .ThenInclude(s => s.Service)
+                .Where(a => a.ScheduledStart >= weekStart && a.ScheduledStart <= weekEnd.AddDays(1))
+                .Where(a => a.AppointmentServices!.Any(s => s.TherapistEmployeeId == currentEmployee.EmployeeId))
+                .ToListAsync();
+
+            todayAppointments = weekAppointments.Where(a => a.ScheduledStart.Date == DateTime.Today).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading schedule: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task PreviousWeek()
+    {
+        SetCurrentWeek(weekStart.AddDays(-7));
+        await LoadSchedule();
+    }
+
+    private async Task NextWeek()
+    {
+        SetCurrentWeek(weekStart.AddDays(7));
+        await LoadSchedule();
+    }
+
+    private async Task GoToToday()
+    {
+        SetCurrentWeek(DateTime.Today);
+        await LoadSchedule();
+    }
+
+    private string GetTotalHours()
+    {
+        var totalMinutes = weekAppointments.Sum(a => GetAppointmentDuration(a));
+        var hours = totalMinutes / 60;
+        var mins = totalMinutes % 60;
+        return mins > 0 ? $"{hours}h {mins}m" : $"{hours}h";
+    }
+
+    private int GetAppointmentDuration(Appointment appt)
+    {
+        if (appt.ScheduledEnd.HasValue)
+        {
+            return (int)(appt.ScheduledEnd.Value - appt.ScheduledStart).TotalMinutes;
+        }
+        return appt.AppointmentServices?.Sum(s => s.Service?.DurationMinutes ?? 60) ?? 60;
+    }
+
+    private decimal GetWeeklyEarnings()
+    {
+        // Calculate expected commissions for the week
+        decimal total = 0;
+        foreach (var appt in weekAppointments.Where(a => a.Status != "cancelled" && a.Status != "no-show"))
+        {
+            foreach (var svc in appt.AppointmentServices ?? new List<AppointmentService>())
+            {
+                if (svc.TherapistEmployeeId == currentEmployee?.EmployeeId)
+                {
+                    total += svc.CommissionAmount;
+                }
+            }
+        }
+        return total;
+    }
+
+    private string GetStatusColor(string? status) => status switch
+    {
+        "scheduled" => "#fff3cd",
+        "confirmed" => "#cce5ff",
+        "in-progress" => "#d4edda",
+        "completed" => "#d1e7dd",
+        "cancelled" => "#f8d7da",
+        "no-show" => "#e2e3e5",
+        _ => "#f5f5f5"
+    };
+
+    private string GetStatusText(string? status) => status switch
+    {
+        "scheduled" => "Scheduled",
+        "confirmed" => "Confirmed",
+        "in-progress" => "In Progress",
+        "completed" => "Completed",
+        "cancelled" => "Cancelled",
+        "no-show" => "No Show",
+        _ => "Unknown"
+    };
+
+    private void ViewAppointment(Appointment appt)
+    {
+        selectedAppointment = appt;
+        showDetailsDialog = true;
+    }
+
+    private void CloseDetailsDialog()
+    {
+        showDetailsDialog = false;
+        selectedAppointment = null;
+    }
+
+    private async Task StartAppointment(Appointment appt)
+    {
+        appt.Status = "in-progress";
+        await DbContext.SaveChangesAsync();
+        await LoadSchedule();
+        showDetailsDialog = false;
+    }
+
+    private async Task CompleteAppointment(Appointment appt)
+    {
+        appt.Status = "completed";
+        await DbContext.SaveChangesAsync();
+        await LoadSchedule();
+        showDetailsDialog = false;
+    }
+}

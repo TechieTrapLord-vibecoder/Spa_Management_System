@@ -1,0 +1,630 @@
+@page "/expenses"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@using Spa_Management_System.Services
+@inject AppDbContext DbContext
+@inject IAuthStateService AuthState
+@inject IAuditLogService AuditLog
+@inject IAccountingService AccountingService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Expense Tracking - Kaye Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-cash-stack"></span> Expense Tracking</h3>
+                <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">Track and manage business expenses</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-outline" @onclick="ExportToExcel">
+                    <span class="bi bi-file-earmark-excel"></span> Export
+                </button>
+                <button class="btn btn-primary" @onclick="ShowNewExpenseDialog">
+                    <span class="bi bi-plus-circle"></span> Add Expense
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success" style="margin-bottom: 1rem;">
+                <span class="bi bi-check-circle-fill"></span> @successMessage
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger" style="margin-bottom: 1rem;">
+                <span class="bi bi-exclamation-circle-fill"></span> @errorMessage
+            </div>
+        }
+
+        <!-- Summary Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+            <div style="padding: 1.25rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                <div style="font-size: 0.85rem; opacity: 0.9;">Total Expenses (Period)</div>
+                <div style="font-size: 1.75rem; font-weight: 700;">₱@totalExpenses.ToString("N2")</div>
+            </div>
+            <div style="padding: 1.25rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                <div style="font-size: 0.85rem; opacity: 0.9;">This Month</div>
+                <div style="font-size: 1.75rem; font-weight: 700;">₱@thisMonthExpenses.ToString("N2")</div>
+            </div>
+            <div style="padding: 1.25rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                <div style="font-size: 0.85rem; opacity: 0.9;">Pending</div>
+                <div style="font-size: 1.75rem; font-weight: 700;">₱@pendingExpenses.ToString("N2")</div>
+            </div>
+            <div style="padding: 1.25rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                <div style="font-size: 0.85rem; opacity: 0.9;">Transactions</div>
+                <div style="font-size: 1.75rem; font-weight: 700;">@expenseCount</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: end;">
+            <div style="flex: 1; min-width: 150px;">
+                <label class="form-label">From</label>
+                <input type="date" class="form-control" @bind="filterFromDate" @bind:after="LoadExpenses" />
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+                <label class="form-label">To</label>
+                <input type="date" class="form-control" @bind="filterToDate" @bind:after="LoadExpenses" />
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+                <label class="form-label">Category</label>
+                <select class="form-control" @bind="filterCategory" @bind:after="LoadExpenses">
+                    <option value="">All Categories</option>
+                    @foreach (var cat in expenseCategories)
+                    {
+                        <option value="@cat">@cat</option>
+                    }
+                </select>
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+                <label class="form-label">Status</label>
+                <select class="form-control" @bind="filterStatus" @bind:after="LoadExpenses">
+                    <option value="">All Status</option>
+                    <option value="paid">Paid</option>
+                    <option value="pending">Pending</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+            </div>
+            <div style="flex: 2; min-width: 200px;">
+                <label class="form-label">Search</label>
+                <input type="text" class="form-control" placeholder="Search description, vendor..." @bind="searchTerm" @bind:event="oninput" @bind:after="LoadExpenses" />
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="text-align: center; padding: 3rem;">
+                <div class="loading"></div>
+                <p style="color: var(--spa-text-light); margin-top: 1rem;">Loading expenses...</p>
+            </div>
+        }
+        else if (!expenses.Any())
+        {
+            <div class="alert alert-info">
+                <span class="bi bi-info-circle-fill"></span>
+                No expenses found. Click "Add Expense" to record one.
+            </div>
+        }
+        else
+        {
+            <div id="expenseTableContainer" style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 100px;">Date</th>
+                            <th style="width: 120px;">Category</th>
+                            <th>Description</th>
+                            <th style="width: 120px;">Vendor</th>
+                            <th style="text-align: right; width: 110px;">Amount</th>
+                            <th style="width: 100px;">Payment</th>
+                            <th style="width: 80px;">Status</th>
+                            <th style="text-align: center; width: 180px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var expense in expenses)
+                        {
+                            <tr>
+                                <td>@expense.ExpenseDate.ToString("MMM dd, yyyy")</td>
+                                <td>
+                                    <span style="padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.8rem; background: @GetCategoryColor(expense.Category);">
+                                        <span class="bi @GetCategoryIcon(expense.Category)"></span> @expense.Category
+                                    </span>
+                                </td>
+                                <td>
+                                    <strong>@expense.Description</strong>
+                                    @if (!string.IsNullOrEmpty(expense.ReferenceNumber))
+                                    {
+                                        <br /><small style="color: var(--spa-text-light);">Ref: @expense.ReferenceNumber</small>
+                                    }
+                                </td>
+                                <td>@(expense.Vendor ?? "-")</td>
+                                <td style="text-align: right; font-weight: 600; color: var(--spa-danger);">₱@expense.Amount.ToString("N2")</td>
+                                <td>@expense.PaymentMethod</td>
+                                <td>
+                                    <span class="badge @GetStatusBadgeClass(expense.Status)">@expense.Status</span>
+                                </td>
+                                <td>
+                                    <div style="display: flex; gap: 0.35rem; justify-content: center; flex-wrap: nowrap;">
+                                        <button class="btn btn-outline btn-sm" @onclick="() => EditExpense(expense)" title="Edit" style="white-space: nowrap;">
+                                            <span class="bi bi-pencil"></span> Edit
+                                        </button>
+                                        @if (!string.IsNullOrEmpty(expense.JournalId?.ToString()))
+                                        {
+                                            <button class="btn btn-sm" style="background: #d1fae5; color: #059669; border: 1px solid #a7f3d0; white-space: nowrap;" @onclick='() => Navigation.NavigateTo($"/journal-entries?search={expense.JournalEntry?.JournalNo}")' title="View Journal Entry">
+                                                <span class="bi bi-journal-text"></span> JE
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr style="background: var(--spa-light); font-weight: 600;">
+                            <td colspan="4">Total</td>
+                            <td style="text-align: right; color: var(--spa-danger);">₱@expenses.Sum(e => e.Amount).ToString("N2")</td>
+                            <td colspan="3"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
+    </div>
+
+    <!-- Add/Edit Expense Dialog -->
+    @if (showExpenseDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseExpenseDialog">
+            <div class="modal-content" style="max-width: 600px;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h4>@(isEditing ? "Edit Expense" : "Add New Expense")</h4>
+                    <button class="btn-close" @onclick="CloseExpenseDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label class="form-label">Date *</label>
+                            <input type="date" class="form-control" @bind="currentExpense.ExpenseDate" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Category *</label>
+                            <select class="form-control" @bind="currentExpense.Category">
+                                <option value="">-- Select Category --</option>
+                                @foreach (var cat in expenseCategories)
+                                {
+                                    <option value="@cat">@cat</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Description *</label>
+                        <input type="text" class="form-control" @bind="currentExpense.Description" placeholder="What was this expense for?" maxlength="300" />
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label class="form-label">Amount *</label>
+                            <input type="number" class="form-control" @bind="currentExpense.Amount" step="0.01" min="0" placeholder="0.00" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Vendor</label>
+                            <input type="text" class="form-control" @bind="currentExpense.Vendor" placeholder="Supplier/Vendor name" maxlength="100" />
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label class="form-label">Reference #</label>
+                            <input type="text" class="form-control" @bind="currentExpense.ReferenceNumber" placeholder="Invoice/Receipt number" maxlength="100" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Payment Method</label>
+                            <select class="form-control" @bind="currentExpense.PaymentMethod">
+                                <option value="Cash">Cash</option>
+                                <option value="Card">Card</option>
+                                <option value="Bank Transfer">Bank Transfer</option>
+                                <option value="Check">Check</option>
+                                <option value="GCash">GCash</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label class="form-label">Status</label>
+                            <select class="form-control" @bind="currentExpense.Status">
+                                <option value="paid">Paid</option>
+                                <option value="pending">Pending</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Ledger Account</label>
+                            <select class="form-control" @bind="currentExpense.LedgerAccountId">
+                                <option value="">-- Auto --</option>
+                                @foreach (var acc in expenseAccounts)
+                                {
+                                    <option value="@acc.LedgerAccountId">@acc.Code - @acc.Name</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control" @bind="currentExpense.Notes" rows="2" placeholder="Additional notes..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" @onclick="CloseExpenseDialog">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveExpense" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <span class="loading" style="width: 16px; height: 16px;"></span>
+                        }
+                        else
+                        {
+                            <span class="bi bi-check-lg"></span>
+                        }
+                        @(isEditing ? "Update" : "Save")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Delete Confirmation -->
+    @if (showDeleteConfirm)
+    {
+        <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+            <div class="modal-content" style="max-width: 400px;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h4><span class="bi bi-exclamation-triangle"></span> Delete Expense</h4>
+                    <button class="btn-close" @onclick="() => showDeleteConfirm = false"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete this expense?</p>
+                    <p style="font-weight: 600; color: var(--spa-danger);">@expenseToDelete?.Description - ₱@expenseToDelete?.Amount.ToString("N2")</p>
+                    <p style="color: var(--spa-text-light); font-size: 0.9rem;">This action cannot be undone.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" @onclick="() => showDeleteConfirm = false">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteExpense">Delete</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool showExpenseDialog = false;
+    private bool showDeleteConfirm = false;
+    private bool isEditing = false;
+    private string? successMessage;
+    private string? errorMessage;
+
+    private List<Expense> expenses = new();
+    private List<LedgerAccount> expenseAccounts = new();
+    private Expense currentExpense = new();
+    private Expense? expenseToDelete;
+
+    // Filters
+    private DateTime filterFromDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime filterToDate = DateTime.Today;
+    private string filterCategory = "";
+    private string filterStatus = "";
+    private string searchTerm = "";
+
+    // Summary
+    private decimal totalExpenses = 0;
+    private decimal thisMonthExpenses = 0;
+    private decimal pendingExpenses = 0;
+    private int expenseCount = 0;
+
+    private readonly List<string> expenseCategories = new()
+    {
+        "Rent", "Utilities", "Supplies", "Salaries", "Marketing",
+        "Maintenance", "Insurance", "Transportation", "Equipment",
+        "Professional Services", "Taxes & Licenses", "Miscellaneous"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadExpenses();
+        await LoadExpenseAccounts();
+    }
+
+    private async Task LoadExpenses()
+    {
+        isLoading = true;
+        try
+        {
+            var query = DbContext.Expenses
+                .Include(e => e.CreatedByUser)
+                .Include(e => e.JournalEntry)
+                .AsQueryable();
+
+            // Apply filters
+            query = query.Where(e => e.ExpenseDate >= filterFromDate && e.ExpenseDate <= filterToDate);
+
+            if (!string.IsNullOrEmpty(filterCategory))
+                query = query.Where(e => e.Category == filterCategory);
+
+            if (!string.IsNullOrEmpty(filterStatus))
+                query = query.Where(e => e.Status == filterStatus);
+
+            if (!string.IsNullOrEmpty(searchTerm))
+                query = query.Where(e => e.Description.Contains(searchTerm) || (e.Vendor != null && e.Vendor.Contains(searchTerm)));
+
+            expenses = await query.OrderByDescending(e => e.ExpenseDate).ThenByDescending(e => e.ExpenseId).ToListAsync();
+
+            // Calculate summaries
+            var allPeriodExpenses = expenses.Where(e => e.Status != "cancelled");
+            totalExpenses = allPeriodExpenses.Sum(e => e.Amount);
+
+            var firstOfMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+            thisMonthExpenses = await DbContext.Expenses
+                .Where(e => e.ExpenseDate >= firstOfMonth && e.Status != "cancelled")
+                .SumAsync(e => e.Amount);
+
+            pendingExpenses = await DbContext.Expenses
+                .Where(e => e.Status == "pending")
+                .SumAsync(e => e.Amount);
+
+            expenseCount = expenses.Count;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading expenses: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadExpenseAccounts()
+    {
+        expenseAccounts = await DbContext.LedgerAccounts
+            .Where(a => a.AccountType == "expense")
+            .OrderBy(a => a.Code)
+            .ToListAsync();
+    }
+
+    private void ShowNewExpenseDialog()
+    {
+        currentExpense = new Expense
+        {
+            ExpenseDate = DateTime.Today,
+            PaymentMethod = "Cash",
+            Status = "paid"
+        };
+        isEditing = false;
+        showExpenseDialog = true;
+        ClearMessages();
+    }
+
+    private void EditExpense(Expense expense)
+    {
+        currentExpense = new Expense
+        {
+            ExpenseId = expense.ExpenseId,
+            ExpenseDate = expense.ExpenseDate,
+            Category = expense.Category,
+            Description = expense.Description,
+            Amount = expense.Amount,
+            Vendor = expense.Vendor,
+            ReferenceNumber = expense.ReferenceNumber,
+            PaymentMethod = expense.PaymentMethod,
+            Status = expense.Status,
+            LedgerAccountId = expense.LedgerAccountId,
+            Notes = expense.Notes
+        };
+        isEditing = true;
+        showExpenseDialog = true;
+        ClearMessages();
+    }
+
+    private async Task SaveExpense()
+    {
+        ClearMessages();
+
+        if (string.IsNullOrWhiteSpace(currentExpense.Category))
+        {
+            errorMessage = "Please select a category.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentExpense.Description))
+        {
+            errorMessage = "Please enter a description.";
+            return;
+        }
+
+        if (currentExpense.Amount <= 0)
+        {
+            errorMessage = "Please enter a valid amount.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            if (isEditing)
+            {
+                var expense = await DbContext.Expenses.FindAsync(currentExpense.ExpenseId);
+                if (expense != null)
+                {
+                    var wasNotPaid = expense.Status != "paid";
+                    var nowPaid = currentExpense.Status == "paid";
+                    
+                    expense.ExpenseDate = currentExpense.ExpenseDate;
+                    expense.Category = currentExpense.Category;
+                    expense.Description = currentExpense.Description;
+                    expense.Amount = currentExpense.Amount;
+                    expense.Vendor = currentExpense.Vendor;
+                    expense.ReferenceNumber = currentExpense.ReferenceNumber;
+                    expense.PaymentMethod = currentExpense.PaymentMethod;
+                    expense.Status = currentExpense.Status;
+                    expense.LedgerAccountId = currentExpense.LedgerAccountId;
+                    expense.Notes = currentExpense.Notes;
+                    expense.UpdatedAt = DateTime.Now;
+
+                    await DbContext.SaveChangesAsync();
+
+                    // Create journal entry if status changed to "paid" and no journal entry exists
+                    if (wasNotPaid && nowPaid && expense.JournalId == null)
+                    {
+                        var journalId = await AccountingService.CreateExpenseJournalEntryAsync(expense, AuthState.CurrentUser?.UserId);
+                        if (journalId.HasValue)
+                        {
+                            expense.JournalId = journalId;
+                            await DbContext.SaveChangesAsync();
+                        }
+                    }
+
+                    successMessage = "Expense updated successfully!" + (wasNotPaid && nowPaid ? " Journal entry created." : "");
+                    
+                    await AuditLog.LogUpdateAsync("Expense", expense.ExpenseId.ToString(), 
+                        $"Updated expense: {expense.Category} - ₱{expense.Amount:N2} ({expense.Status})", 
+                        AuthState.CurrentUser?.UserId);
+                }
+            }
+            else
+            {
+                currentExpense.CreatedByUserId = AuthState.CurrentUser?.UserId;
+                currentExpense.CreatedAt = DateTime.Now;
+                DbContext.Expenses.Add(currentExpense);
+                await DbContext.SaveChangesAsync();
+
+                // Create journal entry if expense is paid
+                if (currentExpense.Status == "paid")
+                {
+                    var journalId = await AccountingService.CreateExpenseJournalEntryAsync(currentExpense, AuthState.CurrentUser?.UserId);
+                    if (journalId.HasValue)
+                    {
+                        currentExpense.JournalId = journalId;
+                        await DbContext.SaveChangesAsync();
+                    }
+                    successMessage = "Expense added and journal entry created!";
+                    
+                    await AuditLog.LogCreateAsync("Expense", currentExpense.ExpenseId.ToString(), 
+                        $"Created expense: {currentExpense.Category} - ₱{currentExpense.Amount:N2} (paid)", 
+                        AuthState.CurrentUser?.UserId);
+                }
+                else
+                {
+                    successMessage = "Expense added successfully!";
+                    
+                    await AuditLog.LogCreateAsync("Expense", currentExpense.ExpenseId.ToString(), 
+                        $"Created expense: {currentExpense.Category} - ₱{currentExpense.Amount:N2} (pending)", 
+                        AuthState.CurrentUser?.UserId);
+                }
+            }
+
+            showExpenseDialog = false;
+            await LoadExpenses();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving expense: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ConfirmDelete(Expense expense)
+    {
+        expenseToDelete = expense;
+        showDeleteConfirm = true;
+        ClearMessages();
+    }
+
+    private async Task DeleteExpense()
+    {
+        if (expenseToDelete == null) return;
+
+        try
+        {
+            DbContext.Expenses.Remove(expenseToDelete);
+            await DbContext.SaveChangesAsync();
+            successMessage = "Expense deleted successfully!";
+            showDeleteConfirm = false;
+            await LoadExpenses();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting expense: {ex.Message}";
+            showDeleteConfirm = false;
+        }
+    }
+
+    private void CloseExpenseDialog()
+    {
+        showExpenseDialog = false;
+    }
+
+    private void ClearMessages()
+    {
+        successMessage = null;
+        errorMessage = null;
+    }
+
+    private async Task ExportToExcel()
+    {
+        await JS.InvokeVoidAsync("exportUtils.exportTableToExcel", "expenseTableContainer", $"Expenses_{DateTime.Today:yyyyMMdd}", "Expenses");
+    }
+
+    private string GetCategoryColor(string category) => category switch
+    {
+        "Rent" => "#e3f2fd",
+        "Utilities" => "#fff3e0",
+        "Supplies" => "#e8f5e9",
+        "Salaries" => "#fce4ec",
+        "Marketing" => "#f3e5f5",
+        "Maintenance" => "#e0f7fa",
+        "Insurance" => "#ede7f6",
+        _ => "#f5f5f5"
+    };
+
+    private string GetCategoryIcon(string category) => category switch
+    {
+        "Rent" => "bi-house-fill",
+        "Utilities" => "bi-lightbulb-fill",
+        "Supplies" => "bi-box-fill",
+        "Salaries" => "bi-people-fill",
+        "Marketing" => "bi-megaphone-fill",
+        "Maintenance" => "bi-wrench-adjustable",
+        "Insurance" => "bi-shield-check",
+        "Transportation" => "bi-car-front-fill",
+        "Equipment" => "bi-pc-display",
+        _ => "bi-cash-coin"
+    };
+
+    private string GetStatusBadgeClass(string status) => status switch
+    {
+        "paid" => "badge-success",
+        "pending" => "badge-warning",
+        "cancelled" => "badge-danger",
+        _ => "badge-secondary"
+    };
+}
