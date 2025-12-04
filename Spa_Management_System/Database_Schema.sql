@@ -1,10 +1,15 @@
 /* =============================================
    SPA MANAGEMENT SYSTEM - SQL SERVER (T-SQL)
-   Updated: November 2025
+   Updated: December 2025
+   
+   This schema includes sync columns for cloud synchronization
+   on all tables that support offline-first architecture.
    =============================================
 */
 
+-- =============================================
 -- 1. Person Table (Base table for Customers and Employees)
+-- =============================================
 CREATE TABLE Person (
     person_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     first_name VARCHAR(120) NOT NULL,
@@ -13,17 +18,33 @@ CREATE TABLE Person (
     phone VARCHAR(50),
     address VARCHAR(MAX),
     dob DATE,
-    created_at DATETIME DEFAULT GETDATE()
+    created_at DATETIME DEFAULT GETDATE(),
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1
 );
 
+-- =============================================
 -- 2. Role Table
+-- =============================================
 CREATE TABLE Role (
     role_id SMALLINT IDENTITY(1,1) PRIMARY KEY,
     name VARCHAR(50) NOT NULL UNIQUE,
-    is_archived BIT DEFAULT 0
+    is_archived BIT DEFAULT 0,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1
 );
 
+-- =============================================
 -- 3. Employee Table
+-- =============================================
 CREATE TABLE Employee (
     employee_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     person_id BIGINT NOT NULL,
@@ -32,11 +53,19 @@ CREATE TABLE Employee (
     status VARCHAR(30) DEFAULT 'active',
     note VARCHAR(MAX),
     created_at DATETIME DEFAULT GETDATE(),
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (person_id) REFERENCES Person(person_id),
     FOREIGN KEY (role_id) REFERENCES Role(role_id)
 );
 
+-- =============================================
 -- 4. UserAccount Table
+-- =============================================
 CREATE TABLE UserAccount (
     user_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     employee_id BIGINT NULL,
@@ -45,10 +74,18 @@ CREATE TABLE UserAccount (
     is_active BIT DEFAULT 1,
     last_login DATETIME,
     created_at DATETIME DEFAULT GETDATE(),
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (employee_id) REFERENCES Employee(employee_id)
 );
 
+-- =============================================
 -- 5. Customer Table
+-- =============================================
 CREATE TABLE Customer (
     customer_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     person_id BIGINT NOT NULL,
@@ -56,18 +93,34 @@ CREATE TABLE Customer (
     loyalty_points INT DEFAULT 0,
     is_archived BIT DEFAULT 0,
     created_at DATETIME DEFAULT GETDATE(),
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (person_id) REFERENCES Person(person_id)
 );
 
+-- =============================================
 -- 6. ServiceCategory Table
+-- =============================================
 CREATE TABLE ServiceCategory (
     service_category_id INT IDENTITY(1,1) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description VARCHAR(MAX),
-    is_archived BIT DEFAULT 0
+    is_archived BIT DEFAULT 0,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1
 );
 
+-- =============================================
 -- 7. Service Table
+-- =============================================
 CREATE TABLE Service (
     service_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     service_category_id INT NULL,
@@ -79,10 +132,18 @@ CREATE TABLE Service (
     active BIT DEFAULT 1,
     commission_type NVARCHAR(20) NOT NULL DEFAULT 'percentage',
     commission_value DECIMAL(12,2) NOT NULL DEFAULT 0,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (service_category_id) REFERENCES ServiceCategory(service_category_id)
 );
 
+-- =============================================
 -- 8. EmployeeServiceCommission Table
+-- =============================================
 CREATE TABLE EmployeeServiceCommission (
     commission_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     employee_id BIGINT NOT NULL,
@@ -92,12 +153,20 @@ CREATE TABLE EmployeeServiceCommission (
     effective_from DATE,
     effective_to DATE,
     is_archived BIT DEFAULT 0,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (employee_id) REFERENCES Employee(employee_id),
     FOREIGN KEY (service_id) REFERENCES Service(service_id),
     CONSTRAINT CHK_CommissionType CHECK (commission_type IN ('percent','fixed'))
 );
 
+-- =============================================
 -- 9. Product Table
+-- =============================================
 CREATE TABLE Product (
     product_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     sku VARCHAR(80) UNIQUE,
@@ -106,20 +175,36 @@ CREATE TABLE Product (
     unit_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     cost_price DECIMAL(12,2) DEFAULT 0.00,
     unit VARCHAR(20),
-    active BIT DEFAULT 1
+    active BIT DEFAULT 1,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1
 );
 
+-- =============================================
 -- 10. Inventory Table
+-- =============================================
 CREATE TABLE Inventory (
     inventory_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     product_id BIGINT NOT NULL UNIQUE,
     quantity_on_hand DECIMAL(12,2) DEFAULT 0,
     reorder_level DECIMAL(12,2) DEFAULT 0,
     last_counted_at DATETIME,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (product_id) REFERENCES Product(product_id)
 );
 
+-- =============================================
 -- 11. StockTransaction Table
+-- =============================================
 CREATE TABLE StockTransaction (
     stock_tx_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     product_id BIGINT NOT NULL,
@@ -129,12 +214,20 @@ CREATE TABLE StockTransaction (
     reference VARCHAR(120),
     created_by_user_id BIGINT,
     created_at DATETIME DEFAULT GETDATE(),
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (product_id) REFERENCES Product(product_id),
     FOREIGN KEY (created_by_user_id) REFERENCES UserAccount(user_id),
     CONSTRAINT CHK_TxType CHECK (tx_type IN ('purchase','sale','adjust','return'))
 );
 
+-- =============================================
 -- 12. Supplier Table
+-- =============================================
 CREATE TABLE Supplier (
     supplier_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     name VARCHAR(200) NOT NULL,
@@ -147,72 +240,100 @@ CREATE TABLE Supplier (
     sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
     last_modified_at DATETIME2,
     last_synced_at DATETIME2,
-    sync_status VARCHAR(20) DEFAULT 'pending',
+    sync_status NVARCHAR(20) DEFAULT 'pending',
     sync_version INT DEFAULT 1
 );
 
--- 12b. SupplierProduct Table (Many-to-Many: Supplier <-> Product with supplier-specific pricing)
+-- =============================================
+-- 13. SupplierProduct Table (Many-to-Many: Supplier <-> Product)
+-- =============================================
 CREATE TABLE SupplierProduct (
     supplier_product_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     supplier_id BIGINT NOT NULL,
     product_id BIGINT NOT NULL,
     supplier_price DECIMAL(12,2) NOT NULL DEFAULT 0,
-    supplier_sku VARCHAR(80),
+    supplier_sku NVARCHAR(80),
     min_order_qty INT,
     lead_time_days INT,
     is_preferred BIT DEFAULT 0,
     is_active BIT DEFAULT 1,
-    notes VARCHAR(MAX),
-    created_at DATETIME DEFAULT GETDATE(),
+    notes NVARCHAR(MAX),
+    created_at DATETIME2 DEFAULT GETDATE(),
     -- Sync columns
     sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
     last_modified_at DATETIME2,
     last_synced_at DATETIME2,
-    sync_status VARCHAR(20) DEFAULT 'pending',
+    sync_status NVARCHAR(20) DEFAULT 'pending',
     sync_version INT DEFAULT 1,
     FOREIGN KEY (supplier_id) REFERENCES Supplier(supplier_id) ON DELETE CASCADE,
     FOREIGN KEY (product_id) REFERENCES Product(product_id) ON DELETE CASCADE,
     CONSTRAINT UQ_SupplierProduct UNIQUE (supplier_id, product_id)
 );
 
--- 13. PurchaseOrder Table
+-- =============================================
+-- 14. PurchaseOrder Table
+-- =============================================
 CREATE TABLE PurchaseOrder (
     po_id BIGINT IDENTITY(1,1) PRIMARY KEY,
-    supplier_id BIGINT NOT NULL,
-    created_by_user_id BIGINT,
     po_number VARCHAR(80) UNIQUE,
+    supplier_id BIGINT NOT NULL,
     status VARCHAR(40),
+    created_by_user_id BIGINT,
     created_at DATETIME DEFAULT GETDATE(),
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (supplier_id) REFERENCES Supplier(supplier_id),
     FOREIGN KEY (created_by_user_id) REFERENCES UserAccount(user_id)
 );
 
--- 14. PurchaseOrderItem Table
+-- =============================================
+-- 15. PurchaseOrderItem Table
+-- =============================================
 CREATE TABLE PurchaseOrderItem (
     po_item_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     po_id BIGINT NOT NULL,
     product_id BIGINT NOT NULL,
     qty_ordered DECIMAL(12,2) NOT NULL,
     unit_cost DECIMAL(12,2) NOT NULL,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (po_id) REFERENCES PurchaseOrder(po_id),
     FOREIGN KEY (product_id) REFERENCES Product(product_id)
 );
 
--- 15. Appointment Table
+-- =============================================
+-- 16. Appointment Table
+-- =============================================
 CREATE TABLE Appointment (
     appointment_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     customer_id BIGINT NOT NULL,
     scheduled_start DATETIME NOT NULL,
     scheduled_end DATETIME,
     status VARCHAR(40) DEFAULT 'scheduled',
+    notes VARCHAR(MAX),
     created_by_user_id BIGINT,
     created_at DATETIME DEFAULT GETDATE(),
-    notes VARCHAR(MAX),
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (customer_id) REFERENCES Customer(customer_id),
     FOREIGN KEY (created_by_user_id) REFERENCES UserAccount(user_id)
 );
 
--- 16. AppointmentService Table
+-- =============================================
+-- 17. AppointmentService Table
+-- =============================================
 CREATE TABLE AppointmentService (
     appt_srv_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     appointment_id BIGINT NOT NULL,
@@ -220,25 +341,44 @@ CREATE TABLE AppointmentService (
     therapist_employee_id BIGINT NULL,
     price DECIMAL(12,2) NOT NULL,
     commission_amount DECIMAL(12,2) DEFAULT 0,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (appointment_id) REFERENCES Appointment(appointment_id),
     FOREIGN KEY (service_id) REFERENCES Service(service_id),
     FOREIGN KEY (therapist_employee_id) REFERENCES Employee(employee_id)
 );
 
--- 17. Sale Table
+-- =============================================
+-- 18. Sale Table
+-- =============================================
 CREATE TABLE Sale (
     sale_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     customer_id BIGINT NULL,
     created_by_user_id BIGINT,
     sale_number VARCHAR(80) UNIQUE,
+    subtotal DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    tax_rate DECIMAL(5,2) DEFAULT 0.00,
+    tax_amount DECIMAL(12,2) DEFAULT 0.00,
     total_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     payment_status VARCHAR(40) DEFAULT 'unpaid',
     created_at DATETIME DEFAULT GETDATE(),
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (customer_id) REFERENCES Customer(customer_id),
     FOREIGN KEY (created_by_user_id) REFERENCES UserAccount(user_id)
 );
 
--- 18. SaleItem Table
+-- =============================================
+-- 19. SaleItem Table
+-- =============================================
 CREATE TABLE SaleItem (
     sale_item_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     sale_id BIGINT NOT NULL,
@@ -249,6 +389,12 @@ CREATE TABLE SaleItem (
     unit_price DECIMAL(12,2) NOT NULL,
     line_total DECIMAL(12,2) NOT NULL,
     therapist_employee_id BIGINT NULL,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (sale_id) REFERENCES Sale(sale_id),
     FOREIGN KEY (product_id) REFERENCES Product(product_id),
     FOREIGN KEY (service_id) REFERENCES Service(service_id),
@@ -256,7 +402,9 @@ CREATE TABLE SaleItem (
     CONSTRAINT CHK_ItemType CHECK (item_type IN ('product','service'))
 );
 
--- 19. Payment Table
+-- =============================================
+-- 20. Payment Table
+-- =============================================
 CREATE TABLE Payment (
     payment_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     sale_id BIGINT NOT NULL,
@@ -264,23 +412,39 @@ CREATE TABLE Payment (
     amount DECIMAL(12,2) NOT NULL,
     paid_at DATETIME DEFAULT GETDATE(),
     recorded_by_user_id BIGINT,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (sale_id) REFERENCES Sale(sale_id),
     FOREIGN KEY (recorded_by_user_id) REFERENCES UserAccount(user_id),
     CONSTRAINT CHK_PaymentMethod CHECK (payment_method IN ('cash','card','gcash','voucher'))
 );
 
--- 20. LedgerAccount Table
+-- =============================================
+-- 21. LedgerAccount Table
+-- =============================================
 CREATE TABLE LedgerAccount (
     ledger_account_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     code VARCHAR(50) UNIQUE NOT NULL,
     name VARCHAR(200) NOT NULL,
     account_type VARCHAR(20) NOT NULL,
     normal_balance VARCHAR(10) NOT NULL,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     CONSTRAINT CHK_AccountType CHECK (account_type IN ('asset','liability','equity','revenue','expense')),
     CONSTRAINT CHK_NormalBalance CHECK (normal_balance IN ('debit','credit'))
 );
 
--- 21. JournalEntry Table
+-- =============================================
+-- 22. JournalEntry Table
+-- =============================================
 CREATE TABLE JournalEntry (
     journal_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     journal_no VARCHAR(80) UNIQUE,
@@ -288,10 +452,18 @@ CREATE TABLE JournalEntry (
     description VARCHAR(MAX),
     created_by_user_id BIGINT,
     created_at DATETIME DEFAULT GETDATE(),
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (created_by_user_id) REFERENCES UserAccount(user_id)
 );
 
--- 22. JournalEntryLine Table
+-- =============================================
+-- 23. JournalEntryLine Table
+-- =============================================
 CREATE TABLE JournalEntryLine (
     journal_line_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     journal_id BIGINT NOT NULL,
@@ -299,22 +471,38 @@ CREATE TABLE JournalEntryLine (
     debit DECIMAL(14,2) DEFAULT 0,
     credit DECIMAL(14,2) DEFAULT 0,
     line_memo VARCHAR(MAX),
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (journal_id) REFERENCES JournalEntry(journal_id),
     FOREIGN KEY (ledger_account_id) REFERENCES LedgerAccount(ledger_account_id)
 );
 
--- 23. CRM_Note Table
+-- =============================================
+-- 24. CRM_Note Table
+-- =============================================
 CREATE TABLE CRM_Note (
     note_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     customer_id BIGINT NOT NULL,
     created_by_user_id BIGINT NOT NULL,
     note VARCHAR(MAX),
     created_at DATETIME DEFAULT GETDATE(),
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (customer_id) REFERENCES Customer(customer_id),
     FOREIGN KEY (created_by_user_id) REFERENCES UserAccount(user_id)
 );
 
--- 24. AuditLog Table
+-- =============================================
+-- 25. AuditLog Table
+-- =============================================
 CREATE TABLE AuditLog (
     audit_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     entity_name VARCHAR(120),
@@ -323,34 +511,50 @@ CREATE TABLE AuditLog (
     changed_by_user_id BIGINT,
     change_summary VARCHAR(MAX),
     created_at DATETIME DEFAULT GETDATE(),
+    -- Sync columns (AuditLog typically syncs one-way but included for consistency)
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (changed_by_user_id) REFERENCES UserAccount(user_id),
     CONSTRAINT CHK_AuditAction CHECK (action IN ('create','update','delete'))
 );
 
--- 25. Expense Table (NEW)
+-- =============================================
+-- 26. Expense Table
+-- =============================================
 CREATE TABLE Expense (
     expense_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     expense_date DATE NOT NULL,
-    category VARCHAR(100) NOT NULL,
-    description VARCHAR(300) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    description NVARCHAR(500) NOT NULL,
     amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-    vendor VARCHAR(100),
+    vendor NVARCHAR(200),
     reference_number VARCHAR(100),
-    payment_method VARCHAR(50) DEFAULT 'Cash',
-    status VARCHAR(30) DEFAULT 'paid',
-    notes VARCHAR(MAX),
+    payment_method VARCHAR(30) DEFAULT 'Cash',
+    status VARCHAR(20) DEFAULT 'paid',
+    notes NVARCHAR(500),
     ledger_account_id BIGINT NULL,
     journal_id BIGINT NULL,
     created_by_user_id BIGINT,
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (ledger_account_id) REFERENCES LedgerAccount(ledger_account_id),
     FOREIGN KEY (journal_id) REFERENCES JournalEntry(journal_id),
     FOREIGN KEY (created_by_user_id) REFERENCES UserAccount(user_id),
     CONSTRAINT CHK_ExpenseStatus CHECK (status IN ('paid','pending','cancelled'))
 );
 
--- 26. Payroll Table (NEW)
+-- =============================================
+-- 27. Payroll Table
+-- =============================================
 CREATE TABLE Payroll (
     payroll_id BIGINT IDENTITY(1,1) PRIMARY KEY,
     employee_id BIGINT NOT NULL,
@@ -364,28 +568,20 @@ CREATE TABLE Payroll (
     status VARCHAR(20) DEFAULT 'draft',
     paid_at DATETIME,
     journal_id BIGINT NULL,
-    notes VARCHAR(MAX),
+    notes NVARCHAR(500),
     created_by_user_id BIGINT,
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status NVARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
     FOREIGN KEY (employee_id) REFERENCES Employee(employee_id),
     FOREIGN KEY (created_by_user_id) REFERENCES UserAccount(user_id),
     FOREIGN KEY (journal_id) REFERENCES JournalEntry(journal_id),
     CONSTRAINT CHK_PayrollStatus CHECK (status IN ('draft','paid'))
-);
-
--- 27. EmployeeAttendance Table (NEW)
-CREATE TABLE EmployeeAttendance (
-    attendance_id BIGINT IDENTITY(1,1) PRIMARY KEY,
-    employee_id BIGINT NOT NULL,
-    work_date DATE NOT NULL,
-    days_worked DECIMAL(4,1) DEFAULT 0,
-    notes VARCHAR(MAX),
-    created_by_user_id BIGINT,
-    created_at DATETIME DEFAULT GETDATE(),
-    updated_at DATETIME,
-    FOREIGN KEY (employee_id) REFERENCES Employee(employee_id),
-    FOREIGN KEY (created_by_user_id) REFERENCES UserAccount(user_id)
 );
 
 -- =============================================
@@ -400,104 +596,71 @@ CREATE INDEX IX_Payment_SaleId ON Payment(sale_id);
 CREATE INDEX IX_Expense_Date ON Expense(expense_date);
 CREATE INDEX IX_Payroll_EmployeeId ON Payroll(employee_id);
 CREATE INDEX IX_Payroll_PeriodStart ON Payroll(period_start);
-CREATE INDEX IX_EmployeeAttendance_EmployeeId ON EmployeeAttendance(employee_id);
-CREATE INDEX IX_EmployeeAttendance_WorkDate ON EmployeeAttendance(work_date);
+
+-- Sync-related indexes for faster sync queries
+CREATE INDEX IX_Person_SyncStatus ON Person(sync_status);
+CREATE INDEX IX_Customer_SyncStatus ON Customer(sync_status);
+CREATE INDEX IX_Employee_SyncStatus ON Employee(sync_status);
+CREATE INDEX IX_Appointment_SyncStatus ON Appointment(sync_status);
+CREATE INDEX IX_Sale_SyncStatus ON Sale(sync_status);
+CREATE INDEX IX_Service_SyncStatus ON Service(sync_status);
+CREATE INDEX IX_Product_SyncStatus ON Product(sync_status);
 
 -- =============================================
--- SAMPLE DATA: PRODUCTS
+-- INITIAL DATA: Roles
 -- =============================================
--- Massage Oils & Lotions
-INSERT INTO Product (sku, name, description, unit_price, cost_price, unit, active) VALUES
-('OIL-LAV-500', 'Lavender Massage Oil', 'Premium organic lavender essential oil blend for relaxation massage, 500ml', 450.00, 280.00, 'bottle', 1),
-('OIL-EUC-500', 'Eucalyptus Massage Oil', 'Refreshing eucalyptus oil blend for therapeutic massage, 500ml', 420.00, 250.00, 'bottle', 1),
-('OIL-COC-1L', 'Virgin Coconut Oil', 'Pure virgin coconut oil for body treatments, 1 liter', 380.00, 220.00, 'bottle', 1),
-('OIL-ARG-250', 'Argan Oil Premium', 'Moroccan argan oil for hair and skin treatments, 250ml', 650.00, 400.00, 'bottle', 1),
-('OIL-JOJ-500', 'Jojoba Carrier Oil', 'Cold-pressed jojoba oil for mixing with essentials, 500ml', 520.00, 320.00, 'bottle', 1),
-('LOT-ALO-500', 'Aloe Vera Body Lotion', 'Soothing aloe vera lotion for after-treatment care, 500ml', 350.00, 180.00, 'bottle', 1),
-('LOT-SHE-300', 'Shea Butter Cream', 'Rich shea butter moisturizing cream, 300g', 480.00, 280.00, 'jar', 1),
-('OIL-HOT-250', 'Hot Stone Oil', 'Special warming oil for hot stone massage, 250ml', 380.00, 200.00, 'bottle', 1);
-
--- Face & Skin Care Products
-INSERT INTO Product (sku, name, description, unit_price, cost_price, unit, active) VALUES
-('FACE-CLN-200', 'Facial Cleanser Gentle', 'Gentle foaming cleanser for all skin types, 200ml', 320.00, 160.00, 'bottle', 1),
-('FACE-TNR-150', 'Rose Toner', 'Alcohol-free rose water toner, 150ml', 280.00, 140.00, 'bottle', 1),
-('FACE-SRM-50', 'Vitamin C Serum', 'Brightening vitamin C serum with hyaluronic acid, 50ml', 750.00, 420.00, 'bottle', 1),
-('FACE-MSK-100', 'Hydrating Face Mask', 'Deep hydrating gel mask with aloe, 100g', 420.00, 220.00, 'jar', 1),
-('FACE-MSK-CLY', 'Clay Detox Mask', 'Bentonite clay mask for deep pore cleansing, 150g', 380.00, 190.00, 'jar', 1),
-('FACE-CRM-50', 'Anti-Aging Night Cream', 'Retinol night cream for mature skin, 50g', 850.00, 480.00, 'jar', 1),
-('FACE-EYE-15', 'Eye Contour Cream', 'Firming eye cream with peptides, 15ml', 620.00, 350.00, 'tube', 1),
-('FACE-SCR-100', 'Exfoliating Face Scrub', 'Gentle exfoliating scrub with natural beads, 100g', 350.00, 170.00, 'tube', 1);
-
--- Body Scrubs & Treatments
-INSERT INTO Product (sku, name, description, unit_price, cost_price, unit, active) VALUES
-('BODY-SCR-SAL', 'Himalayan Salt Scrub', 'Pink Himalayan salt body scrub with essential oils, 500g', 580.00, 320.00, 'jar', 1),
-('BODY-SCR-SUG', 'Brown Sugar Scrub', 'Gentle brown sugar body scrub with vanilla, 400g', 450.00, 240.00, 'jar', 1),
-('BODY-SCR-COF', 'Coffee Body Scrub', 'Energizing arabica coffee scrub for cellulite, 400g', 520.00, 280.00, 'jar', 1),
-('BODY-WRP-MUD', 'Dead Sea Mud Wrap', 'Detoxifying Dead Sea mud for body wraps, 1kg', 780.00, 450.00, 'tub', 1),
-('BODY-WRP-SEA', 'Seaweed Body Wrap', 'Mineral-rich seaweed powder for slimming wraps, 500g', 650.00, 380.00, 'pack', 1);
-
--- Aromatherapy & Essential Oils
-INSERT INTO Product (sku, name, description, unit_price, cost_price, unit, active) VALUES
-('AROM-LAV-30', 'Lavender Essential Oil', 'Pure lavender essential oil for diffuser, 30ml', 380.00, 200.00, 'bottle', 1),
-('AROM-PEP-30', 'Peppermint Essential Oil', 'Cooling peppermint oil for aromatherapy, 30ml', 350.00, 180.00, 'bottle', 1),
-('AROM-TEA-30', 'Tea Tree Essential Oil', 'Antibacterial tea tree oil, 30ml', 320.00, 160.00, 'bottle', 1),
-('AROM-LEM-30', 'Lemongrass Essential Oil', 'Uplifting lemongrass oil for energy, 30ml', 300.00, 150.00, 'bottle', 1),
-('AROM-CND-LAV', 'Aromatherapy Candle Lavender', 'Soy wax candle with lavender scent, 200g', 450.00, 220.00, 'piece', 1),
-('AROM-CND-VAN', 'Aromatherapy Candle Vanilla', 'Relaxing vanilla scented soy candle, 200g', 450.00, 220.00, 'piece', 1),
-('AROM-DIF-REF', 'Reed Diffuser Refill', 'Essential oil refill for reed diffuser, 200ml', 380.00, 190.00, 'bottle', 1);
-
--- Hair Care Products
-INSERT INTO Product (sku, name, description, unit_price, cost_price, unit, active) VALUES
-('HAIR-SHP-300', 'Keratin Shampoo', 'Smoothing keratin shampoo for damaged hair, 300ml', 420.00, 220.00, 'bottle', 1),
-('HAIR-CND-300', 'Keratin Conditioner', 'Deep conditioning keratin treatment, 300ml', 450.00, 240.00, 'bottle', 1),
-('HAIR-MSK-250', 'Hair Repair Mask', 'Intensive repair mask for dry hair, 250g', 520.00, 280.00, 'jar', 1),
-('HAIR-OIL-100', 'Argan Hair Serum', 'Smoothing argan oil hair serum, 100ml', 480.00, 260.00, 'bottle', 1),
-('HAIR-TRT-50', 'Scalp Treatment Oil', 'Nourishing scalp treatment with tea tree, 50ml', 380.00, 200.00, 'bottle', 1);
-
--- Nail Care Products
-INSERT INTO Product (sku, name, description, unit_price, cost_price, unit, active) VALUES
-('NAIL-RMV-120', 'Nail Polish Remover', 'Acetone-free gentle nail polish remover, 120ml', 180.00, 80.00, 'bottle', 1),
-('NAIL-OIL-15', 'Cuticle Oil', 'Nourishing cuticle oil with vitamin E, 15ml', 220.00, 100.00, 'bottle', 1),
-('NAIL-CRM-50', 'Hand & Nail Cream', 'Intensive hand cream with keratin, 50g', 280.00, 140.00, 'tube', 1),
-('NAIL-FILE-SET', 'Professional Nail File Set', 'Set of 3 different grit nail files', 150.00, 60.00, 'set', 1),
-('NAIL-BUF-3PK', 'Nail Buffer 3-Pack', 'Three-way nail buffing blocks', 120.00, 45.00, 'pack', 1);
-
--- Spa Accessories & Supplies
-INSERT INTO Product (sku, name, description, unit_price, cost_price, unit, active) VALUES
-('ACC-TOW-LRG', 'Spa Towel Large', 'Premium cotton spa towel, 70x140cm, white', 350.00, 180.00, 'piece', 1),
-('ACC-TOW-SML', 'Face Towel', 'Soft cotton face towel, 30x30cm, white', 120.00, 55.00, 'piece', 1),
-('ACC-ROBE-M', 'Spa Robe Medium', 'Plush cotton spa robe, medium size', 850.00, 480.00, 'piece', 1),
-('ACC-ROBE-L', 'Spa Robe Large', 'Plush cotton spa robe, large size', 850.00, 480.00, 'piece', 1),
-('ACC-SLIP-S', 'Disposable Slippers', 'Single-use spa slippers, pack of 50 pairs', 750.00, 400.00, 'pack', 1),
-('ACC-HDBN-10', 'Spa Headbands', 'Stretch terry headbands, pack of 10', 280.00, 140.00, 'pack', 1),
-('ACC-MASK-50', 'Sheet Masks Assorted', 'Assorted hydrating sheet masks, box of 50', 1200.00, 700.00, 'box', 1),
-('ACC-GLOVE-100', 'Disposable Gloves', 'Nitrile gloves, powder-free, box of 100', 450.00, 280.00, 'box', 1);
-
--- Retail Products for Customers
-INSERT INTO Product (sku, name, description, unit_price, cost_price, unit, active) VALUES
-('RTL-GFTSET-A', 'Spa Gift Set Deluxe', 'Luxury gift set: lotion, scrub, candle, bath bomb', 1500.00, 850.00, 'set', 1),
-('RTL-GFTSET-B', 'Relaxation Kit', 'Gift set: massage oil, essential oil, eye mask', 980.00, 550.00, 'set', 1),
-('RTL-BATH-BOM', 'Bath Bomb Set', 'Assorted bath bombs, set of 6', 480.00, 240.00, 'set', 1),
-('RTL-EYEMSK', 'Silk Sleep Eye Mask', 'Pure silk eye mask for sleep', 380.00, 180.00, 'piece', 1),
-('RTL-JADEROL', 'Jade Face Roller', 'Natural jade stone facial roller', 650.00, 320.00, 'piece', 1),
-('RTL-GUASHA', 'Gua Sha Stone', 'Rose quartz gua sha facial tool', 550.00, 280.00, 'piece', 1);
+INSERT INTO Role (name, is_archived) VALUES 
+('superadmin', 0),
+('admin', 0),
+('manager', 0),
+('therapist', 0),
+('receptionist', 0),
+('accountant', 0);
 
 -- =============================================
--- SAMPLE DATA: INVENTORY (Stock Levels)
+-- INITIAL DATA: Ledger Accounts (Chart of Accounts)
 -- =============================================
--- Create inventory records for all products
-INSERT INTO Inventory (product_id, quantity_on_hand, reorder_level, last_counted_at)
-SELECT p.product_id, 0, 10, GETDATE()
-FROM Product p
-WHERE NOT EXISTS (SELECT 1 FROM Inventory i WHERE i.product_id = p.product_id);
+INSERT INTO LedgerAccount (code, name, account_type, normal_balance) VALUES
+-- Assets
+('1000', 'Cash on Hand', 'asset', 'debit'),
+('1010', 'Cash in Bank', 'asset', 'debit'),
+('1100', 'Accounts Receivable', 'asset', 'debit'),
+('1200', 'Inventory', 'asset', 'debit'),
+('1300', 'Prepaid Expenses', 'asset', 'debit'),
+('1500', 'Equipment', 'asset', 'debit'),
+('1510', 'Accumulated Depreciation', 'asset', 'credit'),
+-- Liabilities
+('2000', 'Accounts Payable', 'liability', 'credit'),
+('2100', 'Accrued Expenses', 'liability', 'credit'),
+('2200', 'Unearned Revenue', 'liability', 'credit'),
+('2300', 'Loans Payable', 'liability', 'credit'),
+-- Equity
+('3000', 'Owner Capital', 'equity', 'credit'),
+('3100', 'Retained Earnings', 'equity', 'credit'),
+('3200', 'Owner Draws', 'equity', 'debit'),
+-- Revenue
+('4000', 'Service Revenue', 'revenue', 'credit'),
+('4100', 'Product Sales', 'revenue', 'credit'),
+('4200', 'Other Income', 'revenue', 'credit'),
+-- Expenses
+('5000', 'Cost of Goods Sold', 'expense', 'debit'),
+('5100', 'Salaries & Wages', 'expense', 'debit'),
+('5200', 'Rent Expense', 'expense', 'debit'),
+('5300', 'Utilities Expense', 'expense', 'debit'),
+('5400', 'Supplies Expense', 'expense', 'debit'),
+('5500', 'Marketing Expense', 'expense', 'debit'),
+('5600', 'Insurance Expense', 'expense', 'debit'),
+('5700', 'Depreciation Expense', 'expense', 'debit'),
+('5800', 'Miscellaneous Expense', 'expense', 'debit'),
+('5900', 'Commission Expense', 'expense', 'debit');
 
--- Set stock levels by category
-UPDATE Inventory SET quantity_on_hand = 20, reorder_level = 5 WHERE product_id IN (SELECT product_id FROM Product WHERE sku LIKE 'OIL-%');
-UPDATE Inventory SET quantity_on_hand = 15, reorder_level = 5 WHERE product_id IN (SELECT product_id FROM Product WHERE sku LIKE 'LOT-%');
-UPDATE Inventory SET quantity_on_hand = 25, reorder_level = 8 WHERE product_id IN (SELECT product_id FROM Product WHERE sku LIKE 'FACE-%');
-UPDATE Inventory SET quantity_on_hand = 12, reorder_level = 4 WHERE product_id IN (SELECT product_id FROM Product WHERE sku LIKE 'BODY-%');
-UPDATE Inventory SET quantity_on_hand = 30, reorder_level = 10 WHERE product_id IN (SELECT product_id FROM Product WHERE sku LIKE 'AROM-%');
-UPDATE Inventory SET quantity_on_hand = 18, reorder_level = 6 WHERE product_id IN (SELECT product_id FROM Product WHERE sku LIKE 'HAIR-%');
-UPDATE Inventory SET quantity_on_hand = 40, reorder_level = 15 WHERE product_id IN (SELECT product_id FROM Product WHERE sku LIKE 'NAIL-%');
-UPDATE Inventory SET quantity_on_hand = 50, reorder_level = 20 WHERE product_id IN (SELECT product_id FROM Product WHERE sku LIKE 'ACC-%');
-UPDATE Inventory SET quantity_on_hand = 10, reorder_level = 3 WHERE product_id IN (SELECT product_id FROM Product WHERE sku LIKE 'RTL-%');
+-- =============================================
+-- INITIAL DATA: Service Categories
+-- =============================================
+INSERT INTO ServiceCategory (name, description, is_archived) VALUES
+('Massage', 'Various massage therapy services', 0),
+('Facial', 'Facial treatments and skincare', 0),
+('Body Treatment', 'Body scrubs, wraps, and treatments', 0),
+('Nail Care', 'Manicure and pedicure services', 0),
+('Hair Care', 'Hair treatments and styling', 0),
+('Packages', 'Bundled spa packages', 0);
