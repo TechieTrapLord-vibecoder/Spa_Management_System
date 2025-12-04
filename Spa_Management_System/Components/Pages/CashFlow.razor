@@ -7,8 +7,9 @@
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
 @inject IJSRuntime JSRuntime
+@inject PdfExportService PdfService
 
-<PageTitle>Cash Flow - Serenity Spa</PageTitle>
+<PageTitle>Cash Flow - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -25,11 +26,11 @@ else
                 </p>
             </div>
             <div style="display: flex; gap: 0.5rem;">
-                <button class="btn btn-outline-secondary" @onclick="PrintReport" title="Print">
-                    <span class="bi bi-printer"></span>
+                <button class="btn btn-outline" @onclick="ExportToPdf" disabled="@isExporting">
+                    <span class="bi bi-file-earmark-pdf"></span> @(isExporting ? "Exporting..." : "PDF")
                 </button>
-                <button class="btn btn-outline-danger" @onclick="ExportToPdf" title="Export PDF">
-                    <span class="bi bi-file-pdf"></span>
+                <button class="btn btn-outline" @onclick="PrintReport">
+                    <span class="bi bi-printer"></span> Print
                 </button>
             </div>
         </div>
@@ -534,5 +535,31 @@ else
     }
 
     private async Task PrintReport() => await JSRuntime.InvokeVoidAsync("print");
-    private async Task ExportToPdf() => await JSRuntime.InvokeVoidAsync("print");
+    
+    private bool isExporting = false;
+    private async Task ExportToPdf()
+    {
+        isExporting = true;
+        StateHasChanged();
+
+        try
+        {
+            // Convert daily cash flow to CashFlowEntry list
+            var entries = dailyCashFlow.Select(d => new CashFlowEntry
+            {
+                Date = d.Date,
+                Inflows = d.Inflows,
+                Outflows = d.Outflows
+            }).ToList();
+
+            var pdfBytes = PdfService.GenerateCashFlowReport(startDate, endDate, totalInflows, totalOutflows, netCashFlow, entries);
+            var base64 = Convert.ToBase64String(pdfBytes);
+            await JSRuntime.InvokeVoidAsync("exportUtils.downloadFile", base64, $"CashFlow_{startDate:yyyyMMdd}_{endDate:yyyyMMdd}.pdf", "application/pdf");
+        }
+        finally
+        {
+            isExporting = false;
+            StateHasChanged();
+        }
+    }
 }

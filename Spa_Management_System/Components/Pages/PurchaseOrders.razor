@@ -7,8 +7,9 @@
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
 @inject IAccountingService AccountingService
+@inject IToastService Toast
 
-<PageTitle>Purchase Orders - Serenity Spa</PageTitle>
+<PageTitle>Purchase Orders - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -26,22 +27,6 @@ else
                 <span class="bi bi-plus-circle"></span> Create PO
             </button>
         </div>
-
-        @if (!string.IsNullOrEmpty(successMessage))
-        {
-            <div class="alert alert-success">
-                <span class="bi bi-check-circle-fill"></span>
-                <div>@successMessage</div>
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(errorMessage))
-        {
-            <div class="alert alert-danger">
-                <span class="bi bi-exclamation-triangle-fill"></span>
-                <div>@errorMessage</div>
-            </div>
-        }
 
         <!-- Summary Cards -->
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
@@ -408,8 +393,6 @@ else
 
     private bool isLoading = true;
     private bool isSaving = false;
-    private string? successMessage;
-    private string? errorMessage;
     private string? dialogError;
     private string statusFilter = "";
 
@@ -470,7 +453,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading data: {ex.Message}";
+            Toast.ShowError($"Error loading data: {ex.Message}");
         }
         finally
         {
@@ -806,11 +789,9 @@ else
             }
             await DbContext.SaveChangesAsync();
 
-            successMessage = $"Purchase Order {po.PoNumber} created successfully!";
             showCreateDialog = false;
             await LoadData();
-
-            _ = ClearSuccessMessage();
+            Toast.ShowSuccess($"Purchase Order {po.PoNumber} created successfully!");
         }
         catch (Exception ex)
         {
@@ -828,12 +809,11 @@ else
         {
             po.Status = newStatus;
             await DbContext.SaveChangesAsync();
-            successMessage = $"PO {po.PoNumber} updated to {newStatus}";
-            _ = ClearSuccessMessage();
+            Toast.ShowSuccess($"PO {po.PoNumber} updated to {newStatus}");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error updating status: {ex.Message}";
+            Toast.ShowError($"Error updating status: {ex.Message}");
         }
     }
 
@@ -903,13 +883,12 @@ else
             // Credit: Accounts Payable (liability increases - we owe supplier)
             await AccountingService.CreatePurchaseJournalEntriesAsync(po, AuthState.CurrentUser?.UserId);
             
-            successMessage = $"PO {po.PoNumber} received! Inventory & product costs updated.";
             await LoadData();
-            _ = ClearSuccessMessage();
+            Toast.ShowSuccess($"PO {po.PoNumber} received! Inventory & product costs updated.");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error receiving PO: {ex.Message}";
+            Toast.ShowError($"Error receiving PO: {ex.Message}");
         }
     }
 
@@ -923,13 +902,6 @@ else
     {
         showViewDialog = false;
         viewingPO = null;
-    }
-
-    private async Task ClearSuccessMessage()
-    {
-        await Task.Delay(3000);
-        successMessage = null;
-        await InvokeAsync(StateHasChanged);
     }
 
     private (string badgeClass, string text) GetStatusBadge(string status) => status switch

@@ -9,8 +9,9 @@
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
 @inject IJSRuntime JSRuntime
+@inject IToastService Toast
 
-<PageTitle>Appointments - Serenity Spa</PageTitle>
+<PageTitle>Appointments - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -28,22 +29,6 @@ else
                 <span class="bi bi-plus-circle"></span> Book Appointment
             </button>
         </div>
-
-        @if (!string.IsNullOrEmpty(successMessage))
-        {
-            <div class="alert alert-success">
-                <span class="bi bi-check-circle-fill"></span>
-                <div>@successMessage</div>
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(errorMessage))
-        {
-            <div class="alert alert-danger">
-                <span class="bi bi-exclamation-triangle-fill"></span>
-                <div>@errorMessage</div>
-            </div>
-        }
 
         <!-- Date Filter -->
         <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: end;">
@@ -769,8 +754,6 @@ else
     
     private DateTime selectedDate = DateTime.Today;
     private bool isLoading = true;
-    private string? successMessage;
-    private string? errorMessage;
 
     // Booking Dialog
     private bool showBookingDialog = false;
@@ -816,6 +799,7 @@ else
             var endOfDay = selectedDate.Date.AddDays(1).AddTicks(-1);
             
             appointments = await DbContext.Appointments
+                .AsNoTracking()
                 .Include(a => a.Customer)
                     .ThenInclude(c => c.Person)
                 .Include(a => a.AppointmentServices)
@@ -830,6 +814,7 @@ else
             // Load reference data
             customers = await DbContext.Customers
                 .Include(c => c.Person)
+                .Where(c => !c.IsArchived)
                 .OrderBy(c => c.Person.LastName)
                 .ToListAsync();
 
@@ -859,7 +844,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading data: {ex.Message}";
+            Toast.ShowError($"Error loading data: {ex.Message}");
         }
         finally
         {
@@ -1202,7 +1187,9 @@ else
                         $"Updated appointment for {customer?.Person?.FirstName} {customer?.Person?.LastName} on {startDateTime:MMM dd, yyyy h:mm tt}", 
                         AuthState.CurrentUser?.UserId);
                     
-                    successMessage = "Appointment updated successfully!";
+                    showBookingDialog = false;
+                    await LoadData();
+                    Toast.ShowSuccess("Appointment updated successfully!");
                 }
             }
             else
@@ -1246,22 +1233,10 @@ else
                     $"Booked appointment for {customer?.Person?.FirstName} {customer?.Person?.LastName} on {startDateTime:MMM dd, yyyy h:mm tt}", 
                     AuthState.CurrentUser?.UserId);
 
-                successMessage = "Appointment booked successfully!";
+                showBookingDialog = false;
+                await LoadData();
+                Toast.ShowSuccess("Appointment booked successfully!");
             }
-
-            showBookingDialog = false;
-            await LoadData();
-
-            // Clear success message after delay
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(3000);
-                await InvokeAsync(() =>
-                {
-                    successMessage = null;
-                    StateHasChanged();
-                });
-            });
         }
         catch (Exception ex)
         {
@@ -1285,7 +1260,7 @@ else
                 // Validate status transition
                 if (!IsValidStatusTransition(appointment.Status, newStatus))
                 {
-                    errorMessage = $"Cannot change status from '{appointment.Status}' to '{newStatus}'. Invalid transition.";
+                    Toast.ShowError($"Cannot change status from '{appointment.Status}' to '{newStatus}'. Invalid transition.");
                     return;
                 }
 
@@ -1319,23 +1294,13 @@ else
                     $"Status changed to '{newStatus}'", 
                     AuthState.CurrentUser?.UserId);
                 
-                successMessage = $"Appointment {newStatus}!";
                 await LoadData();
-
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(3000);
-                    await InvokeAsync(() =>
-                    {
-                        successMessage = null;
-                        StateHasChanged();
-                    });
-                });
+                Toast.ShowSuccess($"Appointment marked as {newStatus}!");
             }
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error updating status: {ex.Message}";
+            Toast.ShowError($"Error updating status: {ex.Message}");
         }
     }
 

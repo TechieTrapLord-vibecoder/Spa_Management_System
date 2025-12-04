@@ -7,7 +7,7 @@
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
 
-<PageTitle>My Schedule - Serenity Spa</PageTitle>
+<PageTitle>My Schedule - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -313,7 +313,9 @@ else
         try
         {
             // Get appointments where this employee is assigned to any service
+            // Use AsNoTracking to ensure we always get fresh data from database
             weekAppointments = await DbContext.Appointments
+                .AsNoTracking()
                 .Include(a => a.Customer)
                     .ThenInclude(c => c!.Person)
                 .Include(a => a.AppointmentServices)
@@ -392,6 +394,7 @@ else
         "confirmed" => "#cce5ff",
         "in-progress" => "#d4edda",
         "completed" => "#d1e7dd",
+        "paid" => "#c3e6cb",
         "cancelled" => "#f8d7da",
         "no-show" => "#e2e3e5",
         _ => "#f5f5f5"
@@ -403,6 +406,7 @@ else
         "confirmed" => "Confirmed",
         "in-progress" => "In Progress",
         "completed" => "Completed",
+        "paid" => "Paid",
         "cancelled" => "Cancelled",
         "no-show" => "No Show",
         _ => "Unknown"

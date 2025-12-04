@@ -8,8 +8,9 @@
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
 @inject IJSRuntime JSRuntime
+@inject IToastService Toast
 
-<PageTitle>Products - Serenity Spa</PageTitle>
+<PageTitle>Products - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -490,7 +491,10 @@ else
                         $"Updated product: {existing.Name} (SKU: {existing.Sku})", 
                         AuthState.CurrentUser?.UserId);
                     
-                    successMessage = "Product updated successfully!";
+                    CloseDialog();
+                    await LoadProducts();
+                    Toast.ShowSuccess($"Product '{existing.Name}' updated!");
+                    return;
                 }
             }
             else
@@ -512,12 +516,14 @@ else
                     $"Created product: {newProduct.Name} (SKU: {newProduct.Sku})", 
                     AuthState.CurrentUser?.UserId);
                 
-                successMessage = "Product created successfully!";
+                CloseDialog();
+                await LoadProducts();
+                Toast.ShowSuccess($"Product '{newProduct.Name}' created!");
+                return;
             }
 
             CloseDialog();
             await LoadProducts();
-            _ = AutoDismissSuccess();
         }
         catch (Exception ex)
         {
@@ -546,25 +552,23 @@ else
         
         try
         {
-            ClearMessages();
             var product = await DbContext.Products.FindAsync(archiveProductId.Value);
             if (product == null)
             {
-                errorMessage = "Product not found.";
+                Toast.ShowError("Product not found.");
                 return;
             }
 
             product.Active = false;
             await DbContext.SaveChangesAsync();
-            successMessage = "Product archived successfully!";
             showArchiveConfirm = false;
             archiveProductId = null;
             await LoadProducts();
-            _ = AutoDismissSuccess();
+            Toast.ShowSuccess($"Product '{product.Name}' archived.");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error archiving product: {ex.Message}";
+            Toast.ShowError($"Error archiving product: {ex.Message}");
         }
     }
 
@@ -572,23 +576,21 @@ else
     {
         try
         {
-            ClearMessages();
             var product = await DbContext.Products.FindAsync(productId);
             if (product == null)
             {
-                errorMessage = "Product not found.";
+                Toast.ShowError("Product not found.");
                 return;
             }
 
             product.Active = true;
             await DbContext.SaveChangesAsync();
-            successMessage = "Product restored successfully!";
             await LoadProducts();
-            _ = AutoDismissSuccess();
+            Toast.ShowSuccess($"Product '{product.Name}' restored.");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error restoring product: {ex.Message}";
+            Toast.ShowError($"Error restoring product: {ex.Message}");
         }
     }
 

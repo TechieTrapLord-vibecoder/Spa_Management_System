@@ -9,8 +9,9 @@
 @inject AppDbContext DbContext
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@inject IToastService Toast
 
-<PageTitle>Employees - Serenity Spa</PageTitle>
+<PageTitle>Employees - Kaye Spa</PageTitle>
 
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
@@ -328,12 +329,9 @@
                 note?.Trim()
             );
 
-            saveSuccess = true;
             await LoadEmployees();
-            
-            // Close dialog after a brief delay
-            await Task.Delay(1500);
             CloseDialog();
+            Toast.ShowSuccess($"Employee {firstName} {lastName} added successfully!");
         }
         catch (Exception ex)
         {
@@ -385,11 +383,12 @@
                     AuthState?.CurrentUser?.UserId);
                 
                 await LoadEmployees();
+                Toast.ShowSuccess($"Employee {person?.FirstName} {person?.LastName} archived.");
             }
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error archiving employee: {ex.Message}";
+            Toast.ShowError($"Error archiving employee: {ex.Message}");
         }
     }
 
@@ -409,11 +408,12 @@
                     AuthState?.CurrentUser?.UserId);
                 
                 await LoadEmployees();
+                Toast.ShowSuccess($"Employee {person?.FirstName} {person?.LastName} restored.");
             }
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error restoring employee: {ex.Message}";
+            Toast.ShowError($"Error restoring employee: {ex.Message}");
         }
     }
 

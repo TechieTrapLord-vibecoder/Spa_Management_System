@@ -6,8 +6,9 @@
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
+@inject IToastService Toast
 
-<PageTitle>Service Categories - Serenity Spa</PageTitle>
+<PageTitle>Service Categories - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated || !AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
 {
@@ -42,22 +43,6 @@ else
                 </button>
             </div>
         </div>
-
-        @if (!string.IsNullOrEmpty(successMessage))
-        {
-            <div class="alert alert-success">
-                <span class="bi bi-check-circle-fill"></span>
-                <div>@successMessage</div>
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(errorMessage))
-        {
-            <div class="alert alert-danger">
-                <span class="bi bi-exclamation-triangle-fill"></span>
-                <div>@errorMessage</div>
-            </div>
-        }
 
         @if (isLoading)
         {
@@ -202,8 +187,6 @@ else
     private bool isLoading = true;
     private bool showDialog = false;
     private bool isEditMode = false;
-    private string? successMessage;
-    private string? errorMessage;
     private bool showArchived = false;
     
     // Archive confirmation
@@ -250,7 +233,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading categories: {ex.Message}";
+            Toast.ShowError($"Error loading categories: {ex.Message}");
         }
         finally
         {
@@ -263,7 +246,6 @@ else
         currentCategory = new ServiceCategory();
         isEditMode = false;
         showDialog = true;
-        ClearMessages();
     }
 
     private void OpenEditDialog(ServiceCategory category)
@@ -276,7 +258,6 @@ else
         };
         isEditMode = true;
         showDialog = true;
-        ClearMessages();
     }
 
     private void CloseDialog()
@@ -290,11 +271,9 @@ else
     {
         try
         {
-            ClearMessages();
-
             if (string.IsNullOrWhiteSpace(currentCategory.Name))
             {
-                errorMessage = "Category name is required.";
+                Toast.ShowError("Category name is required.");
                 return;
             }
 
@@ -306,7 +285,7 @@ else
                     existing.Name = currentCategory.Name.Trim();
                     existing.Description = currentCategory.Description?.Trim();
                     await DbContext.SaveChangesAsync();
-                    successMessage = "Service category updated successfully!";
+                    Toast.ShowSuccess("Service category updated successfully!");
                 }
             }
             else
@@ -318,7 +297,7 @@ else
                 };
                 DbContext.ServiceCategories.Add(newCategory);
                 await DbContext.SaveChangesAsync();
-                successMessage = "Service category created successfully!";
+                Toast.ShowSuccess("Service category created successfully!");
             }
 
             CloseDialog();
@@ -326,7 +305,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error saving category: {ex.Message}";
+            Toast.ShowError($"Error saving category: {ex.Message}");
         }
     }
 
@@ -348,31 +327,30 @@ else
 
         try
         {
-            ClearMessages();
             var category = await DbContext.ServiceCategories
                 .Include(c => c.Services)
                 .FirstOrDefaultAsync(c => c.ServiceCategoryId == categoryId);
 
             if (category == null)
             {
-                errorMessage = "Category not found.";
+                Toast.ShowError("Category not found.");
                 return;
             }
 
             if (category.Services.Any())
             {
-                errorMessage = "Cannot archive category with existing services.";
+                Toast.ShowError("Cannot archive category with existing services.");
                 return;
             }
 
             category.IsArchived = true;
             await DbContext.SaveChangesAsync();
-            successMessage = "Category archived successfully!";
+            Toast.ShowSuccess("Category archived successfully!");
             await LoadCategories();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error archiving category: {ex.Message}";
+            Toast.ShowError($"Error archiving category: {ex.Message}");
         }
         archiveCategoryId = null;
     }
@@ -381,29 +359,22 @@ else
     {
         try
         {
-            ClearMessages();
             var category = await DbContext.ServiceCategories.FindAsync(categoryId);
             if (category == null)
             {
-                errorMessage = "Category not found.";
+                Toast.ShowError("Category not found.");
                 return;
             }
 
             category.IsArchived = false;
             await DbContext.SaveChangesAsync();
-            successMessage = "Category restored successfully!";
+            Toast.ShowSuccess("Category restored successfully!");
             await LoadCategories();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error restoring category: {ex.Message}";
+            Toast.ShowError($"Error restoring category: {ex.Message}");
         }
-    }
-
-    private void ClearMessages()
-    {
-        successMessage = null;
-        errorMessage = null;
     }
 
     private Task<bool> JSConfirm(string message)

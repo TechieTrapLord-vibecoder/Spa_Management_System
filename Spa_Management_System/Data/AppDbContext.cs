@@ -125,4 +125,75 @@ public class AppDbContext : DbContext
             .HasForeignKey(sp => sp.ProductId)
             .OnDelete(DeleteBehavior.Cascade);
     }
+
+    /// <summary>
+    /// Override SaveChanges to automatically update sync tracking properties
+    /// </summary>
+    public override int SaveChanges()
+    {
+        UpdateSyncProperties();
+        return base.SaveChanges();
+    }
+
+    /// <summary>
+    /// Override SaveChangesAsync to automatically update sync tracking properties
+    /// </summary>
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        UpdateSyncProperties();
+        return await base.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Updates LastModifiedAt and SyncStatus for all modified ISyncable entities
+    /// </summary>
+    private void UpdateSyncProperties()
+    {
+        var entries = ChangeTracker.Entries()
+            .Where(e => e.Entity is ISyncable && 
+                       (e.State == EntityState.Added || e.State == EntityState.Modified));
+
+        foreach (var entry in entries)
+        {
+            var syncable = (ISyncable)entry.Entity;
+            
+            // For new entities, ensure SyncId is set
+            if (entry.State == EntityState.Added)
+            {
+                // Always update LastModifiedAt for new entities
+                syncable.LastModifiedAt = DateTime.Now;
+                
+                if (syncable.SyncId == Guid.Empty)
+                {
+                    syncable.SyncId = Guid.NewGuid();
+                }
+                syncable.SyncStatus = "pending";
+                syncable.SyncVersion = 1;
+            }
+            // For modified entities, only mark as pending if we're not explicitly syncing
+            else if (entry.State == EntityState.Modified)
+            {
+                // Check if SyncStatus property was explicitly modified to "synced"
+                var syncStatusProperty = entry.Property(nameof(ISyncable.SyncStatus));
+                var lastSyncedProperty = entry.Property(nameof(ISyncable.LastSyncedAt));
+                
+                // If we're setting to "synced", this is a sync operation - don't reset to pending
+                if (syncStatusProperty.IsModified && syncable.SyncStatus == "synced")
+                {
+                    // This is a sync marking operation, leave it alone
+                    continue;
+                }
+                
+                // Regular modification - update timestamp and mark as pending
+                syncable.LastModifiedAt = DateTime.Now;
+                
+                // Only reset to pending if it was previously synced
+                if (syncable.SyncStatus == "synced")
+                {
+                    syncable.SyncStatus = "pending";
+                    syncable.SyncVersion++;
+                }
+            }
+        }
+    }
 }

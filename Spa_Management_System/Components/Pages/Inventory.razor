@@ -7,6 +7,8 @@
 @inject NavigationManager Navigation
 @inject IDbContextFactory<AppDbContext> DbContextFactory
 @inject IJSRuntime JSRuntime
+@inject PdfExportService PdfService
+@inject IToastService Toast
 
 <PageTitle>Inventory</PageTitle>
 
@@ -22,9 +24,14 @@ else
                 <h3 class="card-title" style="margin: 0;"><span class="bi bi-box-seam"></span> Stock Management</h3>
                 <p style="color: var(--spa-text-light); margin: 0.5rem 0 0 0;">Monitor and manage inventory stock levels</p>
             </div>
-            <button class="btn btn-primary" @onclick="OpenAddDialog">
-                <span class="bi bi-plus-circle"></span> Set Initial Stock
-            </button>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-outline" @onclick="ExportToPdf" disabled="@isExporting">
+                    <span class="bi bi-file-earmark-pdf"></span> @(isExporting ? "Exporting..." : "PDF")
+                </button>
+                <button class="btn btn-primary" @onclick="OpenAddDialog">
+                    <span class="bi bi-plus-circle"></span> Set Initial Stock
+                </button>
+            </div>
         </div>
 
         @if (!string.IsNullOrEmpty(successMessage))
@@ -326,6 +333,7 @@ else
     private Models.Inventory currentInventory = new();
     private Models.Inventory? adjustingInventory;
     private bool isLoading = true;
+    private bool isExporting = false;
     private bool showDialog = false;
     private bool showAdjustDialog = false;
     private bool isEditMode = false;
@@ -570,7 +578,10 @@ else
                     existing.ReorderLevel = currentInventory.ReorderLevel;
                     existing.LastCountedAt = DateTime.Now;
                     await DbContext.SaveChangesAsync();
-                    successMessage = "Inventory settings updated successfully!";
+                    CloseDialog();
+                    await LoadData();
+                    Toast.ShowSuccess("Inventory settings updated!");
+                    return;
                 }
             }
             else
@@ -584,7 +595,10 @@ else
                 };
                 DbContext.Inventories.Add(newInventory);
                 await DbContext.SaveChangesAsync();
-                successMessage = "Initial stock set successfully!";
+                CloseDialog();
+                await LoadData();
+                Toast.ShowSuccess("Initial stock set successfully!");
+                return;
             }
 
             CloseDialog();
@@ -636,13 +650,13 @@ else
             existing.LastCountedAt = DateTime.Now;
             await DbContext.SaveChangesAsync();
 
-            successMessage = $"Stock adjusted successfully! New stock: {newStock}";
             CloseAdjustDialog();
             await LoadData();
+            Toast.ShowSuccess($"Stock adjusted! New quantity: {newStock}");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error adjusting stock: {ex.Message}";
+            Toast.ShowError($"Error adjusting stock: {ex.Message}");
         }
     }
 
@@ -650,5 +664,40 @@ else
     {
         successMessage = null;
         errorMessage = null;
+    }
+
+    private async Task ExportToPdf()
+    {
+        isExporting = true;
+        StateHasChanged();
+
+        try
+        {
+            var items = filteredInventory.Select(inv => new InventoryReportEntry
+            {
+                Sku = inv.Product?.Sku ?? "",
+                ProductName = inv.Product?.Name ?? "Unknown",
+                Quantity = (int)inv.QuantityOnHand,
+                UnitCost = inv.Product?.CostPrice ?? 0,
+                TotalValue = inv.QuantityOnHand * (inv.Product?.CostPrice ?? 0),
+                Status = inv.QuantityOnHand <= 0 ? "Out" : 
+                         inv.QuantityOnHand <= inv.ReorderLevel ? "Low" : "OK"
+            }).ToList();
+
+            var totalValue = items.Sum(i => i.TotalValue);
+            var pdfBytes = PdfService.GenerateInventoryReport(items, totalValue);
+            
+            var base64 = Convert.ToBase64String(pdfBytes);
+            await JSRuntime.InvokeVoidAsync("downloadFile", $"InventoryReport_{DateTime.Now:yyyyMMdd}.pdf", "application/pdf", base64);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to export PDF: {ex.Message}";
+        }
+        finally
+        {
+            isExporting = false;
+            StateHasChanged();
+        }
     }
 }

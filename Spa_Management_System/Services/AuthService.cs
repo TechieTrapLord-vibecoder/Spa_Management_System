@@ -178,8 +178,8 @@ public class AuthService : IAuthService
 
         var errors = new List<string>();
 
-        if (password.Length < 10)
-            errors.Add("at least 10 characters");
+        if (password.Length < 12)
+            errors.Add("at least 12 characters");
 
         if (!Regex.IsMatch(password, @"[A-Z]"))
             errors.Add("one uppercase letter");

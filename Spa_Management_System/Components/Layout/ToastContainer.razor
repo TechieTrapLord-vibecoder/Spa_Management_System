@@ -1,0 +1,102 @@
+@using Spa_Management_System.Services
+@implements IDisposable
+@inject IToastService ToastService
+
+<div class="toast-container">
+    @foreach (var toast in toasts)
+    {
+        <div class="toast-item toast-@toast.Type.ToString().ToLower() @(toast.IsExiting ? "toast-exit" : "toast-enter")">
+            <div class="toast-icon">
+                @switch (toast.Type)
+                {
+                    case ToastType.Success:
+                        <span class="bi bi-check-circle-fill"></span>
+                        break;
+                    case ToastType.Error:
+                        <span class="bi bi-x-circle-fill"></span>
+                        break;
+                    case ToastType.Warning:
+                        <span class="bi bi-exclamation-triangle-fill"></span>
+                        break;
+                    case ToastType.Info:
+                        <span class="bi bi-info-circle-fill"></span>
+                        break;
+                }
+            </div>
+            <div class="toast-content">
+                <div class="toast-title">@toast.Title</div>
+                <div class="toast-message">@toast.Message</div>
+            </div>
+            <button class="toast-close" @onclick="() => RemoveToast(toast.Id)">
+                <span class="bi bi-x"></span>
+            </button>
+            <div class="toast-progress" style="animation-duration: @(toast.Duration)ms;"></div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<ToastItem> toasts = new();
+
+    protected override void OnInitialized()
+    {
+        ToastService.OnShow += ShowToast;
+        ToastService.OnHide += RemoveToast;
+    }
+
+    private async void ShowToast(ToastMessage message)
+    {
+        var item = new ToastItem
+        {
+            Id = message.Id,
+            Type = message.Type,
+            Title = message.Title,
+            Message = message.Message,
+            Duration = message.Duration
+        };
+        
+        toasts.Add(item);
+        await InvokeAsync(StateHasChanged);
+        
+        // Auto-remove after duration
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(message.Duration);
+            await RemoveToastWithAnimation(message.Id);
+        });
+    }
+
+    private async Task RemoveToastWithAnimation(Guid id)
+    {
+        var toast = toasts.FirstOrDefault(t => t.Id == id);
+        if (toast != null)
+        {
+            toast.IsExiting = true;
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(300); // Wait for exit animation
+            toasts.Remove(toast);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async void RemoveToast(Guid id)
+    {
+        await RemoveToastWithAnimation(id);
+    }
+
+    public void Dispose()
+    {
+        ToastService.OnShow -= ShowToast;
+        ToastService.OnHide -= RemoveToast;
+    }
+
+    private class ToastItem
+    {
+        public Guid Id { get; set; }
+        public ToastType Type { get; set; }
+        public string Title { get; set; } = "";
+        public string Message { get; set; } = "";
+        public int Duration { get; set; }
+        public bool IsExiting { get; set; }
+    }
+}

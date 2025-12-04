@@ -61,7 +61,7 @@
     <!-- MAUI Resources (only for MAUI targets) -->
     <ItemGroup Condition="'$(TargetFramework)' != 'net9.0'">
         <!-- App Icon -->
-        <MauiIcon Include="Resources\AppIcon\windowsicons.png"/>
+        <MauiIcon Include="Resources\AppIcon\windowsicons.png" />
 
         <!-- Splash Screen -->
         <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
@@ -85,6 +85,7 @@
         </PackageReference>
         <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.8" />
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.8" />
+        <PackageReference Include="QuestPDF" Version="2024.12.2" />
         <PackageReference Include="Radzen.Blazor" Version="8.3.4" />
     </ItemGroup>
 

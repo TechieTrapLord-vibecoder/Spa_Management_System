@@ -10,7 +10,7 @@
 @inject AppDbContext DbContext
 @inject IAccountingService AccountingService
 
-<PageTitle>POS - Serenity Spa</PageTitle>
+<PageTitle>POS - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -162,44 +162,23 @@ else
                     }
                 </div>
 
-            <!-- Cart Items -->
-            <div class="cart-section">
-                <div class="cart-header">
-                    <span><span class="bi bi-cart3"></span> Cart</span>
-                    @if (cartItems.Any())
-                    {
-                        <button class="clear-cart-btn" @onclick="ClearCart">Clear All</button>
-                    }
-                </div>
-
+            <!-- Compact Cart Summary -->
+            <div class="cart-summary-section">
                 @if (!cartItems.Any())
                 {
-                    <div class="cart-empty">
-                        <span class="bi bi-cart3" style="font-size: 3rem;"></span>
-                        <p>Cart is empty</p>
-                        <p class="hint">Select products or services to add</p>
+                    <div class="cart-empty-compact">
+                        <span class="bi bi-cart3"></span>
+                        <span>Cart is empty</span>
                     </div>
                 }
                 else
                 {
-                    <div class="cart-items">
-                        @foreach (var item in cartItems)
-                        {
-                            <div class="cart-item">
-                                <div class="cart-item-info">
-                                    <div class="cart-item-name">@item.Name</div>
-                                    <div class="cart-item-price">₱@item.UnitPrice.ToString("N0") each</div>
-                                </div>
-                                <div class="cart-item-controls">
-                                    <button class="qty-btn" @onclick="() => UpdateQty(item, -1)">−</button>
-                                    <span class="qty">@item.Quantity</span>
-                                    <button class="qty-btn" @onclick="() => UpdateQty(item, 1)">+</button>
-                                </div>
-                                <div class="cart-item-total">₱@item.LineTotal.ToString("N0")</div>
-                                <button class="remove-btn" @onclick="() => RemoveItem(item)"><span class="bi bi-trash"></span></button>
-                            </div>
-                        }
-                    </div>
+                    <button class="view-cart-btn" @onclick="() => showCartModal = true">
+                        <div class="cart-badge">@cartItems.Sum(i => i.Quantity)</div>
+                        <span class="bi bi-cart3"></span>
+                        <span class="view-cart-text">View Cart</span>
+                        <span class="cart-total-preview">₱@subtotal.ToString("N0")</span>
+                    </button>
                 }
             </div>
 
@@ -362,7 +341,7 @@ else
             <div class="receipt-modal" @onclick:stopPropagation="true">
                 <div class="receipt-header">
                     <div class="receipt-logo"><span class="bi bi-heart"></span></div>
-                    <div class="receipt-title">SERENITY SPA</div>
+                    <div class="receipt-title">KAYE SPA</div>
                     <div class="receipt-subtitle">Thank you for your visit!</div>
                 </div>
                 
@@ -413,6 +392,51 @@ else
             </div>
         </div>
     }
+
+    <!-- Cart Modal -->
+    @if (showCartModal)
+    {
+        <div class="modal-overlay" @onclick="() => showCartModal = false">
+            <div class="cart-modal" @onclick:stopPropagation="true">
+                <div class="cart-modal-header">
+                    <h3><span class="bi bi-cart3"></span> Cart Items (@cartItems.Sum(i => i.Quantity))</h3>
+                    <button class="close-btn" @onclick="() => showCartModal = false"><span class="bi bi-x-lg"></span></button>
+                </div>
+                
+                <div class="cart-modal-body">
+                    @foreach (var item in cartItems)
+                    {
+                        <div class="cart-modal-item">
+                            <div class="cart-modal-item-info">
+                                <div class="cart-modal-item-name">@item.Name</div>
+                                <div class="cart-modal-item-price">₱@item.UnitPrice.ToString("N0") each</div>
+                            </div>
+                            <div class="cart-modal-item-controls">
+                                <button class="qty-btn" @onclick="() => UpdateQty(item, -1)">−</button>
+                                <span class="qty">@item.Quantity</span>
+                                <button class="qty-btn" @onclick="() => UpdateQty(item, 1)">+</button>
+                            </div>
+                            <div class="cart-modal-item-total">₱@item.LineTotal.ToString("N0")</div>
+                            <button class="remove-btn" @onclick="() => RemoveItem(item)"><span class="bi bi-trash"></span></button>
+                        </div>
+                    }
+                </div>
+
+                <div class="cart-modal-footer">
+                    <button class="clear-cart-modal-btn" @onclick="ClearCart">
+                        <span class="bi bi-trash"></span> Clear All
+                    </button>
+                    <div class="cart-modal-total">
+                        <span>Subtotal:</span>
+                        <strong>₱@subtotal.ToString("N2")</strong>
+                    </div>
+                    <button class="done-cart-btn" @onclick="() => showCartModal = false">
+                        <span class="bi bi-check-lg"></span> Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
 }
 
 @code {
@@ -425,6 +449,7 @@ else
     private string activeTab = "products";
     private string searchTerm = "";
     private string customerSearchTerm = "";
+    private bool showCartModal = false;
 
     // Data
     private List<Product> products = new();
@@ -784,11 +809,15 @@ else
                     var inv = await DbContext.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId);
                     if (inv != null) inv.QuantityOnHand -= item.Quantity;
 
+                    // Get product cost price for the transaction record
+                    var product = await DbContext.Products.FirstOrDefaultAsync(p => p.ProductId == item.ProductId);
+
                     DbContext.StockTransactions.Add(new StockTransaction
                     {
                         ProductId = item.ProductId.Value,
                         TxType = "sale",
                         Qty = -item.Quantity,
+                        UnitCost = product?.CostPrice,
                         Reference = $"Sale #{sale.SaleNumber}",
                         CreatedByUserId = AuthState.CurrentUser?.UserId,
                         CreatedAt = DateTime.Now
@@ -861,9 +890,15 @@ else
 
             await LoadData(); // Refresh appointments
         }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException dbEx)
+        {
+            var innerMsg = dbEx.InnerException?.Message ?? dbEx.Message;
+            errorMessage = $"Database Error: {innerMsg}";
+        }
         catch (Exception ex)
         {
-            errorMessage = $"Error: {ex.Message}";
+            var innerMsg = ex.InnerException?.Message ?? "";
+            errorMessage = $"Error: {ex.Message} {innerMsg}";
         }
         finally
         {
@@ -1762,5 +1797,240 @@ else
         border-radius: 8px;
         font-size: 1rem;
         cursor: pointer;
+    }
+
+    /* Compact Cart Summary */
+    .cart-summary-section {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #e0e0e0;
+        flex-shrink: 0;
+    }
+
+    .cart-empty-compact {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 1rem;
+        color: #888;
+        font-size: 0.95rem;
+    }
+
+    .cart-empty-compact .bi {
+        font-size: 1.25rem;
+    }
+
+    .view-cart-btn {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        width: 100%;
+        padding: 0.875rem 1rem;
+        background: linear-gradient(135deg, #4a7c59, #5a9c69);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 600;
+        transition: all 0.2s;
+        position: relative;
+    }
+
+    .view-cart-btn:hover {
+        background: linear-gradient(135deg, #3d6a4a, #4a8c59);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(74, 124, 89, 0.3);
+    }
+
+    .view-cart-btn .bi-cart3 {
+        font-size: 1.25rem;
+    }
+
+    .view-cart-btn .cart-badge {
+        position: absolute;
+        top: -6px;
+        left: -6px;
+        background: #dc3545;
+        color: white;
+        font-size: 0.75rem;
+        font-weight: bold;
+        min-width: 22px;
+        height: 22px;
+        border-radius: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .view-cart-text {
+        flex: 1;
+        text-align: left;
+    }
+
+    .cart-total-preview {
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+
+    /* Cart Modal */
+    .cart-modal {
+        background: white;
+        border-radius: 16px;
+        width: 95%;
+        max-width: 500px;
+        max-height: 85vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        animation: slideUp 0.25s ease-out;
+    }
+
+    @@keyframes slideUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .cart-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid #e0e0e0;
+        background: linear-gradient(135deg, #4a7c59, #5a9c69);
+        color: white;
+    }
+
+    .cart-modal-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .cart-modal-header .close-btn {
+        background: rgba(255,255,255,0.2);
+        border: none;
+        color: white;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s;
+    }
+
+    .cart-modal-header .close-btn:hover {
+        background: rgba(255,255,255,0.3);
+    }
+
+    .cart-modal-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+    }
+
+    .cart-modal-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.875rem;
+        background: #f8f9fa;
+        border-radius: 10px;
+        margin-bottom: 0.75rem;
+    }
+
+    .cart-modal-item-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .cart-modal-item-name {
+        font-weight: 600;
+        font-size: 0.95rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .cart-modal-item-price {
+        font-size: 0.8rem;
+        color: #888;
+    }
+
+    .cart-modal-item-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .cart-modal-item-total {
+        font-weight: 700;
+        color: #4a7c59;
+        min-width: 70px;
+        text-align: right;
+    }
+
+    .cart-modal-footer {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem 1.25rem;
+        border-top: 1px solid #e0e0e0;
+        background: #f8f9fa;
+    }
+
+    .clear-cart-modal-btn {
+        padding: 0.625rem 1rem;
+        background: #fff;
+        color: #dc3545;
+        border: 1px solid #dc3545;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.875rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s;
+    }
+
+    .clear-cart-modal-btn:hover {
+        background: #dc3545;
+        color: white;
+    }
+
+    .cart-modal-total {
+        flex: 1;
+        text-align: right;
+        font-size: 1rem;
+    }
+
+    .cart-modal-total strong {
+        font-size: 1.2rem;
+        color: #4a7c59;
+    }
+
+    .done-cart-btn {
+        padding: 0.625rem 1.25rem;
+        background: #4a7c59;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.95rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s;
+    }
+
+    .done-cart-btn:hover {
+        background: #3d6a4a;
     }
 </style>

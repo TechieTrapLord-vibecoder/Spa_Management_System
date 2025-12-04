@@ -7,8 +7,9 @@
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@inject IToastService Toast
 
-<PageTitle>Customers - Serenity Spa</PageTitle>
+<PageTitle>Customers - Kaye Spa</PageTitle>
 
 <style>
     /* Customer-specific styles only - table uses global .data-table class */
@@ -516,12 +517,9 @@ else
                 address?.Trim()
             );
 
-            saveSuccess = true;
-            successMessage = $"Customer {firstName} {lastName} created successfully with code {newCustomer.CustomerCode}!";
             await LoadCustomers();
-            
-            await Task.Delay(1500);
             CloseDialog();
+            Toast.ShowSuccess($"Customer {firstName} {lastName} created with code {newCustomer.CustomerCode}!");
 
             // Navigate to the new customer's detail page
             Navigation.NavigateTo($"/customers/{newCustomer.CustomerId}");
@@ -574,22 +572,21 @@ else
     {
         try
         {
-            ClearMessages();
             var customer = await CustomerService.GetCustomerByIdAsync(customerId);
             if (customer == null)
             {
-                errorMessage = "Customer not found.";
+                Toast.ShowError("Customer not found.");
                 return;
             }
 
             customer.IsArchived = true;
             await CustomerService.UpdateCustomerAsync(customer);
-            successMessage = "Customer archived successfully!";
             await LoadCustomers();
+            Toast.ShowSuccess("Customer archived successfully!");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error archiving customer: {ex.Message}";
+            Toast.ShowError($"Error archiving customer: {ex.Message}");
         }
     }
 
@@ -597,22 +594,21 @@ else
     {
         try
         {
-            ClearMessages();
             var customer = await CustomerService.GetCustomerByIdAsync(customerId);
             if (customer == null)
             {
-                errorMessage = "Customer not found.";
+                Toast.ShowError("Customer not found.");
                 return;
             }
 
             customer.IsArchived = false;
             await CustomerService.UpdateCustomerAsync(customer);
-            successMessage = "Customer restored successfully!";
             await LoadCustomers();
+            Toast.ShowSuccess("Customer restored successfully!");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error restoring customer: {ex.Message}";
+            Toast.ShowError($"Error restoring customer: {ex.Message}");
         }
     }
 }

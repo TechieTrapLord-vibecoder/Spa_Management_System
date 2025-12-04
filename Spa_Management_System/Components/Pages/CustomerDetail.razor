@@ -7,8 +7,9 @@
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
 @inject ICustomerService CustomerService
+@inject IToastService Toast
 
-<PageTitle>Customer Details - Serenity Spa</PageTitle>
+<PageTitle>Customer Details - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -124,22 +125,6 @@ else
             <div style="color: var(--spa-text-light);">Total Spent</div>
         </div>
     </div>
-
-    @if (!string.IsNullOrEmpty(successMessage))
-    {
-        <div class="alert alert-success">
-            <span class="bi bi-check-circle-fill"></span>
-            <div>@successMessage</div>
-        </div>
-    }
-
-    @if (!string.IsNullOrEmpty(errorMessage))
-    {
-        <div class="alert alert-danger">
-            <span class="bi bi-exclamation-triangle-fill"></span>
-            <div>@errorMessage</div>
-        </div>
-    }
 
     <!-- Tabs -->
     <div style="margin-bottom: 1.5rem;">
@@ -452,8 +437,6 @@ else
     private List<Sale> sales = new();
     private List<CrmNote> notes = new();
     private bool isLoading = true;
-    private string? successMessage;
-    private string? errorMessage;
     private string activeTab = "appointments";
 
     // Stats
@@ -525,7 +508,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading customer: {ex.Message}";
+            Toast.ShowError($"Error loading customer: {ex.Message}");
         }
         finally
         {
@@ -549,7 +532,6 @@ else
             editAddress = customer.Person.Address;
             editDob = customer.Person.Dob?.ToString("yyyy-MM-dd");
             showEditDialog = true;
-            ClearMessages();
         }
     }
 
@@ -562,8 +544,6 @@ else
     {
         try
         {
-            ClearMessages();
-
             if (customer?.Person == null) return;
 
             customer.Person.FirstName = editFirstName.Trim();
@@ -578,13 +558,13 @@ else
             }
 
             await DbContext.SaveChangesAsync();
-            successMessage = "Customer updated successfully!";
+            Toast.ShowSuccess("Customer updated successfully!");
             CloseEditDialog();
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error saving customer: {ex.Message}";
+            Toast.ShowError($"Error saving customer: {ex.Message}");
         }
     }
 
@@ -593,7 +573,6 @@ else
         pointsToAdd = 0;
         pointsReason = "";
         showLoyaltyDialog = true;
-        ClearMessages();
     }
 
     private void CloseLoyaltyDialog()
@@ -605,8 +584,6 @@ else
     {
         try
         {
-            ClearMessages();
-
             if (customer == null) return;
 
             customer.LoyaltyPoints += pointsToAdd;
@@ -627,13 +604,13 @@ else
                 await LoadCustomerData();
             }
 
-            successMessage = $"Loyalty points updated! New balance: {customer.LoyaltyPoints}";
+            Toast.ShowSuccess($"Loyalty points updated! New balance: {customer.LoyaltyPoints}");
             CloseLoyaltyDialog();
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error updating points: {ex.Message}";
+            Toast.ShowError($"Error updating points: {ex.Message}");
         }
     }
 
@@ -641,7 +618,6 @@ else
     {
         newNoteText = "";
         showAddNoteDialog = true;
-        ClearMessages();
     }
 
     private void CloseAddNoteDialog()
@@ -653,8 +629,6 @@ else
     {
         try
         {
-            ClearMessages();
-
             var note = new CrmNote
             {
                 CustomerId = CustomerId,
@@ -666,13 +640,13 @@ else
             DbContext.CrmNotes.Add(note);
             await DbContext.SaveChangesAsync();
 
-            successMessage = "Note added successfully!";
+            Toast.ShowSuccess("Note added successfully!");
             CloseAddNoteDialog();
             await LoadCustomerData();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error saving note: {ex.Message}";
+            Toast.ShowError($"Error saving note: {ex.Message}");
         }
     }
 
@@ -680,19 +654,18 @@ else
     {
         try
         {
-            ClearMessages();
             var note = await DbContext.CrmNotes.FindAsync(noteId);
             if (note != null)
             {
                 DbContext.CrmNotes.Remove(note);
                 await DbContext.SaveChangesAsync();
-                successMessage = "Note deleted successfully!";
+                Toast.ShowSuccess("Note deleted successfully!");
                 await LoadCustomerData();
             }
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error deleting note: {ex.Message}";
+            Toast.ShowError($"Error deleting note: {ex.Message}");
         }
     }
 
@@ -701,7 +674,6 @@ else
         editNoteId = note.NoteId;
         editNoteText = note.Note ?? "";
         showEditNoteDialog = true;
-        ClearMessages();
     }
 
     private void CloseEditNoteDialog()
@@ -713,20 +685,19 @@ else
     {
         try
         {
-            ClearMessages();
             var note = await DbContext.CrmNotes.FindAsync(editNoteId);
             if (note != null)
             {
                 note.Note = editNoteText.Trim();
                 await DbContext.SaveChangesAsync();
-                successMessage = "Note updated successfully!";
+                Toast.ShowSuccess("Note updated successfully!");
                 CloseEditNoteDialog();
                 await LoadCustomerData();
             }
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error updating note: {ex.Message}";
+            Toast.ShowError($"Error updating note: {ex.Message}");
         }
     }
 
@@ -738,12 +709,6 @@ else
     private void ViewSale(long saleId)
     {
         Navigation.NavigateTo($"/sales/{saleId}");
-    }
-
-    private void ClearMessages()
-    {
-        successMessage = null;
-        errorMessage = null;
     }
 }
 

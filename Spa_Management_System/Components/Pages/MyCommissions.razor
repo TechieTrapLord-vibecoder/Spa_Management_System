@@ -118,7 +118,7 @@ else
                             <td>@item.ServiceName</td>
                             <td>@item.CustomerName</td>
                             <td>₱@item.ServicePrice.ToString("N2")</td>
-                            <td>@item.CommissionRate.ToString("N1")%</td>
+                            <td>@(item.CommissionType == "percentage" ? $"{item.CommissionRate:N1}%" : $"₱{item.CommissionRate:N2}")</td>
                             <td>
                                 @if (item.IsPaid)
                                 {
@@ -211,19 +211,16 @@ else
                 .OrderByDescending(a => a.Appointment.ScheduledStart)
                 .ToListAsync();
 
-            // Get commission rates for the employee
-            var commissionRates = await DbContext.EmployeeServiceCommissions
-                .Where(c => c.EmployeeId == currentUserId && !c.IsArchived)
-                .ToDictionaryAsync(c => c.ServiceId, c => c.CommissionValue);
-
-            // Default commission rate (if not specifically set)
-            var defaultRate = 10m;
-
             commissionItems = commissions.Select(c => {
-                var rate = commissionRates.ContainsKey(c.ServiceId) 
-                    ? commissionRates[c.ServiceId] 
-                    : defaultRate;
-                var commissionAmount = c.Price * (rate / 100);
+                // Use the commission settings from the Service table
+                var commissionType = c.Service?.CommissionType ?? "percentage";
+                var commissionValue = c.Service?.CommissionValue ?? 0m;
+                
+                // Calculate commission based on type
+                var commissionAmount = commissionType == "percentage"
+                    ? c.Price * (commissionValue / 100)
+                    : commissionValue; // Fixed amount
+                    
                 var isPaid = c.Appointment.Status == "paid";
                 
                 return new CommissionItem
@@ -234,7 +231,8 @@ else
                         ? $"{c.Appointment.Customer.Person.FirstName} {c.Appointment.Customer.Person.LastName}"
                         : "Walk-in",
                     ServicePrice = c.Price,
-                    CommissionRate = rate,
+                    CommissionRate = commissionValue,
+                    CommissionType = commissionType,
                     CommissionAmount = commissionAmount,
                     IsPaid = isPaid
                 };
@@ -291,6 +289,7 @@ else
         public string CustomerName { get; set; } = "";
         public decimal ServicePrice { get; set; }
         public decimal CommissionRate { get; set; }
+        public string CommissionType { get; set; } = "percentage";
         public decimal CommissionAmount { get; set; }
         public bool IsPaid { get; set; }
     }

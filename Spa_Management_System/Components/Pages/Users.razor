@@ -4,8 +4,9 @@
 @inject IAuthService AuthService
 @inject IEmployeeService EmployeeService
 @inject IJSRuntime JSRuntime
+@inject IToastService Toast
 
-<PageTitle>User Accounts - Serenity Spa</PageTitle>
+<PageTitle>User Accounts - Kaye Spa</PageTitle>
 
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
@@ -26,13 +27,6 @@
         <div style="display: flex; align-items: center; gap: 1rem; padding: 2rem;">
             <div class="loading"></div>
             <p style="margin: 0;">Loading user accounts...</p>
-        </div>
-    }
-    else if (!string.IsNullOrEmpty(errorMessage))
-    {
-        <div class="alert alert-danger">
-            <span class="bi bi-x-circle-fill"></span>
-            <div>@errorMessage</div>
         </div>
     }
     else if (!filteredUsers.Any())
@@ -70,7 +64,7 @@
                         <td>
                             @if (user.Employee != null)
                             {
-                                @user.Employee.Person.FirstName @user.Employee.Person.LastName
+                                @($"{user.Employee.Person.FirstName} {user.Employee.Person.LastName}")
                             }
                             else
                             {
@@ -157,7 +151,7 @@
                     <option value="0">-- Select Employee --</option>
                     @foreach (var emp in employees)
                     {
-                        <option value="@emp.EmployeeId">@emp.Person.FirstName @emp.Person.LastName (@emp.Role.Name)</option>
+                        <option value="@emp.EmployeeId">@($"{emp.Person.FirstName} {emp.Person.LastName}") (@emp.Role.Name)</option>
                     }
                 </select>
             </div>
@@ -231,22 +225,6 @@
                     </div>
                 }
             </div>
-
-            @if (!string.IsNullOrEmpty(dialogError))
-            {
-                <div class="alert alert-danger">
-                    <span class="bi bi-x-circle-fill"></span>
-                    <div>@dialogError</div>
-                </div>
-            }
-
-            @if (saveSuccess)
-            {
-                <div class="alert alert-success">
-                    <span class="bi bi-check-circle-fill"></span>
-                    <div>User account created successfully!</div>
-                </div>
-            }
 
             <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                 <button class="btn btn-primary" @onclick="SaveUser" disabled="@(isSaving || !IsPasswordValid || password != confirmPassword)">
@@ -338,22 +316,6 @@
                 }
             </div>
 
-            @if (!string.IsNullOrEmpty(resetError))
-            {
-                <div class="alert alert-danger">
-                    <span class="bi bi-x-circle-fill"></span>
-                    <div>@resetError</div>
-                </div>
-            }
-
-            @if (resetSuccess)
-            {
-                <div class="alert alert-success">
-                    <span class="bi bi-check-circle-fill"></span>
-                    <div>Password reset successfully!</div>
-                </div>
-            }
-
             <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                 <button class="btn btn-primary" @onclick="ResetPassword" disabled="@(isResetting || !IsNewPasswordValid || newPassword != confirmNewPassword)">
                     @if (isResetting)
@@ -376,7 +338,6 @@
     private List<UserAccount> users = new();
     private List<Employee> employees = new();
     private bool isLoading = true;
-    private string? errorMessage;
     private bool showInactive = false;
     
     // Pagination & Sorting
@@ -391,8 +352,6 @@
     // Add user dialog
     private bool showAddDialog = false;
     private bool isSaving = false;
-    private bool saveSuccess = false;
-    private string? dialogError;
     private long selectedEmployeeId = 0;
     private string username = "";
     private string password = "";
@@ -401,7 +360,7 @@
     private bool showConfirmPassword = false;
 
     // Password validation for Create dialog
-    private bool HasMinLength => password.Length >= 10;
+    private bool HasMinLength => password.Length >= 12;
     private bool HasUppercase => System.Text.RegularExpressions.Regex.IsMatch(password, @"[A-Z]");
     private bool HasLowercase => System.Text.RegularExpressions.Regex.IsMatch(password, @"[a-z]");
     private bool HasNumber => System.Text.RegularExpressions.Regex.IsMatch(password, @"[0-9]");
@@ -411,8 +370,6 @@
     // Reset password dialog
     private bool showResetDialog = false;
     private bool isResetting = false;
-    private bool resetSuccess = false;
-    private string? resetError;
     private UserAccount? selectedUser;
     private string newPassword = "";
     private string confirmNewPassword = "";
@@ -420,7 +377,7 @@
     private bool showConfirmNewPassword = false;
 
     // Password validation for Reset dialog
-    private bool HasNewMinLength => newPassword.Length >= 10;
+    private bool HasNewMinLength => newPassword.Length >= 12;
     private bool HasNewUppercase => System.Text.RegularExpressions.Regex.IsMatch(newPassword, @"[A-Z]");
     private bool HasNewLowercase => System.Text.RegularExpressions.Regex.IsMatch(newPassword, @"[a-z]");
     private bool HasNewNumber => System.Text.RegularExpressions.Regex.IsMatch(newPassword, @"[0-9]");
@@ -436,7 +393,6 @@
     private async Task LoadUsers()
     {
         isLoading = true;
-        errorMessage = null;
 
         try
         {
@@ -452,7 +408,7 @@
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading users: {ex.Message}";
+            Toast.ShowError($"Error loading users: {ex.Message}");
         }
         finally
         {
@@ -475,7 +431,7 @@
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading employees: {ex.Message}";
+            Toast.ShowError($"Error loading employees: {ex.Message}");
         }
     }
 
@@ -485,44 +441,39 @@
         username = "";
         password = "";
         confirmPassword = "";
-        dialogError = null;
-        saveSuccess = false;
         showAddDialog = true;
     }
 
     private async Task SaveUser()
     {
-        dialogError = null;
-        saveSuccess = false;
-
         // Validation
         if (selectedEmployeeId == 0)
         {
-            dialogError = "Please select an employee";
+            Toast.ShowError("Please select an employee");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(username))
         {
-            dialogError = "Username is required";
+            Toast.ShowError("Username is required");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(password))
         {
-            dialogError = "Password is required";
+            Toast.ShowError("Password is required");
             return;
         }
 
         if (password != confirmPassword)
         {
-            dialogError = "Passwords do not match";
+            Toast.ShowError("Passwords do not match");
             return;
         }
 
-        if (password.Length < 6)
+        if (password.Length < 12)
         {
-            dialogError = "Password must be at least 6 characters";
+            Toast.ShowError("Password must be at least 12 characters");
             return;
         }
 
@@ -531,16 +482,16 @@
         try
         {
             await AuthService.CreateUserAccountAsync(selectedEmployeeId, username.Trim(), password);
-            saveSuccess = true;
             await LoadUsers();
             await LoadEmployees(); // Refresh employees list to remove the one we just created an account for
             
             await Task.Delay(1500);
             CloseAddDialog();
+            Toast.ShowSuccess("User account created successfully!");
         }
         catch (Exception ex)
         {
-            dialogError = ex.Message;
+            Toast.ShowError(ex.Message);
         }
         finally
         {
@@ -553,31 +504,26 @@
         selectedUser = user;
         newPassword = "";
         confirmNewPassword = "";
-        resetError = null;
-        resetSuccess = false;
         showResetDialog = true;
     }
 
     private async Task ResetPassword()
     {
-        resetError = null;
-        resetSuccess = false;
-
         if (string.IsNullOrWhiteSpace(newPassword))
         {
-            resetError = "New password is required";
+            Toast.ShowError("New password is required");
             return;
         }
 
         if (newPassword != confirmNewPassword)
         {
-            resetError = "Passwords do not match";
+            Toast.ShowError("Passwords do not match");
             return;
         }
 
-        if (newPassword.Length < 6)
+        if (newPassword.Length < 12)
         {
-            resetError = "Password must be at least 6 characters";
+            Toast.ShowError("Password must be at least 12 characters");
             return;
         }
 
@@ -586,14 +532,12 @@
         try
         {
             await AuthService.ResetPasswordAsync(selectedUser!.UserId, newPassword);
-            resetSuccess = true;
-            
-            await Task.Delay(1500);
             CloseResetDialog();
+            Toast.ShowSuccess("Password reset successfully!");
         }
         catch (Exception ex)
         {
-            resetError = ex.Message;
+            Toast.ShowError(ex.Message);
         }
         finally
         {
@@ -607,10 +551,11 @@
         {
             await AuthService.DeactivateUserAsync(userId);
             await LoadUsers();
+            Toast.ShowSuccess("User deactivated successfully");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error deactivating user: {ex.Message}";
+            Toast.ShowError($"Error deactivating user: {ex.Message}");
         }
     }
 
@@ -620,10 +565,11 @@
         {
             await AuthService.ActivateUserAsync(userId);
             await LoadUsers();
+            Toast.ShowSuccess("User activated successfully");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error activating user: {ex.Message}";
+            Toast.ShowError($"Error activating user: {ex.Message}");
         }
     }
 
@@ -634,8 +580,6 @@
         username = "";
         password = "";
         confirmPassword = "";
-        dialogError = null;
-        saveSuccess = false;
         showPassword = false;
         showConfirmPassword = false;
     }
@@ -646,8 +590,6 @@
         selectedUser = null;
         newPassword = "";
         confirmNewPassword = "";
-        resetError = null;
-        resetSuccess = false;
         showNewPassword = false;
         showConfirmNewPassword = false;
     }

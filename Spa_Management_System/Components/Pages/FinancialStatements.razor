@@ -7,6 +7,7 @@
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject PdfExportService PdfService
 
 <PageTitle>Financial Statements - Kaye Spa</PageTitle>
 
@@ -55,11 +56,11 @@ else
                         </div>
                     }
                 }
+                <button class="btn btn-outline" @onclick="ExportToPdf" disabled="@isExporting">
+                    <span class="bi bi-file-earmark-pdf"></span> @(isExporting ? "Exporting..." : "PDF")
+                </button>
                 <button class="btn btn-outline" @onclick="PrintStatement">
                     <span class="bi bi-printer"></span> Print
-                </button>
-                <button class="btn btn-outline" @onclick="ExportToExcel">
-                    <span class="bi bi-file-earmark-excel"></span> Export
                 </button>
             </div>
         </div>
@@ -484,6 +485,7 @@ else
 
 @code {
     private bool isLoading = true;
+    private bool isExporting = false;
     private string activeTab = "balance";
     private DateTime asOfDate = DateTime.Today;
 
@@ -781,23 +783,132 @@ else
         await JS.InvokeVoidAsync("exportUtils.printElement", containerId, $"Kaye Spa - {title}");
     }
 
-    private async Task ExportToExcel()
+    private async Task ExportToPdf()
     {
-        var containerId = activeTab switch
-        {
-            "trial" => "trialBalanceContainer",
-            _ => activeTab == "balance" ? "balanceSheetContainer" : "incomeStatementContainer"
-        };
+        isExporting = true;
+        StateHasChanged();
 
-        var filename = activeTab switch
+        try
         {
-            "balance" => "BalanceSheet",
-            "income" => "IncomeStatement",
-            "trial" => "TrialBalance",
-            _ => "FinancialStatement"
-        };
+            byte[] pdfBytes;
+            string filename;
 
-        await JS.InvokeVoidAsync("exportUtils.exportTableToExcel", containerId, $"{filename}_{asOfDate:yyyyMMdd}", filename);
+            switch (activeTab)
+            {
+                case "balance":
+                    // Prepare Balance Sheet data
+                    var bsAssets = assetAccounts.Select(a => new AccountBalance
+                    {
+                        Code = a.Code,
+                        Name = a.Name,
+                        Balance = GetAccountBalance(a)
+                    }).Where(a => a.Balance != 0).ToList();
+
+                    var bsLiabilities = liabilityAccounts.Select(a => new AccountBalance
+                    {
+                        Code = a.Code,
+                        Name = a.Name,
+                        Balance = GetAccountBalance(a)
+                    }).Where(a => a.Balance != 0).ToList();
+
+                    var bsEquity = equityAccounts.Select(a => new AccountBalance
+                    {
+                        Code = a.Code,
+                        Name = a.Name,
+                        Balance = GetAccountBalance(a)
+                    }).ToList();
+                    
+                    // Add retained earnings
+                    bsEquity.Add(new AccountBalance
+                    {
+                        Code = "RE",
+                        Name = "Retained Earnings (Current Period)",
+                        Balance = netIncome
+                    });
+
+                    pdfBytes = PdfService.GenerateBalanceSheet(
+                        asOfDate,
+                        bsAssets,
+                        bsLiabilities,
+                        bsEquity,
+                        totalAssets,
+                        totalLiabilities,
+                        totalEquity);
+                    filename = $"BalanceSheet_{asOfDate:yyyyMMdd}.pdf";
+                    break;
+
+                case "income":
+                    // Prepare Income Statement data
+                    var isRevenues = revenueAccounts.Select(a => new AccountBalance
+                    {
+                        Code = a.Code,
+                        Name = a.Name,
+                        Balance = GetIncomeAccountBalance(a)
+                    }).Where(a => a.Balance != 0).ToList();
+
+                    var isExpenses = expenseAccounts.Select(a => new AccountBalance
+                    {
+                        Code = a.Code,
+                        Name = a.Name,
+                        Balance = GetIncomeAccountBalance(a)
+                    }).Where(a => a.Balance != 0).ToList();
+
+                    pdfBytes = PdfService.GenerateIncomeStatement(
+                        incomeStartDate,
+                        incomeEndDate,
+                        isRevenues,
+                        isExpenses,
+                        totalRevenue,
+                        totalExpenses,
+                        netIncome);
+                    filename = $"IncomeStatement_{incomeStartDate:yyyyMMdd}_{incomeEndDate:yyyyMMdd}.pdf";
+                    break;
+
+                case "trial":
+                default:
+                    // Prepare Trial Balance data
+                    var tbEntries = allAccounts.Select(a =>
+                    {
+                        var balance = GetAccountBalance(a);
+                        var isDebit = a.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase);
+                        return new TrialBalanceEntry
+                        {
+                            Code = a.Code,
+                            AccountName = a.Name,
+                            Debit = isDebit ? Math.Abs(balance) : 0,
+                            Credit = !isDebit ? Math.Abs(balance) : 0
+                        };
+                    }).Where(e => e.Debit != 0 || e.Credit != 0).ToList();
+
+                    pdfBytes = PdfService.GenerateTrialBalance(
+                        asOfDate,
+                        tbEntries,
+                        totalDebits,
+                        totalCredits);
+                    filename = $"TrialBalance_{asOfDate:yyyyMMdd}.pdf";
+                    break;
+            }
+
+            // Download the PDF file
+            await DownloadPdfAsync(pdfBytes, filename);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"PDF Export Error: {ex.Message}");
+            errorMessage = "Failed to export PDF. Please try again.";
+        }
+        finally
+        {
+            isExporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadPdfAsync(byte[] pdfBytes, string filename)
+    {
+        // Convert to base64 and trigger download via JavaScript
+        var base64 = Convert.ToBase64String(pdfBytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, "application/pdf", base64);
     }
 
     // Trial Balance filtering and pagination methods

@@ -46,10 +46,11 @@ public class DataController : ControllerBase
             var tables = new[] 
             { 
                 "Person", "Employee", "Customer", "Role", "UserAccount",
-                "ServiceCategory", "Service", "Product", "Inventory", "Supplier",
+                "ServiceCategory", "Service", "Product", "Inventory", "Supplier", "SupplierProduct",
                 "Appointment", "AppointmentService", "Sale", "SaleItem", "Payment",
                 "Expense", "Payroll", "JournalEntry", "JournalEntryLine", "LedgerAccount",
-                "PurchaseOrder", "PurchaseOrderItem", "StockTransaction"
+                "PurchaseOrder", "PurchaseOrderItem", "StockTransaction",
+                "EmployeeAttendance", "EmployeeServiceCommission", "AuditLog", "CRM_Note"
             };
 
             using var connection = new SqlConnection(connectionString);
@@ -325,6 +326,7 @@ public class DataController : ControllerBase
             "Product" => "product_id",
             "Inventory" => "inventory_id",
             "Supplier" => "supplier_id",
+            "SupplierProduct" => "supplier_product_id",
             "PurchaseOrder" => "po_id",
             "PurchaseOrderItem" => "po_item_id",
             "StockTransaction" => "stock_tx_id",
@@ -341,7 +343,8 @@ public class DataController : ControllerBase
             "Payroll" => "payroll_id",
             "EmployeeAttendance" => "attendance_id",
             "CrmNote" => "note_id",
-            "AuditLog" => "log_id",
+            "CRM_Note" => "note_id",
+            "AuditLog" => "audit_id",
             _ => throw new Exception($"Unknown table: {tableName}")
         };
     }
@@ -363,6 +366,7 @@ public class DataController : ControllerBase
             "purchaseorders" => "PurchaseOrder",
             "purchaseorderitems" => "PurchaseOrderItem",
             "stocktransactions" => "StockTransaction",
+            "supplierproducts" => "SupplierProduct",
             "appointments" => "Appointment",
             "appointmentservices" => "AppointmentService",
             "sales" => "Sale",
@@ -375,7 +379,7 @@ public class DataController : ControllerBase
             "expenses" => "Expense",
             "payrolls" => "Payroll",
             "employeeattendances" => "EmployeeAttendance",
-            "crmnotes" => "CrmNote",
+            "crmnotes" => "CRM_Note",
             "auditlogs" => "AuditLog",
             _ => null
         };
@@ -424,6 +428,65 @@ public class DataController : ControllerBase
                 error = ex.Message,
                 details = ex.InnerException?.Message ?? ex.ToString()
             });
+        }
+    }
+
+    /// <summary>
+    /// Reset/clear all data from cloud database for fresh sync
+    /// </summary>
+    [HttpPost("reset")]
+    public async Task<IActionResult> ResetDatabase()
+    {
+        try
+        {
+            var connectionString = _configuration.GetConnectionString("DefaultConnection");
+            
+            // Delete in reverse dependency order (children first, then parents)
+            var deleteOrder = new[]
+            {
+                "AuditLog", "CrmNote", "EmployeeAttendance", "EmployeeServiceCommission",
+                "JournalEntryLine", "JournalEntry", "LedgerAccount",
+                "Payment", "SaleItem", "Sale",
+                "AppointmentService", "Appointment",
+                "StockTransaction", "PurchaseOrderItem", "PurchaseOrder",
+                "Inventory", "Product", "Supplier",
+                "Payroll", "Expense",
+                "Service", "ServiceCategory",
+                "UserAccount", "Customer", "Employee", "Person", "Role"
+            };
+
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            var deleted = new Dictionary<string, int>();
+
+            foreach (var table in deleteOrder)
+            {
+                try
+                {
+                    using var cmd = new SqlCommand($"DELETE FROM [{table}]", connection);
+                    var count = await cmd.ExecuteNonQueryAsync();
+                    deleted[table] = count;
+                    _logger.LogInformation("Deleted {Count} rows from {Table}", count, table);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Could not delete from {Table}: {Error}", table, ex.Message);
+                    deleted[table] = -1;
+                }
+            }
+
+            return Ok(new { 
+                success = true, 
+                message = "Cloud database has been reset",
+                deleted = deleted,
+                timestamp = DateTime.UtcNow 
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resetting database");
+            return BadRequest(new { success = false, error = ex.Message });
         }
     }
 }

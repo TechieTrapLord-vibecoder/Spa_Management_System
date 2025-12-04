@@ -8,7 +8,7 @@
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
 
-<PageTitle>Employee Details - Serenity Spa</PageTitle>
+<PageTitle>Employee Details - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -129,15 +129,28 @@ else
             </div>
         </div>
 
-        <!-- Commission Rates -->
+        <!-- Qualified Services & Commission Rates -->
         <div class="card" style="margin-bottom: 1.5rem;">
-            <h4 class="card-title"><span class="bi bi-percent"></span> Commission Rates</h4>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                    <h4 class="card-title" style="margin-bottom: 0.25rem;"><span class="bi bi-percent"></span> Qualified Services</h4>
+                    <p style="color: var(--spa-text-light); margin: 0; font-size: 0.9rem;">
+                        Commission rates are set per service - therapist earns the rate defined in each service.
+                    </p>
+                </div>
+                @if (AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+                {
+                    <button class="btn btn-primary" @onclick="OpenManageServicesModal">
+                        <span class="bi bi-gear"></span> Manage Services
+                    </button>
+                }
+            </div>
             
             @if (!qualifiedServices.Any())
             {
                 <div class="alert alert-info">
                     <span class="bi bi-info-circle-fill"></span>
-                    <div>No commission rates configured for this therapist.</div>
+                    <div>No services assigned to this therapist yet. Click "Manage Services" to assign services.</div>
                 </div>
             }
             else
@@ -150,33 +163,35 @@ else
                                 <th>Service Price</th>
                                 <th>Commission Type</th>
                                 <th>Commission Rate</th>
-                                <th>Effective From</th>
-                                <th>Effective To</th>
+                                <th>Therapist Earns</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var q in qualifiedServices.Where(s => !s.IsArchived))
+                            @foreach (var q in qualifiedServices.Where(s => !s.IsArchived && s.Service != null))
                             {
+                                var svc = q.Service;
+                                var earnings = svc.CommissionType == "percentage" 
+                                    ? svc.Price * (svc.CommissionValue / 100) 
+                                    : svc.CommissionValue;
                                 <tr>
-                                    <td style="font-weight: 500;">@q.Service.Name</td>
-                                    <td>₱@q.Service.Price.ToString("N2")</td>
+                                    <td style="font-weight: 500;">@svc.Name</td>
+                                    <td>₱@svc.Price.ToString("N2")</td>
                                     <td>
-                                        <span class="badge" style="background: @(q.CommissionType == "percent" ? "var(--spa-primary)" : "var(--spa-accent)"); color: white; padding: 0.25rem 0.5rem; border-radius: 8px;">
-                                            @q.CommissionType.ToUpper()
+                                        <span class="badge" style="background: @(svc.CommissionType == "percentage" ? "var(--spa-primary)" : "var(--spa-accent)"); color: white; padding: 0.25rem 0.5rem; border-radius: 8px;">
+                                            @(svc.CommissionType == "percentage" ? "PERCENT" : "FIXED")
                                         </span>
                                     </td>
                                     <td style="font-weight: 600;">
-                                        @if (q.CommissionType == "percent")
+                                        @if (svc.CommissionType == "percentage")
                                         {
-                                            <span>@q.CommissionValue.ToString("N0")%</span>
+                                            <span>@svc.CommissionValue.ToString("N0")%</span>
                                         }
                                         else
                                         {
-                                            <span>₱@q.CommissionValue.ToString("N2")</span>
+                                            <span>₱@svc.CommissionValue.ToString("N2")</span>
                                         }
                                     </td>
-                                    <td>@(q.EffectiveFrom?.ToString("MMM dd, yyyy") ?? "-")</td>
-                                    <td>@(q.EffectiveTo?.ToString("MMM dd, yyyy") ?? "Ongoing")</td>
+                                    <td style="font-weight: 600; color: var(--spa-success);">₱@earnings.ToString("N2")</td>
                                 </tr>
                             }
                         </tbody>
@@ -351,6 +366,76 @@ else
     }
 }
 
+@* Manage Services Modal *@
+@if (showManageServicesModal)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal fade show d-block" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <h5 class="modal-title">
+                        <i class="bi bi-list-check me-2"></i>Manage Qualified Services
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseManageServicesModal"></button>
+                </div>
+                <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+                    <p class="text-muted mb-3">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Select the services this therapist is qualified to perform. Commission rates are set on each service.
+                    </p>
+                    
+                    @if (allServices.Any())
+                    {
+                        <div class="row">
+                            @foreach (var service in allServices.OrderBy(s => s.ServiceCategoryId).ThenBy(s => s.Name))
+                            {
+                                <div class="col-md-6 mb-2">
+                                    <div class="form-check p-3 border rounded @(selectedServiceIds.Contains(service.ServiceId) ? "border-primary bg-light" : "")">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="svc_@service.ServiceId" 
+                                               checked="@selectedServiceIds.Contains(service.ServiceId)"
+                                               @onchange="@(e => ToggleService(service.ServiceId, (bool)(e.Value ?? false)))" />
+                                        <label class="form-check-label w-100" for="svc_@service.ServiceId">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <strong>@service.Name</strong>
+                                                    <div class="small text-muted">₱@service.Price.ToString("N0") • @service.DurationMinutes min</div>
+                                                </div>
+                                                <span class="badge bg-success">
+                                                    @(service.CommissionType == "percentage" ? $"{service.CommissionValue}%" : $"₱{service.CommissionValue:N0}")
+                                                </span>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center text-muted py-4">
+                            <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                            <p class="mt-2">No active services found</p>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <span class="me-auto text-muted">@selectedServiceIds.Count service(s) selected</span>
+                    <button type="button" class="btn btn-secondary" @onclick="CloseManageServicesModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveServiceAssignments" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-check-lg me-1"></i>Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter]
     public long EmployeeId { get; set; }
@@ -366,6 +451,12 @@ else
     private List<AppointmentService> commissionServices = new();
     private List<EmployeeServiceCommission> qualifiedServices = new();
     private decimal totalCommissions = 0;
+    
+    // Manage Services Modal
+    private bool showManageServicesModal = false;
+    private List<Service> allServices = new();
+    private HashSet<long> selectedServiceIds = new();
+    private bool isSaving = false;
     
     private bool isLoading = true;
 
@@ -437,5 +528,87 @@ else
         var first = !string.IsNullOrEmpty(employee.Person.FirstName) ? employee.Person.FirstName[0].ToString().ToUpper() : "";
         var last = !string.IsNullOrEmpty(employee.Person.LastName) ? employee.Person.LastName[0].ToString().ToUpper() : "";
         return first + last;
+    }
+
+    private async Task OpenManageServicesModal()
+    {
+        // Load all active services
+        allServices = await DbContext.Services
+            .Where(s => s.Active)
+            .OrderBy(s => s.Name)
+            .ToListAsync();
+        
+        // Pre-select currently qualified services
+        selectedServiceIds = qualifiedServices.Select(q => q.ServiceId).ToHashSet();
+        
+        showManageServicesModal = true;
+    }
+
+    private void CloseManageServicesModal()
+    {
+        showManageServicesModal = false;
+    }
+
+    private void ToggleService(long serviceId, bool isSelected)
+    {
+        if (isSelected)
+            selectedServiceIds.Add(serviceId);
+        else
+            selectedServiceIds.Remove(serviceId);
+    }
+
+    private async Task SaveServiceAssignments()
+    {
+        isSaving = true;
+        try
+        {
+            // Get current qualifications
+            var currentQualifications = await DbContext.EmployeeServiceCommissions
+                .Where(esc => esc.EmployeeId == EmployeeId)
+                .ToListAsync();
+            
+            var currentServiceIds = currentQualifications.Select(q => q.ServiceId).ToHashSet();
+            
+            // Services to add (selected but not currently qualified)
+            var toAdd = selectedServiceIds.Except(currentServiceIds);
+            foreach (var serviceId in toAdd)
+            {
+                var service = allServices.FirstOrDefault(s => s.ServiceId == serviceId);
+                if (service != null)
+                {
+                    DbContext.EmployeeServiceCommissions.Add(new EmployeeServiceCommission
+                    {
+                        EmployeeId = EmployeeId,
+                        ServiceId = serviceId,
+                        CommissionType = service.CommissionType,
+                        CommissionValue = service.CommissionValue,
+                        EffectiveFrom = DateTime.Now
+                    });
+                }
+            }
+            
+            // Services to remove (currently qualified but not selected)
+            var toRemove = currentServiceIds.Except(selectedServiceIds);
+            var qualificationsToRemove = currentQualifications.Where(q => toRemove.Contains(q.ServiceId));
+            DbContext.EmployeeServiceCommissions.RemoveRange(qualificationsToRemove);
+            
+            await DbContext.SaveChangesAsync();
+            
+            // Reload qualified services
+            qualifiedServices = await DbContext.EmployeeServiceCommissions
+                .Include(esc => esc.Service)
+                .Where(esc => esc.EmployeeId == EmployeeId)
+                .ToListAsync();
+            
+            showManageServicesModal = false;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving service assignments: {ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+        }
     }
 }

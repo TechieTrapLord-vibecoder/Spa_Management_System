@@ -6,8 +6,9 @@
 @inject AppDbContext DbContext
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
+@inject IToastService Toast
 
-<PageTitle>General Ledger - Serenity Spa</PageTitle>
+<PageTitle>General Ledger - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -22,20 +23,6 @@ else
                 <span class="bi bi-plus-circle"></span> New Account
             </button>
         </div>
-
-        @if (!string.IsNullOrEmpty(successMessage))
-        {
-            <div class="alert alert-success" style="margin-bottom: 1rem;">
-                <span class="bi bi-check-circle-fill"></span> @successMessage
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(errorMessage))
-        {
-            <div class="alert alert-danger" style="margin-bottom: 1rem;">
-                <span class="bi bi-exclamation-circle-fill"></span> @errorMessage
-            </div>
-        }
 
         <!-- Summary Cards by Account Type -->
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
@@ -345,8 +332,6 @@ else
     private bool showDetailsDialog = false;
     private bool isEditing = false;
     private bool isSaving = false;
-    private string? successMessage;
-    private string? errorMessage;
 
     // Pagination and sorting
     private string sortColumn = "code";
@@ -392,7 +377,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading accounts: {ex.Message}";
+            Toast.ShowError($"Error loading accounts: {ex.Message}");
         }
         finally
         {
@@ -507,7 +492,6 @@ else
     {
         currentAccount = new LedgerAccount();
         isEditing = false;
-        errorMessage = null;
         showAccountDialog = true;
     }
 
@@ -522,7 +506,6 @@ else
             NormalBalance = account.NormalBalance
         };
         isEditing = true;
-        errorMessage = null;
         showAccountDialog = true;
     }
 
@@ -534,30 +517,29 @@ else
 
     private async Task SaveAccount()
     {
-        errorMessage = null;
 
         // Validate
         if (string.IsNullOrWhiteSpace(currentAccount.Code))
         {
-            errorMessage = "Account code is required.";
+            Toast.ShowError("Account code is required.");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(currentAccount.Name))
         {
-            errorMessage = "Account name is required.";
+            Toast.ShowError("Account name is required.");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(currentAccount.AccountType))
         {
-            errorMessage = "Account type is required.";
+            Toast.ShowError("Account type is required.");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(currentAccount.NormalBalance))
         {
-            errorMessage = "Normal balance is required.";
+            Toast.ShowError("Normal balance is required.");
             return;
         }
 
@@ -566,7 +548,7 @@ else
             .AnyAsync(a => a.Code == currentAccount.Code && a.LedgerAccountId != currentAccount.LedgerAccountId);
         if (existingCode)
         {
-            errorMessage = "An account with this code already exists.";
+            Toast.ShowError("An account with this code already exists.");
             return;
         }
 
@@ -591,14 +573,13 @@ else
 
             await DbContext.SaveChangesAsync();
 
-            successMessage = isEditing ? "Account updated successfully!" : "Account created successfully!";
+            Toast.ShowSuccess(isEditing ? "Account updated successfully!" : "Account created successfully!");
             showAccountDialog = false;
             await LoadAccounts();
-            _ = ClearSuccessMessage();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error saving account: {ex.Message}";
+            Toast.ShowError($"Error saving account: {ex.Message}");
         }
         finally
         {
@@ -626,12 +607,5 @@ else
         showDetailsDialog = false;
         viewingAccount = null;
         accountTransactions.Clear();
-    }
-
-    private async Task ClearSuccessMessage()
-    {
-        await Task.Delay(4000);
-        successMessage = null;
-        await InvokeAsync(StateHasChanged);
     }
 }

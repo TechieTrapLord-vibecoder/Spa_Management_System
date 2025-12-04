@@ -9,6 +9,8 @@
 @inject IAccountingService AccountingService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject PdfExportService PdfService
+@inject IToastService Toast
 
 <PageTitle>Expense Tracking - Kaye Spa</PageTitle>
 
@@ -25,8 +27,8 @@ else
                 <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">Track and manage business expenses</p>
             </div>
             <div style="display: flex; gap: 0.5rem;">
-                <button class="btn btn-outline" @onclick="ExportToExcel">
-                    <span class="bi bi-file-earmark-excel"></span> Export
+                <button class="btn btn-outline" @onclick="ExportToPdf" disabled="@isExporting">
+                    <span class="bi bi-file-earmark-pdf"></span> @(isExporting ? "Exporting..." : "PDF")
                 </button>
                 <button class="btn btn-primary" @onclick="ShowNewExpenseDialog">
                     <span class="bi bi-plus-circle"></span> Add Expense
@@ -34,21 +36,6 @@ else
             </div>
         </div>
 
-        @if (!string.IsNullOrEmpty(successMessage))
-        {
-            <div class="alert alert-success" style="margin-bottom: 1rem;">
-                <span class="bi bi-check-circle-fill"></span> @successMessage
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(errorMessage))
-        {
-            <div class="alert alert-danger" style="margin-bottom: 1rem;">
-                <span class="bi bi-exclamation-circle-fill"></span> @errorMessage
-            </div>
-        }
-
-        <!-- Summary Cards -->
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
             <div style="padding: 1.25rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
                 <div style="font-size: 0.85rem; opacity: 0.9;">Total Expenses (Period)</div>
@@ -317,8 +304,6 @@ else
     private bool showExpenseDialog = false;
     private bool showDeleteConfirm = false;
     private bool isEditing = false;
-    private string? successMessage;
-    private string? errorMessage;
 
     private List<Expense> expenses = new();
     private List<LedgerAccount> expenseAccounts = new();
@@ -392,7 +377,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading expenses: {ex.Message}";
+            Toast.ShowError($"Error loading expenses: {ex.Message}");
         }
         finally
         {
@@ -418,7 +403,6 @@ else
         };
         isEditing = false;
         showExpenseDialog = true;
-        ClearMessages();
     }
 
     private void EditExpense(Expense expense)
@@ -439,28 +423,25 @@ else
         };
         isEditing = true;
         showExpenseDialog = true;
-        ClearMessages();
     }
 
     private async Task SaveExpense()
     {
-        ClearMessages();
-
         if (string.IsNullOrWhiteSpace(currentExpense.Category))
         {
-            errorMessage = "Please select a category.";
+            Toast.ShowError("Please select a category.");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(currentExpense.Description))
         {
-            errorMessage = "Please enter a description.";
+            Toast.ShowError("Please enter a description.");
             return;
         }
 
         if (currentExpense.Amount <= 0)
         {
-            errorMessage = "Please enter a valid amount.";
+            Toast.ShowError("Please enter a valid amount.");
             return;
         }
 
@@ -500,7 +481,7 @@ else
                         }
                     }
 
-                    successMessage = "Expense updated successfully!" + (wasNotPaid && nowPaid ? " Journal entry created." : "");
+                    Toast.ShowSuccess("Expense updated successfully!" + (wasNotPaid && nowPaid ? " Journal entry created." : ""));
                     
                     await AuditLog.LogUpdateAsync("Expense", expense.ExpenseId.ToString(), 
                         $"Updated expense: {expense.Category} - ₱{expense.Amount:N2} ({expense.Status})", 
@@ -523,7 +504,7 @@ else
                         currentExpense.JournalId = journalId;
                         await DbContext.SaveChangesAsync();
                     }
-                    successMessage = "Expense added and journal entry created!";
+                    Toast.ShowSuccess("Expense added and journal entry created!");
                     
                     await AuditLog.LogCreateAsync("Expense", currentExpense.ExpenseId.ToString(), 
                         $"Created expense: {currentExpense.Category} - ₱{currentExpense.Amount:N2} (paid)", 
@@ -531,7 +512,7 @@ else
                 }
                 else
                 {
-                    successMessage = "Expense added successfully!";
+                    Toast.ShowSuccess("Expense added successfully!");
                     
                     await AuditLog.LogCreateAsync("Expense", currentExpense.ExpenseId.ToString(), 
                         $"Created expense: {currentExpense.Category} - ₱{currentExpense.Amount:N2} (pending)", 
@@ -544,7 +525,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error saving expense: {ex.Message}";
+            Toast.ShowError($"Error saving expense: {ex.Message}");
         }
         finally
         {
@@ -556,7 +537,6 @@ else
     {
         expenseToDelete = expense;
         showDeleteConfirm = true;
-        ClearMessages();
     }
 
     private async Task DeleteExpense()
@@ -567,13 +547,13 @@ else
         {
             DbContext.Expenses.Remove(expenseToDelete);
             await DbContext.SaveChangesAsync();
-            successMessage = "Expense deleted successfully!";
+            Toast.ShowSuccess("Expense deleted successfully!");
             showDeleteConfirm = false;
             await LoadExpenses();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error deleting expense: {ex.Message}";
+            Toast.ShowError($"Error deleting expense: {ex.Message}");
             showDeleteConfirm = false;
         }
     }
@@ -583,15 +563,33 @@ else
         showExpenseDialog = false;
     }
 
-    private void ClearMessages()
+    private bool isExporting = false;
+    private async Task ExportToPdf()
     {
-        successMessage = null;
-        errorMessage = null;
-    }
+        isExporting = true;
+        StateHasChanged();
 
-    private async Task ExportToExcel()
-    {
-        await JS.InvokeVoidAsync("exportUtils.exportTableToExcel", "expenseTableContainer", $"Expenses_{DateTime.Today:yyyyMMdd}", "Expenses");
+        try
+        {
+            var expenseData = expenses.Select(e => new ExpenseReportEntry
+            {
+                Date = e.ExpenseDate,
+                Category = e.Category,
+                Vendor = e.Vendor ?? "",
+                Description = e.Description ?? "",
+                Amount = e.Amount,
+                Status = e.Status ?? "paid"
+            }).ToList();
+
+            var pdfBytes = PdfService.GenerateExpenseReport(filterFromDate, filterToDate, expenseData, totalExpenses);
+            var base64 = Convert.ToBase64String(pdfBytes);
+            await JS.InvokeVoidAsync("exportUtils.downloadFile", base64, $"Expenses_{filterFromDate:yyyyMMdd}_{filterToDate:yyyyMMdd}.pdf", "application/pdf");
+        }
+        finally
+        {
+            isExporting = false;
+            StateHasChanged();
+        }
     }
 
     private string GetCategoryColor(string category) => category switch

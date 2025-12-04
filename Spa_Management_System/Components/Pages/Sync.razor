@@ -5,6 +5,7 @@
 @inject IAutoSyncService AutoSyncService
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
+@inject IToastService Toast
 @implements IDisposable
 
 <div class="container py-4">
@@ -19,22 +20,6 @@
             </span>
         </div>
     </div>
-
-    @if (!string.IsNullOrEmpty(errorMessage))
-    {
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <strong>Error:</strong> @errorMessage
-            <button type="button" class="btn-close" @onclick="() => errorMessage = string.Empty"></button>
-        </div>
-    }
-
-    @if (!string.IsNullOrEmpty(successMessage))
-    {
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <strong>Success:</strong> @successMessage
-            <button type="button" class="btn-close" @onclick="() => successMessage = string.Empty"></button>
-        </div>
-    }
 
     <!-- Sync Status Card -->
     <div class="row mb-4">
@@ -282,15 +267,74 @@
                 
                 @if (lastSyncResult.Errors.Any())
                 {
-                    <div class="mt-3">
-                        <strong class="text-danger">Errors:</strong>
-                        <ul class="mb-0 text-danger">
-                            @foreach (var error in lastSyncResult.Errors)
-                            {
-                                <li>@error</li>
-                            }
-                        </ul>
-                    </div>
+                    @if (IsOfflineError(lastSyncResult.Errors))
+                    {
+                        <!-- User-friendly offline message -->
+                        <div class="mt-3 p-3 bg-warning bg-opacity-10 border border-warning rounded">
+                            <div class="d-flex align-items-start">
+                                <span class="bi bi-wifi-off text-warning fs-3 me-3"></span>
+                                <div>
+                                    <h6 class="text-warning mb-1">No Internet Connection</h6>
+                                    <p class="mb-2 text-muted">
+                                        Unable to connect to the cloud server. Your data is saved locally and will sync automatically when internet is available.
+                                    </p>
+                                    <small class="text-muted">
+                                        <span class="bi bi-info-circle me-1"></span>
+                                        Don't worry! Your @(syncStatus?.TotalPending ?? 0) pending changes are safe and will be uploaded once connected.
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else if (IsServerError(lastSyncResult.Errors))
+                    {
+                        <!-- Server error message -->
+                        <div class="mt-3 p-3 bg-danger bg-opacity-10 border border-danger rounded">
+                            <div class="d-flex align-items-start">
+                                <span class="bi bi-server text-danger fs-3 me-3"></span>
+                                <div>
+                                    <h6 class="text-danger mb-1">Cloud Server Issue</h6>
+                                    <p class="mb-2 text-muted">
+                                        The cloud server is temporarily unavailable. Please try again in a few minutes.
+                                    </p>
+                                    <small class="text-muted">
+                                        <span class="bi bi-info-circle me-1"></span>
+                                        Your data is safe locally. Contact support if this persists.
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Other errors with details -->
+                        <div class="mt-3 p-3 bg-danger bg-opacity-10 border border-danger rounded">
+                            <div class="d-flex align-items-start">
+                                <span class="bi bi-exclamation-triangle text-danger fs-3 me-3"></span>
+                                <div class="flex-grow-1">
+                                    <h6 class="text-danger mb-1">Sync Issues</h6>
+                                    <p class="mb-2 text-muted">
+                                        Some records could not be synced. Your data is safe locally.
+                                    </p>
+                                    <details class="mt-2">
+                                        <summary class="text-muted" style="cursor: pointer;">
+                                            <small>Show technical details (@lastSyncResult.Errors.Count errors)</small>
+                                        </summary>
+                                        <ul class="mb-0 mt-2 text-danger small">
+                                            @foreach (var error in lastSyncResult.Errors.Take(5))
+                                            {
+                                                <li>@GetFriendlyError(error)</li>
+                                            }
+                                            @if (lastSyncResult.Errors.Count > 5)
+                                            {
+                                                <li class="text-muted">... and @(lastSyncResult.Errors.Count - 5) more</li>
+                                            }
+                                        </ul>
+                                    </details>
+                                </div>
+                            </div>
+                        </div>
+                    }
                 }
             </div>
         </div>
@@ -331,8 +375,6 @@
 @code {
     private bool isSyncing = false;
     private bool isTesting = false;
-    private string errorMessage = "";
-    private string successMessage = "";
     
     private SyncStatusSummary? syncStatus;
     private SyncProgress syncProgress = new();
@@ -379,8 +421,16 @@
     private void StartCountdownTimer()
     {
         // Cancel any existing countdown
-        countdownCts?.Cancel();
-        countdownCts?.Dispose();
+        try
+        {
+            countdownCts?.Cancel();
+            countdownCts?.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed, ignore
+        }
+        countdownCts = null;
         
         if (autoSyncEnabled && AutoSyncService.IsRunning)
         {
@@ -472,12 +522,12 @@
             {
                 if (e.RecordsUploaded > 0)
                 {
-                    successMessage = $"Auto-sync completed at {e.SyncTime:hh:mm tt}! Uploaded: {e.RecordsUploaded} records";
+                    Toast.ShowSuccess($"Auto-sync completed at {e.SyncTime:hh:mm tt}! Uploaded: {e.RecordsUploaded} records");
                 }
             }
             else
             {
-                errorMessage = $"Auto-sync failed: {e.ErrorMessage}";
+                Toast.ShowError($"Auto-sync failed: {e.ErrorMessage}");
             }
             
             await LoadSyncStatus();
@@ -492,8 +542,16 @@
     public void Dispose()
     {
         AutoSyncService.OnAutoSyncCompleted -= OnAutoSyncCompleted;
-        countdownCts?.Cancel();
-        countdownCts?.Dispose();
+        try
+        {
+            countdownCts?.Cancel();
+            countdownCts?.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed, ignore
+        }
+        countdownCts = null;
     }
 
     private async Task LoadSyncStatus()
@@ -504,7 +562,7 @@
         }
         catch (Exception ex)
         {
-            errorMessage = $"Failed to load sync status: {ex.Message}";
+            Toast.ShowError($"Failed to load sync status: {ex.Message}");
         }
     }
 
@@ -542,8 +600,6 @@
     private async Task FullSync()
     {
         isSyncing = true;
-        errorMessage = "";
-        successMessage = "";
         syncProgress = new SyncProgress();
         StateHasChanged();
         
@@ -559,22 +615,24 @@
             
             if (lastSyncResult.Success)
             {
-                successMessage = $"Full sync completed! Uploaded: {lastSyncResult.RecordsUploaded}, Downloaded: {lastSyncResult.RecordsDownloaded}";
+                Toast.ShowSuccess($"Full sync completed! Uploaded: {lastSyncResult.RecordsUploaded}, Downloaded: {lastSyncResult.RecordsDownloaded}");
             }
             else
             {
-                errorMessage = lastSyncResult.ErrorMessage ?? "Sync failed";
+                var errorMsg = lastSyncResult.ErrorMessage ?? "Sync failed";
                 if (lastSyncResult.Errors?.Any() == true)
                 {
-                    errorMessage += "\n\nErrors:\n" + string.Join("\n", lastSyncResult.Errors);
+                    errorMsg += " | Errors: " + string.Join("; ", lastSyncResult.Errors.Take(3));
                 }
+                Toast.ShowError(errorMsg);
             }
             
             await LoadSyncStatus();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Sync error: {ex.Message}";
+            Toast.ShowError($"Sync error: {ex.Message}");
+            Console.WriteLine($"[Sync] Full sync exception: {ex}");
         }
         finally
         {
@@ -585,8 +643,6 @@
     private async Task SyncPending()
     {
         isSyncing = true;
-        errorMessage = "";
-        successMessage = "";
         syncProgress = new SyncProgress();
         StateHasChanged();
         
@@ -595,7 +651,7 @@
             // Check if there's any pending data to sync
             if (syncStatus == null || syncStatus.TotalPending == 0)
             {
-                errorMessage = "No data to sync yet. All records are already synchronized.";
+                Toast.ShowWarning("No data to sync yet. All records are already synchronized.");
                 return;
             }
             
@@ -609,18 +665,24 @@
             
             if (lastSyncResult.Success)
             {
-                successMessage = $"Pending sync completed! Uploaded: {lastSyncResult.RecordsUploaded}";
+                Toast.ShowSuccess($"Pending sync completed! Uploaded: {lastSyncResult.RecordsUploaded}");
             }
             else
             {
-                errorMessage = lastSyncResult.ErrorMessage ?? "Sync failed";
+                var errorMsg = lastSyncResult.ErrorMessage ?? "Sync failed";
+                if (lastSyncResult.Errors?.Any() == true)
+                {
+                    errorMsg += " | Errors: " + string.Join("; ", lastSyncResult.Errors.Take(3));
+                }
+                Toast.ShowError(errorMsg);
             }
             
             await LoadSyncStatus();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Sync error: {ex.Message}";
+            Toast.ShowError($"Sync error: {ex.Message}");
+            Console.WriteLine($"[Sync] Pending sync exception: {ex}");
         }
         finally
         {
@@ -631,8 +693,6 @@
     private async Task PushAllData()
     {
         isSyncing = true;
-        errorMessage = "";
-        successMessage = "";
         syncProgress = new SyncProgress();
         StateHasChanged();
         
@@ -648,22 +708,23 @@
             
             if (lastSyncResult.Success)
             {
-                successMessage = $"Push completed! {lastSyncResult.RecordsUploaded} records backed up to cloud.";
+                Toast.ShowSuccess($"Push completed! {lastSyncResult.RecordsUploaded} records backed up to cloud.");
             }
             else
             {
-                errorMessage = lastSyncResult.ErrorMessage ?? "Push failed";
+                var errorMsg = lastSyncResult.ErrorMessage ?? "Push failed";
                 if (lastSyncResult.Errors.Any())
                 {
-                    errorMessage += " - " + string.Join(", ", lastSyncResult.Errors);
+                    errorMsg += " - " + string.Join(", ", lastSyncResult.Errors);
                 }
+                Toast.ShowError(errorMsg);
             }
             
             await LoadSyncStatus();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Push error: {ex.Message}";
+            Toast.ShowError($"Push error: {ex.Message}");
         }
         finally
         {
@@ -674,8 +735,6 @@
     private async Task PullAllData()
     {
         isSyncing = true;
-        errorMessage = "";
-        successMessage = "";
         syncProgress = new SyncProgress();
         StateHasChanged();
         
@@ -691,22 +750,23 @@
             
             if (lastSyncResult.Success)
             {
-                successMessage = $"Pull completed! {lastSyncResult.RecordsDownloaded} records restored from cloud.";
+                Toast.ShowSuccess($"Pull completed! {lastSyncResult.RecordsDownloaded} records restored from cloud.");
             }
             else
             {
-                errorMessage = lastSyncResult.ErrorMessage ?? "Pull failed";
+                var errorMsg = lastSyncResult.ErrorMessage ?? "Pull failed";
                 if (lastSyncResult.Errors.Any())
                 {
-                    errorMessage += " - " + string.Join(", ", lastSyncResult.Errors);
+                    errorMsg += " - " + string.Join(", ", lastSyncResult.Errors);
                 }
+                Toast.ShowError(errorMsg);
             }
             
             await LoadSyncStatus();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Pull error: {ex.Message}";
+            Toast.ShowError($"Pull error: {ex.Message}");
         }
         finally
         {
@@ -718,13 +778,11 @@
     {
         if (string.IsNullOrEmpty(apiBaseUrl))
         {
-            errorMessage = "Please enter an API URL";
+            Toast.ShowError("Please enter an API URL");
             return;
         }
         
         isTesting = true;
-        errorMessage = "";
-        successMessage = "";
         
         try
         {
@@ -738,17 +796,17 @@
             
             if (connected)
             {
-                successMessage = "Connection successful! Cloud API is reachable.";
+                Toast.ShowSuccess("Connection successful! Cloud API is reachable.");
                 await LoadSyncStatus();
             }
             else
             {
-                errorMessage = "Connection failed. Please check the URL and try again.";
+                Toast.ShowError("Connection failed. Please check the URL and try again.");
             }
         }
         catch (Exception ex)
         {
-            errorMessage = $"Connection failed: {ex.Message}";
+            Toast.ShowError($"Connection failed: {ex.Message}");
         }
         finally
         {
@@ -765,12 +823,12 @@
             settings.ApiKey = apiKey;
             await SyncService.SaveSettingsAsync(settings);
             
-            successMessage = "API configuration saved successfully!";
+            Toast.ShowSuccess("API configuration saved successfully!");
             await LoadSyncStatus();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Failed to save configuration: {ex.Message}";
+            Toast.ShowError($"Failed to save configuration: {ex.Message}");
         }
     }
 
@@ -787,5 +845,119 @@
         var pending = syncStatus?.TotalPending ?? 0;
         if (pending > 0) return $"{pending} Pending";
         return "Up to Date";
+    }
+
+    // Helper methods for user-friendly error messages
+    private bool IsOfflineError(List<string> errors)
+    {
+        var offlineKeywords = new[] { 
+            "No such host is known", 
+            "Unable to connect", 
+            "Connection refused",
+            "Network is unreachable",
+            "host is unreachable",
+            "timed out",
+            "SocketException",
+            "No connection could be made"
+        };
+        
+        return errors.Any(e => offlineKeywords.Any(k => 
+            e.Contains(k, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private bool IsServerError(List<string> errors)
+    {
+        var serverKeywords = new[] { 
+            "500", "502", "503", "504",
+            "Internal Server Error",
+            "Bad Gateway",
+            "Service Unavailable",
+            "Gateway Timeout"
+        };
+        
+        return errors.Any(e => serverKeywords.Any(k => 
+            e.Contains(k, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private string GetFriendlyError(string technicalError)
+    {
+        // Extract the entity name if present
+        if (technicalError.Contains("Connection error for "))
+        {
+            var parts = technicalError.Split("Connection error for ");
+            if (parts.Length > 1)
+            {
+                var entityName = parts[1].Split(':')[0].Trim();
+                return $"{entityName}: Could not connect to server";
+            }
+        }
+        
+        if (technicalError.Contains("No such host is known"))
+            return "Server address not found - check internet connection";
+        
+        if (technicalError.Contains("timed out"))
+            return "Connection timed out - server may be busy";
+            
+        if (technicalError.Contains("Failed to upload"))
+        {
+            var parts = technicalError.Split("Failed to upload ");
+            if (parts.Length > 1)
+            {
+                var entityName = parts[1].Split(':')[0].Trim();
+                return $"Could not upload {entityName} data";
+            }
+        }
+
+        if (technicalError.Contains("foreign key") || technicalError.Contains("FK_"))
+            return "Related data missing - try syncing all data first";
+
+        if (technicalError.Contains("duplicate") || technicalError.Contains("unique"))
+            return "Data already exists in cloud";
+
+        // Return shortened version of unknown errors
+        if (technicalError.Length > 80)
+            return technicalError.Substring(0, 77) + "...";
+            
+        return technicalError;
+    }
+
+    private string GetFriendlyErrorTitle(string error)
+    {
+        if (error.Contains("No such host") || error.Contains("Unable to connect") || 
+            error.Contains("Connection refused") || error.Contains("timed out"))
+            return "No Internet Connection";
+        
+        if (error.Contains("500") || error.Contains("502") || error.Contains("503"))
+            return "Server Temporarily Unavailable";
+            
+        if (error.Contains("Sync failed"))
+            return "Sync Could Not Complete";
+            
+        if (error.Contains("Connection failed"))
+            return "Connection Failed";
+            
+        return "Something Went Wrong";
+    }
+
+    private string GetFriendlyErrorMessage(string error)
+    {
+        if (error.Contains("No such host") || error.Contains("Unable to connect") || 
+            error.Contains("Connection refused"))
+            return "Please check your internet connection and try again. Your data is safe locally.";
+        
+        if (error.Contains("timed out"))
+            return "The server took too long to respond. Please try again in a moment.";
+            
+        if (error.Contains("500") || error.Contains("502") || error.Contains("503"))
+            return "The cloud server is having issues. Please try again later.";
+            
+        if (error.Contains("Sync failed"))
+            return "Could not sync with the cloud. Your data is saved locally and will sync when connection is restored.";
+            
+        if (error.Contains("Connection failed"))
+            return "Could not reach the cloud server. Please verify the API URL is correct.";
+            
+        // For other errors, just return a generic message
+        return "Please try again. If the problem persists, contact support.";
     }
 }

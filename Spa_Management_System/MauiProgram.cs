@@ -58,8 +58,14 @@ namespace Spa_Management_System
             builder.Services.AddScoped<IAuditLogService, AuditLogService>();
             builder.Services.AddScoped<IAccountingService, AccountingService>();
             
+            // Register PDF Export Service
+            builder.Services.AddSingleton<PdfExportService>();
+            
             // Register Authentication State Service as Singleton (persists across app)
             builder.Services.AddSingleton<IAuthStateService, AuthStateService>();
+
+            // Register Toast Notification Service as Singleton (shared across all pages)
+            builder.Services.AddSingleton<IToastService, ToastService>();
 
             // Register Sync Service for offline-first cloud synchronization
             builder.Services.AddScoped<ISyncService, SyncService>();

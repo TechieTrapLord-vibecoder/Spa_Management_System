@@ -6,8 +6,9 @@
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
+@inject IToastService Toast
 
-<PageTitle>My Appointments - Serenity Spa</PageTitle>
+<PageTitle>My Appointments - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -24,7 +25,7 @@ else if (currentCustomer == null)
         
         <div style="margin-top: 2rem; text-align: center;">
             <span style="font-size: 4rem;">🧘</span>
-            <h4 style="color: var(--spa-primary); margin: 1rem 0;">Welcome to Serenity Spa</h4>
+            <h4 style="color: var(--spa-primary); margin: 1rem 0;">Welcome to Kaye Spa</h4>
             <p style="color: var(--spa-text-light);">
                 Once your profile is set up, you'll be able to view and manage your appointments here.
             </p>
@@ -48,20 +49,6 @@ else
                 <span class="bi bi-plus-circle"></span> Book New Appointment
             </button>
         </div>
-
-        @if (!string.IsNullOrEmpty(successMessage))
-        {
-            <div class="alert alert-success" style="margin-bottom: 1rem;">
-                <span class="bi bi-check-circle-fill"></span> @successMessage
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(errorMessage))
-        {
-            <div class="alert alert-danger" style="margin-bottom: 1rem;">
-                <span class="bi bi-exclamation-circle-fill"></span> @errorMessage
-            </div>
-        }
 
         <!-- Filter Tabs -->
         <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
@@ -248,8 +235,6 @@ else
     private bool isLoading = true;
     private bool showCancelDialog = false;
     private bool isCancelling = false;
-    private string? successMessage;
-    private string? errorMessage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -290,11 +275,11 @@ else
         if (currentCustomer == null) return;
 
         isLoading = true;
-        errorMessage = null;
 
         try
         {
             allAppointments = await DbContext.Appointments
+                .AsNoTracking()
                 .Include(a => a.AppointmentServices)
                     .ThenInclude(s => s.Service)
                 .Include(a => a.AppointmentServices)
@@ -318,7 +303,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading appointments: {ex.Message}";
+            Toast.ShowError($"Error loading appointments: {ex.Message}");
         }
         finally
         {
@@ -368,15 +353,14 @@ else
             cancellingAppointment.Status = "cancelled";
             await DbContext.SaveChangesAsync();
 
-            successMessage = "Appointment cancelled successfully.";
+            Toast.ShowSuccess("Appointment cancelled successfully.");
             showCancelDialog = false;
             cancellingAppointment = null;
             await LoadAppointments();
-            _ = ClearSuccessMessage();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error cancelling appointment: {ex.Message}";
+            Toast.ShowError($"Error cancelling appointment: {ex.Message}");
         }
         finally
         {
@@ -405,11 +389,4 @@ else
         "no-show" => "No Show",
         _ => "Unknown"
     };
-
-    private async Task ClearSuccessMessage()
-    {
-        await Task.Delay(4000);
-        successMessage = null;
-        await InvokeAsync(StateHasChanged);
-    }
 }

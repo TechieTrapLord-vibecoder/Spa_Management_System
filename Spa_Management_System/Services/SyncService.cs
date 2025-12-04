@@ -154,9 +154,12 @@ public class SyncService : ISyncService
         };
 
         // Count pending records for each entity type
+        summary.PendingCounts["Role"] = await _context.Roles.CountAsync(x => x.SyncStatus == "pending");
         summary.PendingCounts["Person"] = await _context.Persons.CountAsync(x => x.SyncStatus == "pending");
         summary.PendingCounts["Customer"] = await _context.Customers.CountAsync(x => x.SyncStatus == "pending");
         summary.PendingCounts["Employee"] = await _context.Employees.CountAsync(x => x.SyncStatus == "pending");
+        summary.PendingCounts["UserAccount"] = await _context.UserAccounts.CountAsync(x => x.SyncStatus == "pending");
+        summary.PendingCounts["ServiceCategory"] = await _context.ServiceCategories.CountAsync(x => x.SyncStatus == "pending");
         summary.PendingCounts["Service"] = await _context.Services.CountAsync(x => x.SyncStatus == "pending");
         summary.PendingCounts["Product"] = await _context.Products.CountAsync(x => x.SyncStatus == "pending");
         summary.PendingCounts["Appointment"] = await _context.Appointments.CountAsync(x => x.SyncStatus == "pending");
@@ -165,6 +168,7 @@ public class SyncService : ISyncService
         summary.PendingCounts["Payment"] = await _context.Payments.CountAsync(x => x.SyncStatus == "pending");
         summary.PendingCounts["Expense"] = await _context.Expenses.CountAsync(x => x.SyncStatus == "pending");
         summary.PendingCounts["Inventory"] = await _context.Inventories.CountAsync(x => x.SyncStatus == "pending");
+        summary.PendingCounts["LedgerAccount"] = await _context.LedgerAccounts.CountAsync(x => x.SyncStatus == "pending");
         summary.PendingCounts["Payroll"] = await _context.Payrolls.CountAsync(x => x.SyncStatus == "pending");
         summary.PendingCounts["JournalEntry"] = await _context.JournalEntries.CountAsync(x => x.SyncStatus == "pending");
         summary.PendingCounts["JournalEntryLine"] = await _context.JournalEntryLines.CountAsync(x => x.SyncStatus == "pending");
@@ -381,24 +385,28 @@ public class SyncService : ISyncService
                 ("employees", async () => JsonSerializer.Serialize(await _context.Employees.AsNoTracking().Select(e => new { e.EmployeeId, e.SyncId, e.LastModifiedAt, e.LastSyncedAt, e.SyncStatus, e.SyncVersion, e.PersonId, e.RoleId, e.HireDate, e.Status, e.Note, e.CreatedAt }).ToListAsync())),
                 ("customers", async () => JsonSerializer.Serialize(await _context.Customers.AsNoTracking().Select(c => new { c.CustomerId, c.SyncId, c.LastModifiedAt, c.LastSyncedAt, c.SyncStatus, c.SyncVersion, c.PersonId, c.CustomerCode, c.LoyaltyPoints, c.CreatedAt, c.IsArchived }).ToListAsync())),
                 ("servicecategories", async () => JsonSerializer.Serialize(await _context.ServiceCategories.AsNoTracking().Select(s => new { s.ServiceCategoryId, s.Name, s.Description, s.IsArchived }).ToListAsync())),
-                ("services", async () => JsonSerializer.Serialize(await _context.Services.AsNoTracking().Select(s => new { s.ServiceId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.ServiceCategoryId, s.Code, s.Name, s.Description, s.Price, s.DurationMinutes }).ToListAsync())),
+                ("services", async () => JsonSerializer.Serialize(await _context.Services.AsNoTracking().Select(s => new { s.ServiceId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.ServiceCategoryId, s.Code, s.Name, s.Description, s.Price, s.DurationMinutes, s.Active, s.CommissionType, s.CommissionValue }).ToListAsync())),
+                ("employeeservicecommissions", async () => JsonSerializer.Serialize(await _context.EmployeeServiceCommissions.AsNoTracking().Select(e => new { e.CommissionId, e.EmployeeId, e.ServiceId, e.CommissionType, e.CommissionValue, e.EffectiveFrom, e.EffectiveTo, e.IsArchived }).ToListAsync())),
                 ("products", async () => JsonSerializer.Serialize(await _context.Products.AsNoTracking().Select(p => new { p.ProductId, p.SyncId, p.LastModifiedAt, p.LastSyncedAt, p.SyncStatus, p.SyncVersion, p.Sku, p.Name, p.Description, p.UnitPrice, p.CostPrice, p.Unit }).ToListAsync())),
                 ("inventories", async () => JsonSerializer.Serialize(await _context.Inventories.AsNoTracking().Select(i => new { i.InventoryId, i.SyncId, i.LastModifiedAt, i.LastSyncedAt, i.SyncStatus, i.SyncVersion, i.ProductId, i.QuantityOnHand, i.ReorderLevel, i.LastCountedAt }).ToListAsync())),
                 ("suppliers", async () => JsonSerializer.Serialize(await _context.Suppliers.AsNoTracking().Select(s => new { s.SupplierId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.Name, s.ContactPerson, s.Phone, s.Email, s.Address, s.IsArchived }).ToListAsync())),
+                ("supplierproducts", async () => JsonSerializer.Serialize(await _context.SupplierProducts.AsNoTracking().Select(sp => new { sp.SupplierProductId, sp.SyncId, sp.LastModifiedAt, sp.LastSyncedAt, sp.SyncStatus, sp.SyncVersion, sp.SupplierId, sp.ProductId, sp.SupplierPrice, sp.SupplierSku, sp.MinOrderQty, sp.LeadTimeDays, sp.IsPreferred, sp.IsActive, sp.Notes, sp.CreatedAt }).ToListAsync())),
                 ("ledgeraccounts", async () => JsonSerializer.Serialize(await _context.LedgerAccounts.AsNoTracking().Select(l => new { l.LedgerAccountId, l.Code, l.Name, l.AccountType, l.NormalBalance }).ToListAsync())),
                 ("useraccounts", async () => JsonSerializer.Serialize(await _context.UserAccounts.AsNoTracking().Select(u => new { u.UserId, u.EmployeeId, u.Username, u.PasswordHash, u.IsActive, u.LastLogin, u.CreatedAt }).ToListAsync())),
                 ("appointments", async () => JsonSerializer.Serialize(await _context.Appointments.AsNoTracking().Select(a => new { a.AppointmentId, a.SyncId, a.LastModifiedAt, a.LastSyncedAt, a.SyncStatus, a.SyncVersion, a.CustomerId, a.ScheduledStart, a.ScheduledEnd, a.Status, a.Notes, a.CreatedByUserId, a.CreatedAt }).ToListAsync())),
                 ("appointmentservices", async () => JsonSerializer.Serialize(await _context.AppointmentServices.AsNoTracking().Select(a => new { a.ApptSrvId, a.SyncId, a.LastModifiedAt, a.LastSyncedAt, a.SyncStatus, a.SyncVersion, a.AppointmentId, a.ServiceId, a.TherapistEmployeeId, a.Price, a.CommissionAmount }).ToListAsync())),
-                ("sales", async () => JsonSerializer.Serialize(await _context.Sales.AsNoTracking().Select(s => new { s.SaleId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.CustomerId, s.CreatedByUserId, s.SaleNumber, s.TotalAmount, s.PaymentStatus, s.CreatedAt }).ToListAsync())),
+                ("sales", async () => JsonSerializer.Serialize(await _context.Sales.AsNoTracking().Select(s => new { s.SaleId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.CustomerId, s.CreatedByUserId, s.SaleNumber, s.Subtotal, s.TaxRate, s.TaxAmount, s.TotalAmount, s.PaymentStatus, s.CreatedAt }).ToListAsync())),
                 ("saleitems", async () => JsonSerializer.Serialize(await _context.SaleItems.AsNoTracking().Select(s => new { s.SaleItemId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.SaleId, s.ItemType, s.ProductId, s.ServiceId, s.Qty, s.UnitPrice, s.LineTotal, s.TherapistEmployeeId }).ToListAsync())),
                 ("payments", async () => JsonSerializer.Serialize(await _context.Payments.AsNoTracking().Select(p => new { p.PaymentId, p.SyncId, p.LastModifiedAt, p.LastSyncedAt, p.SyncStatus, p.SyncVersion, p.SaleId, p.PaymentMethod, p.Amount, p.PaidAt, p.RecordedByUserId }).ToListAsync())),
-                ("expenses", async () => JsonSerializer.Serialize(await _context.Expenses.AsNoTracking().Select(e => new { e.ExpenseId, e.SyncId, e.LastModifiedAt, e.LastSyncedAt, e.SyncStatus, e.SyncVersion, e.ExpenseDate, e.Category, e.Description, e.Amount, e.Vendor, e.PaymentMethod, e.CreatedByUserId, e.CreatedAt }).ToListAsync())),
+                ("expenses", async () => JsonSerializer.Serialize(await _context.Expenses.AsNoTracking().Select(e => new { e.ExpenseId, e.SyncId, e.LastModifiedAt, e.LastSyncedAt, e.SyncStatus, e.SyncVersion, e.ExpenseDate, e.Category, e.Description, e.Amount, e.Vendor, e.PaymentMethod, e.Status, e.ReferenceNumber, e.Notes, e.LedgerAccountId, e.JournalId, e.CreatedByUserId, e.CreatedAt }).ToListAsync())),
                 ("journalentries", async () => JsonSerializer.Serialize(await _context.JournalEntries.AsNoTracking().Select(j => new { j.JournalId, j.SyncId, j.LastModifiedAt, j.LastSyncedAt, j.SyncStatus, j.SyncVersion, j.JournalNo, j.Date, j.Description, j.CreatedByUserId, j.CreatedAt }).ToListAsync())),
                 ("journalentrylines", async () => JsonSerializer.Serialize(await _context.JournalEntryLines.AsNoTracking().Select(j => new { j.JournalLineId, j.SyncId, j.LastModifiedAt, j.LastSyncedAt, j.SyncStatus, j.SyncVersion, j.JournalId, j.LedgerAccountId, j.Debit, j.Credit, j.LineMemo }).ToListAsync())),
                 ("payrolls", async () => JsonSerializer.Serialize(await _context.Payrolls.AsNoTracking().Select(p => new { p.PayrollId, p.SyncId, p.LastModifiedAt, p.LastSyncedAt, p.SyncStatus, p.SyncVersion, p.EmployeeId, p.PeriodStart, p.PeriodEnd, p.DaysWorked, p.DailyRate, p.GrossPay, p.Deductions, p.NetPay, p.Status, p.PaidAt, p.CreatedByUserId, p.CreatedAt }).ToListAsync())),
                 ("purchaseorders", async () => JsonSerializer.Serialize(await _context.PurchaseOrders.AsNoTracking().Select(p => new { p.PoId, p.SyncId, p.LastModifiedAt, p.LastSyncedAt, p.SyncStatus, p.SyncVersion, p.PoNumber, p.SupplierId, p.Status, p.CreatedByUserId, p.CreatedAt }).ToListAsync())),
                 ("purchaseorderitems", async () => JsonSerializer.Serialize(await _context.PurchaseOrderItems.AsNoTracking().Select(p => new { p.PoItemId, p.SyncId, p.LastModifiedAt, p.LastSyncedAt, p.SyncStatus, p.SyncVersion, p.PoId, p.ProductId, p.QtyOrdered, p.UnitCost }).ToListAsync())),
                 ("stocktransactions", async () => JsonSerializer.Serialize(await _context.StockTransactions.AsNoTracking().Select(s => new { s.StockTxId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.ProductId, s.TxType, s.Qty, s.UnitCost, s.Reference, s.CreatedByUserId, s.CreatedAt }).ToListAsync())),
+                ("crmnotes", async () => JsonSerializer.Serialize(await _context.CrmNotes.AsNoTracking().Select(c => new { c.NoteId, c.CustomerId, c.CreatedByUserId, c.Note, c.CreatedAt }).ToListAsync())),
+                ("auditlogs", async () => JsonSerializer.Serialize(await _context.AuditLogs.AsNoTracking().Select(a => new { a.AuditId, a.EntityName, a.EntityId, a.Action, a.ChangedByUserId, a.ChangeSummary, a.CreatedAt }).ToListAsync())),
             };
 
             int current = 0;
@@ -422,7 +430,14 @@ public class SyncService : ISyncService
                     var responseData = await response.Content.ReadFromJsonAsync<JsonElement>();
                     if (responseData.TryGetProperty("recordsProcessed", out var countProp))
                     {
-                        result.RecordsUploaded += countProp.GetInt32();
+                        var recordsProcessed = countProp.GetInt32();
+                        result.RecordsUploaded += recordsProcessed;
+                        
+                        // Mark all records as synced after successful upload
+                        if (recordsProcessed > 0)
+                        {
+                            await MarkAllAsSyncedAsync(name);
+                        }
                     }
                 }
                 else
@@ -484,8 +499,10 @@ public class SyncService : ISyncService
                 ("customers", "Customer"),
                 ("useraccounts", "UserAccount"),
                 ("services", "Service"),
+                ("employeeservicecommissions", "EmployeeServiceCommission"),
                 ("products", "Product"),
                 ("suppliers", "Supplier"),
+                ("supplierproducts", "SupplierProduct"),
                 ("inventories", "Inventory"),
                 ("appointments", "Appointment"),
                 ("appointmentservices", "AppointmentService"),
@@ -499,6 +516,8 @@ public class SyncService : ISyncService
                 ("purchaseorders", "PurchaseOrder"),
                 ("purchaseorderitems", "PurchaseOrderItem"),
                 ("stocktransactions", "StockTransaction"),
+                ("crmnotes", "CrmNote"),
+                ("auditlogs", "AuditLog"),
             };
 
             int current = 0;
@@ -626,7 +645,8 @@ public class SyncService : ISyncService
             "Product" => "product_id",
             "Inventory" => "inventory_id",
             "Supplier" => "supplier_id",
-            "LedgerAccount" => "account_id",
+            "SupplierProduct" => "supplier_product_id",
+            "LedgerAccount" => "ledger_account_id",
             "Appointment" => "appointment_id",
             "AppointmentService" => "appt_srv_id",
             "Sale" => "sale_id",
@@ -642,7 +662,8 @@ public class SyncService : ISyncService
             "EmployeeServiceCommission" => "commission_id",
             "EmployeeAttendance" => "attendance_id",
             "CrmNote" => "note_id",
-            "AuditLog" => "log_id",
+            "CRM_Note" => "note_id",
+            "AuditLog" => "audit_id",
             _ => "id"
         };
     }
@@ -1198,7 +1219,7 @@ public class SyncService : ISyncService
 
             var entities = new[] { 
                 "Role", "Person", "Employee", "UserAccount", "Customer", "ServiceCategory", "Service", 
-                "Product", "Inventory", "Supplier", "LedgerAccount", "Appointment", "AppointmentService", 
+                "Product", "Inventory", "Supplier", "SupplierProduct", "LedgerAccount", "Appointment", "AppointmentService", 
                 "Sale", "SaleItem", "Payment", "Expense", "JournalEntry", "JournalEntryLine", "Payroll",
                 "PurchaseOrder", "PurchaseOrderItem", "StockTransaction"
             };
@@ -1267,9 +1288,9 @@ public class SyncService : ISyncService
             var (json, pendingIds) = entityName switch
             {
                 "Role" => (
-                    JsonSerializer.Serialize(await _context.Roles.AsNoTracking()
-                        .Select(r => new { r.RoleId, r.Name, r.IsArchived }).ToListAsync()),
-                    await _context.Roles.Select(x => (object)x.RoleId).ToListAsync()
+                    JsonSerializer.Serialize(await _context.Roles.AsNoTracking().Where(x => x.SyncStatus == "pending")
+                        .Select(r => new { r.RoleId, r.SyncId, r.LastModifiedAt, r.LastSyncedAt, r.SyncStatus, r.SyncVersion, r.Name, r.IsArchived }).ToListAsync()),
+                    await _context.Roles.Where(x => x.SyncStatus == "pending").Select(x => (object)x.RoleId).ToListAsync()
                 ),
                 "Person" => (
                     JsonSerializer.Serialize(await _context.Persons.AsNoTracking().Where(x => x.SyncStatus == "pending")
@@ -1282,9 +1303,9 @@ public class SyncService : ISyncService
                     await _context.Employees.Where(x => x.SyncStatus == "pending").Select(x => (object)x.EmployeeId).ToListAsync()
                 ),
                 "UserAccount" => (
-                    JsonSerializer.Serialize(await _context.UserAccounts.AsNoTracking()
-                        .Select(u => new { u.UserId, u.EmployeeId, u.Username, u.PasswordHash, u.IsActive, u.LastLogin, u.CreatedAt }).ToListAsync()),
-                    await _context.UserAccounts.Select(x => (object)x.UserId).ToListAsync()
+                    JsonSerializer.Serialize(await _context.UserAccounts.AsNoTracking().Where(x => x.SyncStatus == "pending")
+                        .Select(u => new { u.UserId, u.SyncId, u.LastModifiedAt, u.LastSyncedAt, u.SyncStatus, u.SyncVersion, u.EmployeeId, u.Username, u.PasswordHash, u.IsActive, u.LastLogin, u.CreatedAt }).ToListAsync()),
+                    await _context.UserAccounts.Where(x => x.SyncStatus == "pending").Select(x => (object)x.UserId).ToListAsync()
                 ),
                 "Customer" => (
                     JsonSerializer.Serialize(await _context.Customers.AsNoTracking().Where(x => x.SyncStatus == "pending")
@@ -1292,13 +1313,13 @@ public class SyncService : ISyncService
                     await _context.Customers.Where(x => x.SyncStatus == "pending").Select(x => (object)x.CustomerId).ToListAsync()
                 ),
                 "ServiceCategory" => (
-                    JsonSerializer.Serialize(await _context.ServiceCategories.AsNoTracking()
-                        .Select(s => new { s.ServiceCategoryId, s.Name, s.Description, s.IsArchived }).ToListAsync()),
-                    await _context.ServiceCategories.Select(x => (object)x.ServiceCategoryId).ToListAsync()
+                    JsonSerializer.Serialize(await _context.ServiceCategories.AsNoTracking().Where(x => x.SyncStatus == "pending")
+                        .Select(s => new { s.ServiceCategoryId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.Name, s.Description, s.IsArchived }).ToListAsync()),
+                    await _context.ServiceCategories.Where(x => x.SyncStatus == "pending").Select(x => (object)x.ServiceCategoryId).ToListAsync()
                 ),
                 "Service" => (
                     JsonSerializer.Serialize(await _context.Services.AsNoTracking().Where(x => x.SyncStatus == "pending")
-                        .Select(s => new { s.ServiceId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.ServiceCategoryId, s.Code, s.Name, s.Description, s.Price, s.DurationMinutes }).ToListAsync()),
+                        .Select(s => new { s.ServiceId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.ServiceCategoryId, s.Code, s.Name, s.Description, s.Price, s.DurationMinutes, s.Active, s.CommissionType, s.CommissionValue }).ToListAsync()),
                     await _context.Services.Where(x => x.SyncStatus == "pending").Select(x => (object)x.ServiceId).ToListAsync()
                 ),
                 "Product" => (
@@ -1316,10 +1337,15 @@ public class SyncService : ISyncService
                         .Select(s => new { s.SupplierId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.Name, s.ContactPerson, s.Phone, s.Email, s.Address, s.IsArchived }).ToListAsync()),
                     await _context.Suppliers.Where(x => x.SyncStatus == "pending").Select(x => (object)x.SupplierId).ToListAsync()
                 ),
+                "SupplierProduct" => (
+                    JsonSerializer.Serialize(await _context.SupplierProducts.AsNoTracking().Where(x => x.SyncStatus == "pending")
+                        .Select(sp => new { sp.SupplierProductId, sp.SyncId, sp.LastModifiedAt, sp.LastSyncedAt, sp.SyncStatus, sp.SyncVersion, sp.SupplierId, sp.ProductId, sp.SupplierPrice, sp.SupplierSku, sp.MinOrderQty, sp.LeadTimeDays, sp.IsPreferred, sp.IsActive, sp.Notes, sp.CreatedAt }).ToListAsync()),
+                    await _context.SupplierProducts.Where(x => x.SyncStatus == "pending").Select(x => (object)x.SupplierProductId).ToListAsync()
+                ),
                 "LedgerAccount" => (
-                    JsonSerializer.Serialize(await _context.LedgerAccounts.AsNoTracking()
-                        .Select(l => new { l.LedgerAccountId, l.Code, l.Name, l.AccountType, l.NormalBalance }).ToListAsync()),
-                    await _context.LedgerAccounts.Select(x => (object)x.LedgerAccountId).ToListAsync()
+                    JsonSerializer.Serialize(await _context.LedgerAccounts.AsNoTracking().Where(x => x.SyncStatus == "pending")
+                        .Select(l => new { l.LedgerAccountId, l.SyncId, l.LastModifiedAt, l.LastSyncedAt, l.SyncStatus, l.SyncVersion, l.Code, l.Name, l.AccountType, l.NormalBalance }).ToListAsync()),
+                    await _context.LedgerAccounts.Where(x => x.SyncStatus == "pending").Select(x => (object)x.LedgerAccountId).ToListAsync()
                 ),
                 "Appointment" => (
                     JsonSerializer.Serialize(await _context.Appointments.AsNoTracking().Where(x => x.SyncStatus == "pending")
@@ -1328,7 +1354,7 @@ public class SyncService : ISyncService
                 ),
                 "Sale" => (
                     JsonSerializer.Serialize(await _context.Sales.AsNoTracking().Where(x => x.SyncStatus == "pending")
-                        .Select(s => new { s.SaleId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.CustomerId, s.CreatedByUserId, s.SaleNumber, s.TotalAmount, s.PaymentStatus, s.CreatedAt }).ToListAsync()),
+                        .Select(s => new { s.SaleId, s.SyncId, s.LastModifiedAt, s.LastSyncedAt, s.SyncStatus, s.SyncVersion, s.CustomerId, s.CreatedByUserId, s.SaleNumber, s.Subtotal, s.TaxRate, s.TaxAmount, s.TotalAmount, s.PaymentStatus, s.CreatedAt }).ToListAsync()),
                     await _context.Sales.Where(x => x.SyncStatus == "pending").Select(x => (object)x.SaleId).ToListAsync()
                 ),
                 "SaleItem" => (
@@ -1343,7 +1369,7 @@ public class SyncService : ISyncService
                 ),
                 "Expense" => (
                     JsonSerializer.Serialize(await _context.Expenses.AsNoTracking().Where(x => x.SyncStatus == "pending")
-                        .Select(e => new { e.ExpenseId, e.SyncId, e.LastModifiedAt, e.LastSyncedAt, e.SyncStatus, e.SyncVersion, e.ExpenseDate, e.Category, e.Description, e.Amount, e.Vendor, e.PaymentMethod, e.CreatedByUserId, e.CreatedAt }).ToListAsync()),
+                        .Select(e => new { e.ExpenseId, e.SyncId, e.LastModifiedAt, e.LastSyncedAt, e.SyncStatus, e.SyncVersion, e.ExpenseDate, e.Category, e.Description, e.Amount, e.Vendor, e.PaymentMethod, e.Status, e.ReferenceNumber, e.Notes, e.LedgerAccountId, e.JournalId, e.CreatedByUserId, e.CreatedAt }).ToListAsync()),
                     await _context.Expenses.Where(x => x.SyncStatus == "pending").Select(x => (object)x.ExpenseId).ToListAsync()
                 ),
                 "JournalEntry" => (
@@ -1485,6 +1511,7 @@ public class SyncService : ISyncService
             "Product" => "products",
             "Inventory" => "inventories",
             "Supplier" => "suppliers",
+            "SupplierProduct" => "supplierproducts",
             "LedgerAccount" => "ledgeraccounts",
             "Appointment" => "appointments",
             "AppointmentService" => "appointmentservices",
@@ -1502,6 +1529,90 @@ public class SyncService : ISyncService
         };
     }
 
+    /// <summary>
+    /// Mark ALL records of an entity type as synced (used by PushAllData)
+    /// </summary>
+    private async Task MarkAllAsSyncedAsync(string endpointName)
+    {
+        var now = DateTime.Now;
+        
+        switch (endpointName.ToLower())
+        {
+            case "roles":
+                await _context.Roles.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "persons":
+                await _context.Persons.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "customers":
+                await _context.Customers.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "employees":
+                await _context.Employees.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "useraccounts":
+                await _context.UserAccounts.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "servicecategories":
+                await _context.ServiceCategories.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "services":
+                await _context.Services.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "products":
+                await _context.Products.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "inventories":
+                await _context.Inventories.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "ledgeraccounts":
+                await _context.LedgerAccounts.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "suppliers":
+                await _context.Suppliers.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "supplierproducts":
+                await _context.SupplierProducts.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "appointments":
+                await _context.Appointments.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "appointmentservices":
+                await _context.AppointmentServices.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "sales":
+                await _context.Sales.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "saleitems":
+                await _context.SaleItems.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "payments":
+                await _context.Payments.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "expenses":
+                await _context.Expenses.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "journalentries":
+                await _context.JournalEntries.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "journalentrylines":
+                await _context.JournalEntryLines.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "payrolls":
+                await _context.Payrolls.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "purchaseorders":
+                await _context.PurchaseOrders.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "purchaseorderitems":
+                await _context.PurchaseOrderItems.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+            case "stocktransactions":
+                await _context.StockTransactions.ExecuteUpdateAsync(s => s.SetProperty(x => x.SyncStatus, "synced").SetProperty(x => x.LastSyncedAt, now));
+                break;
+        }
+    }
+
     private async Task MarkAsSyncedAsync(string entityName, List<object> ids)
     {
         if (ids.Count == 0) return;
@@ -1510,9 +1621,12 @@ public class SyncService : ISyncService
         {
             var entity = entityName switch
             {
+                "Role" => await _context.Roles.FindAsync(Convert.ToInt32(id)) as ISyncable,
                 "Person" => await _context.Persons.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 "Customer" => await _context.Customers.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 "Employee" => await _context.Employees.FindAsync(Convert.ToInt64(id)) as ISyncable,
+                "UserAccount" => await _context.UserAccounts.FindAsync(Convert.ToInt64(id)) as ISyncable,
+                "ServiceCategory" => await _context.ServiceCategories.FindAsync(Convert.ToInt32(id)) as ISyncable,
                 "Service" => await _context.Services.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 "Product" => await _context.Products.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 "Appointment" => await _context.Appointments.FindAsync(Convert.ToInt64(id)) as ISyncable,
@@ -1522,12 +1636,14 @@ public class SyncService : ISyncService
                 "Payment" => await _context.Payments.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 "Expense" => await _context.Expenses.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 "Inventory" => await _context.Inventories.FindAsync(Convert.ToInt64(id)) as ISyncable,
+                "LedgerAccount" => await _context.LedgerAccounts.FindAsync(Convert.ToInt32(id)) as ISyncable,
                 "Payroll" => await _context.Payrolls.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 "JournalEntry" => await _context.JournalEntries.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 "JournalEntryLine" => await _context.JournalEntryLines.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 "PurchaseOrder" => await _context.PurchaseOrders.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 "PurchaseOrderItem" => await _context.PurchaseOrderItems.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 "Supplier" => await _context.Suppliers.FindAsync(Convert.ToInt64(id)) as ISyncable,
+                "SupplierProduct" => await _context.SupplierProducts.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 "StockTransaction" => await _context.StockTransactions.FindAsync(Convert.ToInt64(id)) as ISyncable,
                 _ => null
             };

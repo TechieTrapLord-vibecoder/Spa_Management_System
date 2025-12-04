@@ -7,8 +7,9 @@
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
 @inject IJSRuntime JSRuntime
+@inject PdfExportService PdfService
 
-<PageTitle>Financial Reports - Serenity Spa</PageTitle>
+<PageTitle>Financial Reports - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -25,14 +26,11 @@ else
                 </p>
             </div>
             <div style="display: flex; gap: 0.5rem;">
-                <button class="btn btn-outline-secondary" @onclick="PrintReport" title="Print">
-                    <span class="bi bi-printer"></span>
+                <button class="btn btn-outline" @onclick="ExportToPdf" disabled="@isExporting">
+                    <span class="bi bi-file-earmark-pdf"></span> @(isExporting ? "Exporting..." : "PDF")
                 </button>
-                <button class="btn btn-outline-danger" @onclick="ExportToPdf" title="Export PDF">
-                    <span class="bi bi-file-pdf"></span>
-                </button>
-                <button class="btn btn-outline-success" @onclick="ExportToExcel" title="Export Excel">
-                    <span class="bi bi-file-excel"></span>
+                <button class="btn btn-outline" @onclick="PrintReport">
+                    <span class="bi bi-printer"></span> Print
                 </button>
             </div>
         </div>
@@ -754,6 +752,36 @@ else
     }
 
     private async Task PrintReport() => await JSRuntime.InvokeVoidAsync("exportUtils.printElement", ".card");
-    private async Task ExportToPdf() => await JSRuntime.InvokeVoidAsync("exportUtils.exportToPdf", ".card", $"FinancialReport_{startDate:yyyyMMdd}-{endDate:yyyyMMdd}");
-    private async Task ExportToExcel() => await JSRuntime.InvokeVoidAsync("exportUtils.exportTableToExcel", ".card table", $"FinancialReport_{startDate:yyyyMMdd}");
+    
+    private bool isExporting = false;
+    private async Task ExportToPdf()
+    {
+        isExporting = true;
+        StateHasChanged();
+
+        try
+        {
+            // Build sales data for report
+            var salesData = dailyBreakdown.Select(d => new SalesReportEntry
+            {
+                Date = d.Date,
+                SaleNumber = $"{d.TransactionCount} transactions",
+                CustomerName = null,
+                Subtotal = d.TotalRevenue - (d.TotalRevenue * 0.12m / 1.12m),
+                Tax = d.TotalRevenue * 0.12m / 1.12m,
+                Total = d.TotalRevenue
+            }).ToList();
+
+            var totalTax = totalRevenue * 0.12m / 1.12m;
+            var subtotal = totalRevenue - totalTax;
+            var pdfBytes = PdfService.GenerateSalesReport(startDate, endDate, salesData, subtotal, totalTax, totalRevenue);
+            var base64 = Convert.ToBase64String(pdfBytes);
+            await JSRuntime.InvokeVoidAsync("exportUtils.downloadFile", base64, $"FinancialReport_{startDate:yyyyMMdd}_{endDate:yyyyMMdd}.pdf", "application/pdf");
+        }
+        finally
+        {
+            isExporting = false;
+            StateHasChanged();
+        }
+    }
 }

@@ -8,8 +8,9 @@
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
 @inject IJSRuntime JSRuntime
+@inject IToastService Toast
 
-<PageTitle>Services - Serenity Spa</PageTitle>
+<PageTitle>Services - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated || !AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
 {
@@ -580,7 +581,10 @@ else
                         $"Updated service: {existing.Name} (₱{existing.Price:N2})", 
                         AuthState.CurrentUser?.UserId);
                     
-                    successMessage = "Service updated successfully!";
+                    CloseDialog();
+                    await LoadData();
+                    Toast.ShowSuccess($"Service '{existing.Name}' updated successfully!");
+                    return;
                 }
             }
             else
@@ -604,12 +608,14 @@ else
                     $"Created service: {newService.Name} (₱{newService.Price:N2})", 
                     AuthState.CurrentUser?.UserId);
                 
-                successMessage = "Service created successfully!";
+                CloseDialog();
+                await LoadData();
+                Toast.ShowSuccess($"Service '{newService.Name}' created successfully!");
+                return;
             }
 
             CloseDialog();
             await LoadData();
-            _ = AutoDismissSuccess();
         }
         catch (Exception ex)
         {
@@ -638,25 +644,23 @@ else
         
         try
         {
-            ClearMessages();
             var service = await DbContext.Services.FindAsync(archiveServiceId.Value);
             if (service == null)
             {
-                errorMessage = "Service not found.";
+                Toast.ShowError("Service not found.");
                 return;
             }
 
             service.Active = false;
             await DbContext.SaveChangesAsync();
-            successMessage = "Service archived successfully!";
             showArchiveConfirm = false;
             archiveServiceId = null;
             await LoadData();
-            _ = AutoDismissSuccess();
+            Toast.ShowSuccess($"Service '{service.Name}' archived.");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error archiving service: {ex.Message}";
+            Toast.ShowError($"Error archiving service: {ex.Message}");
         }
     }
 
@@ -664,23 +668,21 @@ else
     {
         try
         {
-            ClearMessages();
             var service = await DbContext.Services.FindAsync(serviceId);
             if (service == null)
             {
-                errorMessage = "Service not found.";
+                Toast.ShowError("Service not found.");
                 return;
             }
 
             service.Active = true;
             await DbContext.SaveChangesAsync();
-            successMessage = "Service restored successfully!";
             await LoadData();
-            _ = AutoDismissSuccess();
+            Toast.ShowSuccess($"Service '{service.Name}' restored.");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error restoring service: {ex.Message}";
+            Toast.ShowError($"Error restoring service: {ex.Message}");
         }
     }
 

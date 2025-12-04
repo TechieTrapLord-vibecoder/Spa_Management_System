@@ -7,6 +7,7 @@
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject PdfExportService PdfService
 
 <PageTitle>VAT Report - Kaye Spa</PageTitle>
 
@@ -26,8 +27,8 @@ else
                 <button class="btn btn-outline" @onclick="PrintReport">
                     <span class="bi bi-printer"></span> Print
                 </button>
-                <button class="btn btn-outline" @onclick="ExportToExcel">
-                    <span class="bi bi-file-earmark-excel"></span> Export
+                <button class="btn btn-outline" @onclick="ExportToPdf" disabled="@isExporting">
+                    <span class="bi bi-file-earmark-pdf"></span> @(isExporting ? "Exporting..." : "PDF")
                 </button>
             </div>
         </div>
@@ -73,7 +74,7 @@ else
                 <div style="text-align: center; margin-bottom: 2rem; padding: 1rem; background: var(--spa-light); border-radius: 12px;">
                     <h2 style="color: var(--spa-primary); margin: 0;">Kaye Spa</h2>
                     <p style="margin: 0.25rem 0; color: var(--spa-text-light);">VAT Summary Report</p>
-                    <p style="margin: 0; font-weight: 600;">Q@selectedQuarter @selectedYear (@periodStart.ToString("MMMM d") - @periodEnd.ToString("MMMM d, yyyy"))</p>
+                    <p style="margin: 0; font-weight: 600;">Q@(selectedQuarter) @selectedYear (@periodStart.ToString("MMMM d") - @periodEnd.ToString("MMMM d, yyyy"))</p>
                 </div>
 
                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-bottom: 2rem;">
@@ -211,33 +212,42 @@ else
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th>Date</th>
-                                    <th>Sale #</th>
-                                    <th>Customer</th>
-                                    <th style="text-align: right;">Subtotal</th>
-                                    <th style="text-align: right;">VAT</th>
-                                    <th style="text-align: right;">Total</th>
+                                    <th @onclick='() => SortSalesBy("Date")' style="cursor: pointer;">Date @GetSalesSortIcon("Date")</th>
+                                    <th @onclick='() => SortSalesBy("SaleNumber")' style="cursor: pointer;">Sale # @GetSalesSortIcon("SaleNumber")</th>
+                                    <th @onclick='() => SortSalesBy("Customer")' style="cursor: pointer;">Customer @GetSalesSortIcon("Customer")</th>
+                                    <th @onclick='() => SortSalesBy("Subtotal")' style="text-align: right; cursor: pointer;">Subtotal @GetSalesSortIcon("Subtotal")</th>
+                                    <th @onclick='() => SortSalesBy("VAT")' style="text-align: right; cursor: pointer;">VAT @GetSalesSortIcon("VAT")</th>
+                                    <th @onclick='() => SortSalesBy("Total")' style="text-align: right; cursor: pointer;">Total @GetSalesSortIcon("Total")</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var sale in salesDetails.Take(20))
+                                @foreach (var sale in GetPagedSales())
                                 {
                                     <tr>
                                         <td>@sale.CreatedAt.ToString("MMM dd, yyyy")</td>
-                                        <td><code>@sale.SaleNumber</code></td>
+                                        <td><code style="color: var(--spa-accent);">@sale.SaleNumber</code></td>
                                         <td>@(sale.Customer?.Person?.FirstName ?? "Walk-in") @(sale.Customer?.Person?.LastName ?? "")</td>
                                         <td style="text-align: right;">₱@sale.Subtotal.ToString("N2")</td>
                                         <td style="text-align: right;">₱@sale.TaxAmount.ToString("N2")</td>
-                                        <td style="text-align: right;">₱@sale.TotalAmount.ToString("N2")</td>
+                                        <td style="text-align: right; font-weight: 600;">₱@sale.TotalAmount.ToString("N2")</td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
-                        @if (salesDetails.Count > 20)
+                        @if (SalesTotalPages > 1)
                         {
-                            <p style="color: var(--spa-text-light); text-align: center; margin-top: 0.5rem;">
-                                Showing 20 of @salesDetails.Count sales. Export for complete list.
-                            </p>
+                            <div class="table-pagination">
+                                <span>Showing @(((salesPage - 1) * salesPageSize) + 1)-@(Math.Min(salesPage * salesPageSize, salesDetails.Count)) of @salesDetails.Count</span>
+                                <div style="display: flex; gap: 0.25rem;">
+                                    <button class="btn btn-sm btn-outline" @onclick="() => { if (salesPage > 1) salesPage--; }" disabled="@(salesPage == 1)">‹</button>
+                                    @for (int i = Math.Max(1, salesPage - 2); i <= Math.Min(SalesTotalPages, salesPage + 2); i++)
+                                    {
+                                        var p = i;
+                                        <button class="btn btn-sm @(salesPage == p ? "btn-primary" : "btn-outline")" @onclick="() => salesPage = p">@p</button>
+                                    }
+                                    <button class="btn btn-sm btn-outline" @onclick="() => { if (salesPage < SalesTotalPages) salesPage++; }" disabled="@(salesPage == SalesTotalPages)">›</button>
+                                </div>
+                            </div>
                         }
                     </div>
                 }
@@ -270,6 +280,50 @@ else
 
     private List<Sale> salesDetails = new();
 
+    // Pagination for Sales Details
+    private int salesPage = 1;
+    private int salesPageSize = 10;
+    private string salesSortColumn = "Date";
+    private bool salesSortAsc = false;
+
+    private int SalesTotalPages => (int)Math.Ceiling(salesDetails.Count / (double)salesPageSize);
+
+    private List<Sale> GetPagedSales()
+    {
+        var sorted = GetSortedSales();
+        return sorted.Skip((salesPage - 1) * salesPageSize).Take(salesPageSize).ToList();
+    }
+
+    private List<Sale> GetSortedSales()
+    {
+        return salesSortColumn switch
+        {
+            "Date" => salesSortAsc ? salesDetails.OrderBy(s => s.CreatedAt).ToList() : salesDetails.OrderByDescending(s => s.CreatedAt).ToList(),
+            "Sale" => salesSortAsc ? salesDetails.OrderBy(s => s.SaleNumber ?? s.SaleId.ToString()).ToList() : salesDetails.OrderByDescending(s => s.SaleNumber ?? s.SaleId.ToString()).ToList(),
+            "Customer" => salesSortAsc ? salesDetails.OrderBy(s => s.Customer?.Person?.FirstName ?? "Walk-in").ToList() : salesDetails.OrderByDescending(s => s.Customer?.Person?.FirstName ?? "Walk-in").ToList(),
+            "Subtotal" => salesSortAsc ? salesDetails.OrderBy(s => s.Subtotal).ToList() : salesDetails.OrderByDescending(s => s.Subtotal).ToList(),
+            "VAT" => salesSortAsc ? salesDetails.OrderBy(s => s.TaxAmount).ToList() : salesDetails.OrderByDescending(s => s.TaxAmount).ToList(),
+            "Total" => salesSortAsc ? salesDetails.OrderBy(s => s.TotalAmount).ToList() : salesDetails.OrderByDescending(s => s.TotalAmount).ToList(),
+            _ => salesDetails
+        };
+    }
+
+    private void SortSalesBy(string column)
+    {
+        if (salesSortColumn == column)
+        {
+            salesSortAsc = !salesSortAsc;
+        }
+        else
+        {
+            salesSortColumn = column;
+            salesSortAsc = true;
+        }
+        salesPage = 1;
+    }
+
+    private string GetSalesSortIcon(string column) => salesSortColumn == column ? (salesSortAsc ? "↑" : "↓") : "";
+
     protected override async Task OnInitializedAsync()
     {
         await LoadVatData();
@@ -295,6 +349,7 @@ else
                 .ToListAsync();
 
             salesDetails = sales;
+            salesPage = 1; // Reset pagination when data loads
 
             // Calculate service vs product sales (from subtotals, before VAT)
             taxableServiceSales = 0;
@@ -368,8 +423,42 @@ else
         await JS.InvokeVoidAsync("print");
     }
 
-    private async Task ExportToExcel()
+    private bool isExporting = false;
+    private async Task ExportToPdf()
     {
-        await JS.InvokeVoidAsync("exportUtils.exportTableToExcel", "vatReportContent", $"VAT_Report_Q{selectedQuarter}_{selectedYear}", "VAT Report");
+        isExporting = true;
+        StateHasChanged();
+
+        try
+        {
+            // Build sales details for VAT
+            var salesVatDetails = salesDetails.Select(s => new VatDetailEntry
+            {
+                Date = s.CreatedAt,
+                Description = $"Sale #{s.SaleNumber ?? s.SaleId.ToString()} - {(s.Customer?.Person?.FirstName ?? "Walk-in")}",
+                Amount = s.Subtotal,
+                Vat = s.TaxAmount
+            }).ToList();
+
+            // Empty purchases for now (can be expanded)
+            var purchaseVatDetails = new List<VatDetailEntry>();
+
+            var pdfBytes = PdfService.GenerateVatReport(
+                selectedQuarter,
+                selectedYear,
+                outputVat,
+                inputVat,
+                netVatPayable,
+                salesVatDetails,
+                purchaseVatDetails);
+
+            var base64 = Convert.ToBase64String(pdfBytes);
+            await JS.InvokeVoidAsync("exportUtils.downloadFile", base64, $"VatReport_Q{selectedQuarter}_{selectedYear}.pdf", "application/pdf");
+        }
+        finally
+        {
+            isExporting = false;
+            StateHasChanged();
+        }
     }
 }

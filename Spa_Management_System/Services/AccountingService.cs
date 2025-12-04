@@ -491,8 +491,8 @@ public class AccountingService : IAccountingService
             (AccountCodes.PROFESSIONAL_EXPENSE, "Professional Services", "expense", "debit", "PROFESSIONAL_EXPENSE"),
             (AccountCodes.TAXES_EXPENSE, "Taxes & Licenses", "expense", "debit", "TAXES_EXPENSE"),
             (AccountCodes.MISC_EXPENSE, "Miscellaneous Expense", "expense", "debit", "MISC_EXPENSE"),
-            // Contra-Revenue
-            (AccountCodes.SALES_DISCOUNT, "Sales Discounts & Loyalty Points", "contra-revenue", "debit", "SALES_DISCOUNT"),
+            // Contra-Revenue (still classified as 'revenue' type in the database)
+            (AccountCodes.SALES_DISCOUNT, "Sales Discounts & Loyalty Points", "revenue", "debit", "SALES_DISCOUNT"),
         };
 
         var result = new Dictionary<string, long>();

@@ -6,8 +6,9 @@
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
+@inject IToastService Toast
 
-<PageTitle>Stock Adjustments - Serenity Spa</PageTitle>
+<PageTitle>Stock Adjustments - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -37,22 +38,6 @@ else
                 <span class="bi bi-plus-circle"></span> New Adjustment
             </button>
         </div>
-
-        @if (!string.IsNullOrEmpty(successMessage))
-        {
-            <div class="alert alert-success">
-                <span class="bi bi-check-circle-fill"></span>
-                <div>@successMessage</div>
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(errorMessage))
-        {
-            <div class="alert alert-danger">
-                <span class="bi bi-exclamation-triangle-fill"></span>
-                <div>@errorMessage</div>
-            </div>
-        }
 
         @if (isLoading)
         {
@@ -311,8 +296,6 @@ else
     private List<StockTransaction> stockTransactions = new();
     private List<Product> products = new();
     private bool isLoading = true;
-    private string? successMessage;
-    private string? errorMessage;
 
     // Pagination & Sorting
     private int pageSize = 10;
@@ -414,7 +397,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading data: {ex.Message}";
+            Toast.ShowError($"Error loading data: {ex.Message}");
         }
         finally
         {
@@ -431,7 +414,6 @@ else
         customReason = "";
         adjustmentNotes = "";
         showAdjustmentDialog = true;
-        ClearMessages();
     }
 
     private void CloseAdjustmentDialog()
@@ -452,12 +434,10 @@ else
     {
         try
         {
-            ClearMessages();
-
             var product = products.FirstOrDefault(p => p.ProductId == selectedProductId);
             if (product == null)
             {
-                errorMessage = "Product not found.";
+                Toast.ShowError("Product not found.");
                 return;
             }
 
@@ -522,21 +502,16 @@ else
             }
             catch { /* Audit logging is non-critical */ }
 
-            successMessage = $"Stock adjustment saved! {product.Name}: {(qtyChange > 0 ? "+" : "")}{qtyChange}";
+            Toast.ShowSuccess($"Stock adjustment saved! {product.Name}: {(qtyChange > 0 ? "+" : "")}{qtyChange}");
             CloseAdjustmentDialog();
             await LoadData();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error saving adjustment: {ex.Message}";
+            Toast.ShowError($"Error saving adjustment: {ex.Message}");
         }
     }
 
-    private void ClearMessages()
-    {
-        successMessage = null;
-        errorMessage = null;
-    }
 }
 
 <style>

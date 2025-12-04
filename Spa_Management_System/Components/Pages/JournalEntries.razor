@@ -6,8 +6,9 @@
 @inject AppDbContext DbContext
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
+@inject IToastService Toast
 
-<PageTitle>Journal Entries - Serenity Spa</PageTitle>
+<PageTitle>Journal Entries - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -22,20 +23,6 @@ else
                 <span class="bi bi-plus-circle"></span> New Entry
             </button>
         </div>
-
-        @if (!string.IsNullOrEmpty(successMessage))
-        {
-            <div class="alert alert-success" style="margin-bottom: 1rem;">
-                <span class="bi bi-check-circle-fill"></span> @successMessage
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(errorMessage))
-        {
-            <div class="alert alert-danger" style="margin-bottom: 1rem;">
-                <span class="bi bi-exclamation-circle-fill"></span> @errorMessage
-            </div>
-        }
 
         <!-- Filters -->
         <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: end;">
@@ -382,8 +369,6 @@ else
     private bool isEditing = false;
     private bool isSaving = false;
     private bool isDeleting = false;
-    private string? successMessage;
-    private string? errorMessage;
 
     // Pagination and sorting
     private string sortColumn = "date";
@@ -418,7 +403,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading accounts: {ex.Message}";
+            Toast.ShowError($"Error loading accounts: {ex.Message}");
         }
     }
 
@@ -461,7 +446,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading entries: {ex.Message}";
+            Toast.ShowError($"Error loading entries: {ex.Message}");
         }
         finally
         {
@@ -554,7 +539,6 @@ else
             new JournalEntryLine { Debit = 0, Credit = 0 }
         };
         isEditing = false;
-        errorMessage = null;
         showEntryDialog = true;
         
         // Generate next journal number
@@ -623,25 +607,23 @@ else
 
     private async Task SaveEntry()
     {
-        errorMessage = null;
-        
         // Validate
         if (string.IsNullOrWhiteSpace(currentEntry.JournalNo))
         {
-            errorMessage = "Journal number is required.";
+            Toast.ShowError("Journal number is required.");
             return;
         }
 
         var validLines = entryLines.Where(l => l.LedgerAccountId > 0 && (l.Debit > 0 || l.Credit > 0)).ToList();
         if (validLines.Count < 2)
         {
-            errorMessage = "At least 2 valid line items are required.";
+            Toast.ShowError("At least 2 valid line items are required.");
             return;
         }
 
         if (!IsBalanced)
         {
-            errorMessage = "Entry must be balanced (debits must equal credits).";
+            Toast.ShowError("Entry must be balanced (debits must equal credits).");
             return;
         }
 
@@ -663,14 +645,13 @@ else
             }
             await DbContext.SaveChangesAsync();
 
-            successMessage = $"Journal entry {currentEntry.JournalNo} saved successfully!";
             showEntryDialog = false;
             await LoadEntries();
-            _ = ClearSuccessMessage();
+            Toast.ShowSuccess($"Journal entry {currentEntry.JournalNo} saved successfully!");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error saving entry: {ex.Message}";
+            Toast.ShowError($"Error saving entry: {ex.Message}");
         }
         finally
         {
@@ -715,30 +696,24 @@ else
                 .ToListAsync();
             DbContext.JournalEntryLines.RemoveRange(lines);
 
+            var journalNo = deletingEntry.JournalNo;
+            
             // Delete entry
             DbContext.JournalEntries.Remove(deletingEntry);
             await DbContext.SaveChangesAsync();
 
-            successMessage = $"Journal entry {deletingEntry.JournalNo} deleted.";
             showDeleteDialog = false;
             deletingEntry = null;
             await LoadEntries();
-            _ = ClearSuccessMessage();
+            Toast.ShowSuccess($"Journal entry {journalNo} deleted.");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error deleting entry: {ex.Message}";
+            Toast.ShowError($"Error deleting entry: {ex.Message}");
         }
         finally
         {
             isDeleting = false;
         }
-    }
-
-    private async Task ClearSuccessMessage()
-    {
-        await Task.Delay(4000);
-        successMessage = null;
-        await InvokeAsync(StateHasChanged);
     }
 }

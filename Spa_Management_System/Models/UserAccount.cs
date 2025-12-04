@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace Spa_Management_System.Models;
 
 [Table("UserAccount")]
-public class UserAccount
+public class UserAccount : ISyncable
 {
     [Key]
     [Column("user_id")]
@@ -31,6 +31,23 @@ public class UserAccount
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    // ISyncable properties
+    [Column("sync_id")]
+    public Guid SyncId { get; set; } = Guid.NewGuid();
+
+    [Column("last_modified_at")]
+    public DateTime? LastModifiedAt { get; set; } = DateTime.Now;
+
+    [Column("last_synced_at")]
+    public DateTime? LastSyncedAt { get; set; }
+
+    [Column("sync_status")]
+    [MaxLength(20)]
+    public string SyncStatus { get; set; } = "pending";
+
+    [Column("sync_version")]
+    public int SyncVersion { get; set; } = 1;
 
     // Navigation properties
     [ForeignKey("EmployeeId")]

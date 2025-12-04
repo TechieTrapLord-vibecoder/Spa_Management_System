@@ -6,6 +6,7 @@
 @inject IDbContextFactory<AppDbContext> DbContextFactory
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
+@inject IToastService Toast
 
 <PageTitle>Year-End Closing - Kaye Spa</PageTitle>
 
@@ -28,20 +29,6 @@ else
             <h3 class="card-title" style="margin: 0;"><span class="bi bi-calendar-check"></span> Year-End Closing</h3>
             <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">Close the fiscal year and transfer net income to retained earnings</p>
         </div>
-
-        @if (!string.IsNullOrEmpty(successMessage))
-        {
-            <div class="alert alert-success" style="margin-bottom: 1rem;">
-                <span class="bi bi-check-circle-fill"></span> @successMessage
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(errorMessage))
-        {
-            <div class="alert alert-danger" style="margin-bottom: 1rem;">
-                <span class="bi bi-exclamation-circle-fill"></span> @errorMessage
-            </div>
-        }
 
         @if (isLoading)
         {
@@ -98,13 +85,13 @@ else
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Code</th>
-                            <th>Account Name</th>
-                            <th style="text-align: right;">Balance</th>
+                            <th class="sortable-header" @onclick='() => SortRevenueBy("Code")'>Code @GetRevenueSortIcon("Code")</th>
+                            <th class="sortable-header" @onclick='() => SortRevenueBy("Name")'>Account Name @GetRevenueSortIcon("Name")</th>
+                            <th class="sortable-header" style="text-align: right;" @onclick='() => SortRevenueBy("Balance")'>Balance @GetRevenueSortIcon("Balance")</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var account in revenueAccounts)
+                        @foreach (var account in GetPagedRevenueAccounts())
                         {
                             var balance = accountBalances.GetValueOrDefault(account.LedgerAccountId, 0);
                             <tr>
@@ -119,6 +106,16 @@ else
                         }
                     </tbody>
                 </table>
+                @if (revenueAccounts.Any() && RevenueTotalPages > 1)
+                {
+                    <div class="table-pagination">
+                        <button class="btn btn-outline" @onclick="() => revenuePage = 1" disabled="@(revenuePage == 1)">«</button>
+                        <button class="btn btn-outline" @onclick="() => revenuePage--" disabled="@(revenuePage == 1)">‹</button>
+                        <span>Page @revenuePage of @RevenueTotalPages</span>
+                        <button class="btn btn-outline" @onclick="() => revenuePage++" disabled="@(revenuePage >= RevenueTotalPages)">›</button>
+                        <button class="btn btn-outline" @onclick="() => revenuePage = RevenueTotalPages" disabled="@(revenuePage >= RevenueTotalPages)">»</button>
+                    </div>
+                }
             </div>
 
             <!-- Expense Accounts -->
@@ -127,13 +124,13 @@ else
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Code</th>
-                            <th>Account Name</th>
-                            <th style="text-align: right;">Balance</th>
+                            <th class="sortable-header" @onclick='() => SortExpenseBy("Code")'>Code @GetExpenseSortIcon("Code")</th>
+                            <th class="sortable-header" @onclick='() => SortExpenseBy("Name")'>Account Name @GetExpenseSortIcon("Name")</th>
+                            <th class="sortable-header" style="text-align: right;" @onclick='() => SortExpenseBy("Balance")'>Balance @GetExpenseSortIcon("Balance")</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var account in expenseAccounts)
+                        @foreach (var account in GetPagedExpenseAccounts())
                         {
                             var balance = accountBalances.GetValueOrDefault(account.LedgerAccountId, 0);
                             @if (balance != 0)
@@ -151,6 +148,16 @@ else
                         }
                     </tbody>
                 </table>
+                @if (expenseAccounts.Any(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0) != 0) && ExpenseTotalPages > 1)
+                {
+                    <div class="table-pagination">
+                        <button class="btn btn-outline" @onclick="() => expensePage = 1" disabled="@(expensePage == 1)">«</button>
+                        <button class="btn btn-outline" @onclick="() => expensePage--" disabled="@(expensePage == 1)">‹</button>
+                        <span>Page @expensePage of @ExpenseTotalPages</span>
+                        <button class="btn btn-outline" @onclick="() => expensePage++" disabled="@(expensePage >= ExpenseTotalPages)">›</button>
+                        <button class="btn btn-outline" @onclick="() => expensePage = ExpenseTotalPages" disabled="@(expensePage >= ExpenseTotalPages)">»</button>
+                    </div>
+                }
             </div>
 
             <!-- Closing Process Explanation -->
@@ -199,14 +206,14 @@ else
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Fiscal Year</th>
-                                <th>Closed On</th>
-                                <th>Journal Entry</th>
-                                <th style="text-align: right;">Net Income Transferred</th>
+                                <th class="sortable-header" @onclick='() => SortHistoryBy("Year")'>Fiscal Year @GetHistorySortIcon("Year")</th>
+                                <th class="sortable-header" @onclick='() => SortHistoryBy("Date")'>Closed On @GetHistorySortIcon("Date")</th>
+                                <th class="sortable-header" @onclick='() => SortHistoryBy("Journal")'>Journal Entry @GetHistorySortIcon("Journal")</th>
+                                <th class="sortable-header" style="text-align: right;" @onclick='() => SortHistoryBy("Amount")'>Net Income Transferred @GetHistorySortIcon("Amount")</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var closing in closingHistory)
+                            @foreach (var closing in GetPagedHistory())
                             {
                                 <tr>
                                     <td>@closing.Year</td>
@@ -217,6 +224,16 @@ else
                             }
                         </tbody>
                     </table>
+                    @if (HistoryTotalPages > 1)
+                    {
+                        <div class="table-pagination">
+                            <button class="btn btn-outline" @onclick="() => historyPage = 1" disabled="@(historyPage == 1)">«</button>
+                            <button class="btn btn-outline" @onclick="() => historyPage--" disabled="@(historyPage == 1)">‹</button>
+                            <span>Page @historyPage of @HistoryTotalPages</span>
+                            <button class="btn btn-outline" @onclick="() => historyPage++" disabled="@(historyPage >= HistoryTotalPages)">›</button>
+                            <button class="btn btn-outline" @onclick="() => historyPage = HistoryTotalPages" disabled="@(historyPage >= HistoryTotalPages)">»</button>
+                        </div>
+                    }
                 </div>
             }
         }
@@ -258,8 +275,6 @@ else
     private bool isProcessing = false;
     private bool showConfirmDialog = false;
     private string confirmText = "";
-    private string? successMessage;
-    private string? errorMessage;
 
     private int selectedYear = DateTime.Today.Year;
     private bool isYearClosed = false;
@@ -267,6 +282,108 @@ else
     private List<LedgerAccount> revenueAccounts = new();
     private List<LedgerAccount> expenseAccounts = new();
     private Dictionary<long, decimal> accountBalances = new();
+
+    // Pagination for Revenue Accounts
+    private int revenuePage = 1;
+    private int revenuePageSize = 10;
+    private string revenueSortColumn = "Code";
+    private bool revenueSortAsc = true;
+    private int RevenueTotalPages => (int)Math.Ceiling(revenueAccounts.Count / (double)revenuePageSize);
+
+    private List<LedgerAccount> GetPagedRevenueAccounts()
+    {
+        var sorted = GetSortedRevenueAccounts();
+        return sorted.Skip((revenuePage - 1) * revenuePageSize).Take(revenuePageSize).ToList();
+    }
+
+    private List<LedgerAccount> GetSortedRevenueAccounts()
+    {
+        return revenueSortColumn switch
+        {
+            "Code" => revenueSortAsc ? revenueAccounts.OrderBy(a => a.Code).ToList() : revenueAccounts.OrderByDescending(a => a.Code).ToList(),
+            "Name" => revenueSortAsc ? revenueAccounts.OrderBy(a => a.Name).ToList() : revenueAccounts.OrderByDescending(a => a.Name).ToList(),
+            "Balance" => revenueSortAsc ? revenueAccounts.OrderBy(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0)).ToList() : revenueAccounts.OrderByDescending(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0)).ToList(),
+            _ => revenueAccounts
+        };
+    }
+
+    private void SortRevenueBy(string column)
+    {
+        if (revenueSortColumn == column) revenueSortAsc = !revenueSortAsc;
+        else { revenueSortColumn = column; revenueSortAsc = true; }
+        revenuePage = 1;
+    }
+
+    private string GetRevenueSortIcon(string column) => revenueSortColumn == column ? (revenueSortAsc ? "↑" : "↓") : "";
+
+    // Pagination for Expense Accounts
+    private int expensePage = 1;
+    private int expensePageSize = 10;
+    private string expenseSortColumn = "Code";
+    private bool expenseSortAsc = true;
+    private List<LedgerAccount> expenseAccountsWithBalance => expenseAccounts.Where(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0) != 0).ToList();
+    private int ExpenseTotalPages => (int)Math.Ceiling(expenseAccountsWithBalance.Count / (double)expensePageSize);
+
+    private List<LedgerAccount> GetPagedExpenseAccounts()
+    {
+        var sorted = GetSortedExpenseAccounts();
+        return sorted.Skip((expensePage - 1) * expensePageSize).Take(expensePageSize).ToList();
+    }
+
+    private List<LedgerAccount> GetSortedExpenseAccounts()
+    {
+        return expenseSortColumn switch
+        {
+            "Code" => expenseSortAsc ? expenseAccountsWithBalance.OrderBy(a => a.Code).ToList() : expenseAccountsWithBalance.OrderByDescending(a => a.Code).ToList(),
+            "Name" => expenseSortAsc ? expenseAccountsWithBalance.OrderBy(a => a.Name).ToList() : expenseAccountsWithBalance.OrderByDescending(a => a.Name).ToList(),
+            "Balance" => expenseSortAsc ? expenseAccountsWithBalance.OrderBy(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0)).ToList() : expenseAccountsWithBalance.OrderByDescending(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0)).ToList(),
+            _ => expenseAccountsWithBalance
+        };
+    }
+
+    private void SortExpenseBy(string column)
+    {
+        if (expenseSortColumn == column) expenseSortAsc = !expenseSortAsc;
+        else { expenseSortColumn = column; expenseSortAsc = true; }
+        expensePage = 1;
+    }
+
+    private string GetExpenseSortIcon(string column) => expenseSortColumn == column ? (expenseSortAsc ? "↑" : "↓") : "";
+
+    // Pagination for Closing History
+    private int historyPage = 1;
+    private int historyPageSize = 10;
+    private string historySortColumn = "Year";
+    private bool historySortAsc = false;
+    private int HistoryTotalPages => (int)Math.Ceiling(closingHistory.Count / (double)historyPageSize);
+
+    private List<ClosingHistoryItem> GetPagedHistory()
+    {
+        var sorted = GetSortedHistory();
+        return sorted.Skip((historyPage - 1) * historyPageSize).Take(historyPageSize).ToList();
+    }
+
+    private List<ClosingHistoryItem> GetSortedHistory()
+    {
+        return historySortColumn switch
+        {
+            "Year" => historySortAsc ? closingHistory.OrderBy(h => h.Year).ToList() : closingHistory.OrderByDescending(h => h.Year).ToList(),
+            "Date" => historySortAsc ? closingHistory.OrderBy(h => h.ClosedDate).ToList() : closingHistory.OrderByDescending(h => h.ClosedDate).ToList(),
+            "Journal" => historySortAsc ? closingHistory.OrderBy(h => h.JournalNo).ToList() : closingHistory.OrderByDescending(h => h.JournalNo).ToList(),
+            "Amount" => historySortAsc ? closingHistory.OrderBy(h => h.NetIncome).ToList() : closingHistory.OrderByDescending(h => h.NetIncome).ToList(),
+            _ => closingHistory
+        };
+    }
+
+    private void SortHistoryBy(string column)
+    {
+        if (historySortColumn == column) historySortAsc = !historySortAsc;
+        else { historySortColumn = column; historySortAsc = true; }
+        historyPage = 1;
+    }
+
+    private string GetHistorySortIcon(string column) => historySortColumn == column ? (historySortAsc ? "↑" : "↓") : "";
+
 
     private decimal totalRevenue = 0;
     private decimal totalExpenses = 0;
@@ -282,7 +399,6 @@ else
     private async Task LoadYearData()
     {
         isLoading = true;
-        errorMessage = null;
         
         try
         {
@@ -357,7 +473,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading year data: {ex.Message}";
+            Toast.ShowError($"Error loading year data: {ex.Message}");
         }
         finally
         {
@@ -378,8 +494,6 @@ else
 
         isProcessing = true;
         showConfirmDialog = false;
-        errorMessage = null;
-        successMessage = null;
 
         try
         {
@@ -480,7 +594,7 @@ else
             context.JournalEntries.Add(closingEntry);
             await context.SaveChangesAsync();
 
-            successMessage = $"Fiscal Year {selectedYear} has been closed successfully! Net income of ₱{netIncome:N2} transferred to Retained Earnings.";
+            Toast.ShowSuccess($"Fiscal Year {selectedYear} has been closed successfully! Net income of ₱{netIncome:N2} transferred to Retained Earnings.");
             isYearClosed = true;
 
             // Reload data
@@ -488,7 +602,7 @@ else
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error closing year: {ex.Message}";
+            Toast.ShowError($"Error closing year: {ex.Message}");
         }
         finally
         {

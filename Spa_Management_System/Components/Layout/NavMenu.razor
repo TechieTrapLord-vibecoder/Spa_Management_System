@@ -1,6 +1,7 @@
 ﻿@using Spa_Management_System.Services
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <div class="top-row">
     <a class="navbar-brand" href="">
@@ -535,5 +536,14 @@
         }
         
         return displayName.Length > 0 ? displayName[0].ToString().ToUpper() : "?";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Restore sidebar scroll position after render
+            await JS.InvokeVoidAsync("sidebarScroll.init");
+        }
     }
 }

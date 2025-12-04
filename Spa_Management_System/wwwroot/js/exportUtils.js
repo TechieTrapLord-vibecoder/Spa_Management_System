@@ -3,17 +3,48 @@
 // Print, PDF, Excel export functionality
 // =====================================================
 
+// Global function for downloading files (used by PDF export)
+window.downloadFile = function (filename, contentType, base64Content) {
+  const link = document.createElement("a");
+  link.download = filename;
+  link.href = `data:${contentType};base64,${base64Content}`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
 window.exportUtils = {
-  // Print current view
+  // Download file from base64 content (for PDF exports from C#)
+  downloadFile: function (base64Content, filename, contentType) {
+    const link = document.createElement("a");
+    link.download = filename;
+    link.href = `data:${contentType};base64,${base64Content}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  },
+
+  // Print current view using iframe (works in MAUI WebView2)
   printElement: function (elementId, title) {
     var element = document.getElementById(elementId);
     if (!element) {
       console.error("Element not found:", elementId);
+      alert("Content not found for printing");
       return;
     }
 
-    var printWindow = window.open("", "_blank");
-    printWindow.document.write(`
+    // Create a hidden iframe for printing
+    var iframe = document.createElement("iframe");
+    iframe.style.position = "absolute";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "none";
+    iframe.style.left = "-9999px";
+    document.body.appendChild(iframe);
+
+    var doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`
             <!DOCTYPE html>
             <html>
             <head>
@@ -84,12 +115,134 @@ window.exportUtils = {
             </body>
             </html>
         `);
-    printWindow.document.close();
-    printWindow.focus();
+    doc.close();
+
+    // Wait for content to load then print
+    iframe.contentWindow.focus();
     setTimeout(function () {
-      printWindow.print();
-      printWindow.close();
+      iframe.contentWindow.print();
+      // Clean up iframe after printing
+      setTimeout(function () {
+        document.body.removeChild(iframe);
+      }, 1000);
     }, 250);
+  },
+
+  // Export to PDF by printing using iframe (works in MAUI WebView2)
+  exportToPdf: function (selector, filename) {
+    var element = document.querySelector(selector);
+    if (!element) {
+      element = document.getElementById(selector);
+    }
+    if (!element) {
+      console.error("Element not found:", selector);
+      alert("No content found to export");
+      return;
+    }
+
+    // Create a hidden iframe for printing
+    var iframe = document.createElement("iframe");
+    iframe.style.position = "absolute";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "none";
+    iframe.style.left = "-9999px";
+    document.body.appendChild(iframe);
+
+    var doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>${filename || "Kaye Spa Report"}</title>
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body { 
+                        font-family: 'Segoe UI', Arial, sans-serif; 
+                        padding: 30px; 
+                        color: #454F4A;
+                        background: white;
+                    }
+                    .print-header {
+                        text-align: center;
+                        margin-bottom: 25px;
+                        padding-bottom: 15px;
+                        border-bottom: 3px solid #454F4A;
+                    }
+                    .print-header h1 { 
+                        color: #454F4A; 
+                        font-size: 28px; 
+                        margin-bottom: 5px;
+                        letter-spacing: 2px;
+                    }
+                    .print-header p { color: #AA9478; font-size: 11px; }
+                    table { 
+                        width: 100%; 
+                        border-collapse: collapse; 
+                        margin-top: 15px;
+                    }
+                    th, td { 
+                        border: 1px solid #DCD8CE; 
+                        padding: 10px 12px; 
+                        text-align: left; 
+                        font-size: 11px;
+                    }
+                    th { 
+                        background-color: #454F4A; 
+                        color: white; 
+                        font-weight: 600;
+                        text-transform: uppercase;
+                        font-size: 10px;
+                    }
+                    tr:nth-child(even) { background-color: #f8f7f5; }
+                    .card { 
+                        border: none !important;
+                        box-shadow: none !important;
+                        padding: 0 !important;
+                    }
+                    .btn, button { display: none !important; }
+                    input, select { 
+                        border: 1px solid #DCD8CE !important;
+                        background: #f8f7f5 !important;
+                    }
+                    .print-footer {
+                        margin-top: 30px;
+                        padding-top: 15px;
+                        border-top: 2px solid #DCD8CE;
+                        text-align: center;
+                        font-size: 9px;
+                        color: #AA9478;
+                    }
+                    @media print {
+                        .no-print { display: none !important; }
+                        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="print-header">
+                    <h1>KAYE SPA</h1>
+                    <p>Generated: ${new Date().toLocaleString()}</p>
+                </div>
+                ${element.innerHTML}
+                <div class="print-footer">
+                    <p>Kaye Spa Management System | Confidential Business Document</p>
+                </div>
+            </body>
+            </html>
+        `);
+    doc.close();
+
+    // Wait for content to load then print
+    iframe.contentWindow.focus();
+    setTimeout(function () {
+      iframe.contentWindow.print();
+      // Clean up iframe after printing
+      setTimeout(function () {
+        document.body.removeChild(iframe);
+      }, 1000);
+    }, 300);
   },
 
   // Export table to CSV
@@ -431,3 +584,48 @@ window.chartUtils = {
     return colors[index % colors.length];
   },
 };
+
+// Sidebar scroll position persistence
+window.sidebarScroll = {
+  save: function () {
+    var nav = document.querySelector(".nav-scrollable");
+    if (nav) {
+      localStorage.setItem("sidebarScrollTop", nav.scrollTop);
+    }
+  },
+  restore: function () {
+    var nav = document.querySelector(".nav-scrollable");
+    if (nav) {
+      var scrollTop = localStorage.getItem("sidebarScrollTop");
+      if (scrollTop) {
+        nav.scrollTop = parseInt(scrollTop, 10);
+      }
+    }
+  },
+  init: function () {
+    var nav = document.querySelector(".nav-scrollable");
+    if (nav) {
+      // Restore scroll position
+      this.restore();
+
+      // Save scroll position on scroll
+      nav.addEventListener("scroll", function () {
+        localStorage.setItem("sidebarScrollTop", nav.scrollTop);
+      });
+    }
+  },
+};
+
+// Initialize sidebar scroll on page load
+document.addEventListener("DOMContentLoaded", function () {
+  window.sidebarScroll.init();
+});
+
+// Also handle Blazor navigation
+if (typeof Blazor !== "undefined") {
+  Blazor.addEventListener("enhancedload", function () {
+    setTimeout(function () {
+      window.sidebarScroll.init();
+    }, 50);
+  });
+}

@@ -7,8 +7,9 @@
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
 @inject IJSRuntime JSRuntime
+@inject PdfExportService PdfService
 
-<PageTitle>Reports & Analytics - Serenity Spa</PageTitle>
+<PageTitle>Reports & Analytics - Kaye Spa</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -23,20 +24,13 @@ else
                 <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">Business intelligence dashboard</p>
             </div>
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-                <input type="date" @bind="startDate" class="form-control" style="width: auto;" />
-                <input type="date" @bind="endDate" class="form-control" style="width: auto;" />
-                <button class="btn btn-primary" @onclick="LoadAllReports">
-                    <span class="bi bi-arrow-clockwise"></span> Refresh
+                <input type="date" @bind="startDate" @bind:after="LoadAllReports" class="form-control" style="width: auto;" />
+                <input type="date" @bind="endDate" @bind:after="LoadAllReports" class="form-control" style="width: auto;" />
+                <button class="btn btn-outline" @onclick="ExportToPdf" disabled="@isExporting">
+                    <span class="bi bi-file-earmark-pdf"></span> @(isExporting ? "Exporting..." : "PDF")
                 </button>
-                <div style="border-left: 1px solid #ddd; height: 30px; margin: 0 0.5rem;"></div>
-                <button class="btn btn-outline-secondary" @onclick="PrintReport" title="Print">
-                    <span class="bi bi-printer"></span>
-                </button>
-                <button class="btn btn-outline-danger" @onclick="ExportToPdf" title="Export PDF">
-                    <span class="bi bi-file-pdf"></span>
-                </button>
-                <button class="btn btn-outline-success" @onclick="ExportToExcel" title="Export Excel">
-                    <span class="bi bi-file-excel"></span>
+                <button class="btn btn-outline" @onclick="PrintReport">
+                    <span class="bi bi-printer"></span> Print
                 </button>
             </div>
         </div>
@@ -108,22 +102,22 @@ else
 
             @if (activeReport == "appointments")
             {
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                    <div style="padding: 1rem; background: var(--spa-background); border-radius: 10px; text-align: center;">
-                        <p style="margin: 0; color: var(--spa-text-light); font-size: 0.85rem;">Total</p>
-                        <h3 style="margin: 0.25rem 0 0 0; color: var(--spa-primary);">@totalAppointments</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Total</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@totalAppointments</h2>
                     </div>
-                    <div style="padding: 1rem; background: #d4edda; border-radius: 10px; text-align: center;">
-                        <p style="margin: 0; color: #155724; font-size: 0.85rem;">Completed</p>
-                        <h3 style="margin: 0.25rem 0 0 0; color: #155724;">@completedAppointments</h3>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Completed</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@completedAppointments</h2>
                     </div>
-                    <div style="padding: 1rem; background: #fff3cd; border-radius: 10px; text-align: center;">
-                        <p style="margin: 0; color: #856404; font-size: 0.85rem;">Scheduled</p>
-                        <h3 style="margin: 0.25rem 0 0 0; color: #856404;">@scheduledAppointments</h3>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Scheduled</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@scheduledAppointments</h2>
                     </div>
-                    <div style="padding: 1rem; background: #f8d7da; border-radius: 10px; text-align: center;">
-                        <p style="margin: 0; color: #721c24; font-size: 0.85rem;">Cancelled</p>
-                        <h3 style="margin: 0.25rem 0 0 0; color: #721c24;">@cancelledAppointments</h3>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Cancelled</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@cancelledAppointments</h2>
                     </div>
                 </div>
                 <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-calendar3"></span> Appointments by Day</h5>
@@ -164,17 +158,17 @@ else
             @if (activeReport == "revenue")
             {
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Total Revenue</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@totalRevenue.ToString("N2")</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Total Revenue</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">₱@totalRevenue.ToString("N2")</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Service Revenue</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@serviceRevenue.ToString("N2")</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Service Revenue</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">₱@serviceRevenue.ToString("N2")</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Product Revenue</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@productRevenue.ToString("N2")</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Product Revenue</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">₱@productRevenue.ToString("N2")</h2>
                     </div>
                 </div>
                 <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-cash-coin"></span> Daily Revenue</h5>
@@ -215,17 +209,17 @@ else
             @if (activeReport == "customers")
             {
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Total Customers</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@totalCustomers</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Total Customers</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@totalCustomers</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">New This Period</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@newCustomers</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">New This Period</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@newCustomers</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Total Loyalty Points</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@totalLoyaltyPoints.ToString("N0")</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Total Loyalty Points</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@totalLoyaltyPoints.ToString("N0")</h2>
                     </div>
                 </div>
                 <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-people"></span> Top Customers</h5>
@@ -264,17 +258,17 @@ else
             @if (activeReport == "services")
             {
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Total Services</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@totalServicesCount</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Total Services</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@totalServicesCount</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Bookings</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@totalServiceBookings</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Bookings</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@totalServiceBookings</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Revenue</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@serviceRevenue.ToString("N0")</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Revenue</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">₱@serviceRevenue.ToString("N0")</h2>
                     </div>
                 </div>
                 <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-heart"></span> Service Performance</h5>
@@ -315,17 +309,17 @@ else
             @if (activeReport == "staff")
             {
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Total Employees</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@totalEmployees</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Total Employees</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@totalEmployees</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Active Therapists</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@activeTherapists</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Active Therapists</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@activeTherapists</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Total Commissions</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@totalCommissions.ToString("N0")</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Total Commissions</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">₱@totalCommissions.ToString("N0")</h2>
                     </div>
                 </div>
                 <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-person-badge"></span> Staff Performance</h5>
@@ -366,17 +360,17 @@ else
             @if (activeReport == "inventory")
             {
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Total Products</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">@totalProducts</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Total Products</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@totalProducts</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: #f8d7da; border-radius: 12px;">
-                        <p style="margin: 0; color: #721c24;">Low Stock</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: #721c24;">@lowStockItems</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Low Stock</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">@lowStockItems</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Inventory Value</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@inventoryValue.ToString("N0")</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Inventory Value</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">₱@inventoryValue.ToString("N0")</h2>
                     </div>
                 </div>
                 <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-box-seam"></span> Inventory Status</h5>
@@ -426,21 +420,21 @@ else
             @if (activeReport == "payments")
             {
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                    <div style="padding: 1.5rem; background: var(--spa-background); border-radius: 12px;">
-                        <p style="margin: 0; color: var(--spa-text-light);">Total Payments</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: var(--spa-primary);">₱@totalPayments.ToString("N0")</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Total Payments</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">₱@totalPayments.ToString("N0")</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: #d4edda; border-radius: 12px;">
-                        <p style="margin: 0; color: #155724;">Cash</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: #155724;">₱@cashPayments.ToString("N0")</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Cash</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">₱@cashPayments.ToString("N0")</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: #cce5ff; border-radius: 12px;">
-                        <p style="margin: 0; color: #004085;">Card</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: #004085;">₱@cardPayments.ToString("N0")</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Card</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">₱@cardPayments.ToString("N0")</h2>
                     </div>
-                    <div style="padding: 1.5rem; background: #e2e3e5; border-radius: 12px;">
-                        <p style="margin: 0; color: #383d41;">Other</p>
-                        <h2 style="margin: 0.5rem 0 0 0; color: #383d41;">₱@otherPayments.ToString("N0")</h2>
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.85rem;">Other</p>
+                        <h2 style="margin: 0.5rem 0 0 0;">₱@otherPayments.ToString("N0")</h2>
                     </div>
                 </div>
                 <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-credit-card"></span> Payment Methods</h5>
@@ -714,8 +708,72 @@ else
     }
 
     private async Task PrintReport() => await JSRuntime.InvokeVoidAsync("exportUtils.printElement", ".card");
-    private async Task ExportToPdf() => await JSRuntime.InvokeVoidAsync("exportUtils.exportToPdf", ".card", $"Reports_{activeReport}_{startDate:yyyyMMdd}-{endDate:yyyyMMdd}");
-    private async Task ExportToExcel() => await JSRuntime.InvokeVoidAsync("exportUtils.exportTableToExcel", ".card table", $"Report_{activeReport}_{startDate:yyyyMMdd}");
+    
+    private bool isExporting = false;
+    private async Task ExportToPdf()
+    {
+        isExporting = true;
+        StateHasChanged();
+
+        try
+        {
+            // Generate generic report based on active tab
+            var title = activeReport switch
+            {
+                "overview" => "Business Overview",
+                "appointments" => "Appointments Report",
+                "revenue" => "Revenue Report",
+                "customers" => "Customer Report",
+                "services" => "Services Report",
+                "staff" => "Staff Performance",
+                "inventory" => "Inventory Report",
+                "payments" => "Payment Report",
+                _ => "Analytics Report"
+            };
+
+            // Build data based on active report
+            string[] headers;
+            var rows = new List<string[]>();
+
+            switch (activeReport)
+            {
+                case "revenue":
+                    headers = new[] { "Date", "Transactions", "Service Revenue", "Product Revenue", "Total" };
+                    rows = revenueByDay.Select(r => new[] {
+                        r.Date.ToString("MMM dd"),
+                        r.SalesCount.ToString(),
+                        $"₱{r.ServiceRevenue:N2}",
+                        $"₱{r.ProductRevenue:N2}",
+                        $"₱{r.TotalRevenue:N2}"
+                    }).ToList();
+                    break;
+                case "services":
+                    headers = new[] { "Service", "Category", "Bookings", "Revenue" };
+                    rows = topServices.Select(s => new[] {
+                        s.Name, s.Category, s.Count.ToString(), $"₱{s.Revenue:N2}"
+                    }).ToList();
+                    break;
+                default:
+                    headers = new[] { "Metric", "Value" };
+                    rows = new List<string[]> {
+                        new[] { "Total Revenue", $"₱{totalRevenue:N2}" },
+                        new[] { "Appointments", totalAppointments.ToString() },
+                        new[] { "New Customers", newCustomers.ToString() },
+                        new[] { "Avg Transaction", $"₱{avgTransaction:N2}" }
+                    };
+                    break;
+            }
+
+            var pdfBytes = PdfService.GenerateGenericReport(title, $"{startDate:MMM dd, yyyy} - {endDate:MMM dd, yyyy}", headers, rows, "Total", $"₱{totalRevenue:N2}");
+            var base64 = Convert.ToBase64String(pdfBytes);
+            await JSRuntime.InvokeVoidAsync("exportUtils.downloadFile", base64, $"Report_{activeReport}_{startDate:yyyyMMdd}_{endDate:yyyyMMdd}.pdf", "application/pdf");
+        }
+        finally
+        {
+            isExporting = false;
+            StateHasChanged();
+        }
+    }
 
     private class DayReport { public DateTime Date; public int Total; public int Completed; public int Cancelled; public decimal Revenue; public int SalesCount; public decimal TotalRevenue; public decimal ServiceRevenue; public decimal ProductRevenue; }
     private class CustomerRpt { public string Name = ""; public int Visits; public decimal TotalSpent; public int LoyaltyPoints; }
