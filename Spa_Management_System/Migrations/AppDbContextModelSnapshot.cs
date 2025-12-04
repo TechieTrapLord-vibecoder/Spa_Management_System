@@ -89,7 +89,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("CustomerId");
 
-                    b.ToTable("Appointment");
+                    b.ToTable("Appointment", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.AppointmentService", b =>
@@ -129,7 +129,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("TherapistEmployeeId");
 
-                    b.ToTable("AppointmentService");
+                    b.ToTable("AppointmentService", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.AuditLog", b =>
@@ -172,7 +172,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("ChangedByUserId");
 
-                    b.ToTable("AuditLog");
+                    b.ToTable("AuditLog", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.CrmNote", b =>
@@ -206,7 +206,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("CustomerId");
 
-                    b.ToTable("CRM_Note");
+                    b.ToTable("CRM_Note", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Customer", b =>
@@ -269,7 +269,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("PersonId");
 
-                    b.ToTable("Customer");
+                    b.ToTable("Customer", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Employee", b =>
@@ -335,7 +335,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("RoleId");
 
-                    b.ToTable("Employee");
+                    b.ToTable("Employee", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.EmployeeAttendance", b =>
@@ -382,7 +382,7 @@ namespace Spa_Management_System.Migrations
                     b.HasIndex("EmployeeId", "WorkDate")
                         .IsUnique();
 
-                    b.ToTable("EmployeeAttendance");
+                    b.ToTable("EmployeeAttendance", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.EmployeeServiceCommission", b =>
@@ -430,7 +430,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("ServiceId");
 
-                    b.ToTable("EmployeeServiceCommission");
+                    b.ToTable("EmployeeServiceCommission", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Expense", b =>
@@ -538,7 +538,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("LedgerAccountId");
 
-                    b.ToTable("Expense");
+                    b.ToTable("Expense", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Inventory", b =>
@@ -593,7 +593,7 @@ namespace Spa_Management_System.Migrations
                     b.HasIndex("ProductId")
                         .IsUnique();
 
-                    b.ToTable("Inventory");
+                    b.ToTable("Inventory", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.JournalEntry", b =>
@@ -656,7 +656,7 @@ namespace Spa_Management_System.Migrations
                         .IsUnique()
                         .HasFilter("[journal_no] IS NOT NULL");
 
-                    b.ToTable("JournalEntry");
+                    b.ToTable("JournalEntry", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.JournalEntryLine", b =>
@@ -694,7 +694,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("LedgerAccountId");
 
-                    b.ToTable("JournalEntryLine");
+                    b.ToTable("JournalEntryLine", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.LedgerAccount", b =>
@@ -735,7 +735,7 @@ namespace Spa_Management_System.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("LedgerAccount");
+                    b.ToTable("LedgerAccount", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Payment", b =>
@@ -797,7 +797,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("SaleId");
 
-                    b.ToTable("Payment");
+                    b.ToTable("Payment", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Payroll", b =>
@@ -901,7 +901,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("JournalId");
 
-                    b.ToTable("Payroll");
+                    b.ToTable("Payroll", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Person", b =>
@@ -971,7 +971,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasKey("PersonId");
 
-                    b.ToTable("Person");
+                    b.ToTable("Person", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Product", b =>
@@ -1043,7 +1043,7 @@ namespace Spa_Management_System.Migrations
                         .IsUnique()
                         .HasFilter("[sku] IS NOT NULL");
 
-                    b.ToTable("Product");
+                    b.ToTable("Product", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.PurchaseOrder", b =>
@@ -1087,7 +1087,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("SupplierId");
 
-                    b.ToTable("PurchaseOrder");
+                    b.ToTable("PurchaseOrder", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.PurchaseOrderItem", b =>
@@ -1121,7 +1121,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("PurchaseOrderItem");
+                    b.ToTable("PurchaseOrderItem", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Role", b =>
@@ -1148,7 +1148,7 @@ namespace Spa_Management_System.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("Role");
+                    b.ToTable("Role", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Sale", b =>
@@ -1219,7 +1219,7 @@ namespace Spa_Management_System.Migrations
                         .IsUnique()
                         .HasFilter("[sale_number] IS NOT NULL");
 
-                    b.ToTable("Sale");
+                    b.ToTable("Sale", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.SaleItem", b =>
@@ -1275,7 +1275,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("TherapistEmployeeId");
 
-                    b.ToTable("SaleItem");
+                    b.ToTable("SaleItem", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Service", b =>
@@ -1348,7 +1348,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("ServiceCategoryId");
 
-                    b.ToTable("Service");
+                    b.ToTable("Service", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.ServiceCategory", b =>
@@ -1376,7 +1376,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasKey("ServiceCategoryId");
 
-                    b.ToTable("ServiceCategory");
+                    b.ToTable("ServiceCategory", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.StockTransaction", b =>
@@ -1425,7 +1425,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("StockTransaction");
+                    b.ToTable("StockTransaction", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Supplier", b =>
@@ -1468,7 +1468,7 @@ namespace Spa_Management_System.Migrations
 
                     b.HasKey("SupplierId");
 
-                    b.ToTable("Supplier");
+                    b.ToTable("Supplier", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.UserAccount", b =>
@@ -1515,7 +1515,7 @@ namespace Spa_Management_System.Migrations
                     b.HasIndex("Username")
                         .IsUnique();
 
-                    b.ToTable("UserAccount");
+                    b.ToTable("UserAccount", (string)null);
                 });
 
             modelBuilder.Entity("Spa_Management_System.Models.Appointment", b =>

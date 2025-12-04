@@ -1,0 +1,441 @@
+@page "/employees/{EmployeeId:long}"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@using PayrollModel = Spa_Management_System.Models.Payroll
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+
+<PageTitle>Employee Details - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else if (isLoading)
+{
+    <div class="card">
+        <div style="padding: 2rem; text-align: center;">
+            <div class="loading"></div>
+            <p style="margin-top: 1rem; color: var(--spa-text-light);">Loading employee details...</p>
+        </div>
+    </div>
+}
+else if (employee == null)
+{
+    <div class="card">
+        <div class="alert alert-danger">
+            <span class="bi bi-exclamation-triangle-fill"></span>
+            <div>Employee not found.</div>
+        </div>
+        <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/employees")'>
+            <span class="bi bi-arrow-left"></span> Back to Employees
+        </button>
+    </div>
+}
+else
+{
+    <div style="margin-bottom: 1rem;">
+        <button class="btn btn-outline" @onclick='() => Navigation.NavigateTo("/employees")'>
+            <span class="bi bi-arrow-left"></span> Back to Employees
+        </button>
+    </div>
+
+    <!-- Employee Header Card -->
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: start;">
+            <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                    <div style="width: 80px; height: 80px; border-radius: 50%; background: #AA9478; display: flex; align-items: center; justify-content: center; color: white; font-size: 2rem; font-weight: bold;">
+                        @GetInitials()
+                    </div>
+                    <div>
+                        <h2 style="margin: 0; color: var(--spa-primary);">@employee.Person.FirstName @employee.Person.LastName</h2>
+                        <p style="margin: 0.25rem 0 0 0; color: var(--spa-text-light);">
+                            <span class="badge" style="background: var(--spa-accent); color: white; padding: 0.25rem 0.75rem; border-radius: 12px;">
+                                @employee.Role.Name
+                            </span>
+                            <span class="badge" style="background: @(employee.Status == "active" ? "var(--spa-success)" : "var(--spa-danger)"); color: white; padding: 0.25rem 0.75rem; border-radius: 12px; margin-left: 0.5rem;">
+                                @employee.Status.ToUpper()
+                            </span>
+                        </p>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    @if (!string.IsNullOrEmpty(employee.Person.Email))
+                    {
+                        <div>
+                            <span class="bi bi-envelope" style="color: var(--spa-accent);"></span>
+                            <span style="margin-left: 0.5rem;">@employee.Person.Email</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(employee.Person.Phone))
+                    {
+                        <div>
+                            <span class="bi bi-telephone" style="color: var(--spa-accent);"></span>
+                            <span style="margin-left: 0.5rem;">@employee.Person.Phone</span>
+                        </div>
+                    }
+                    @if (employee.HireDate.HasValue)
+                    {
+                        <div>
+                            <span class="bi bi-calendar-check" style="color: var(--spa-accent);"></span>
+                            <span style="margin-left: 0.5rem;">Hired @employee.HireDate.Value.ToString("MMM dd, yyyy")</span>
+                        </div>
+                    }
+                    <div>
+                        <span class="bi bi-calendar-plus" style="color: var(--spa-accent);"></span>
+                        <span style="margin-left: 0.5rem;">Created @employee.CreatedAt.ToString("MMM dd, yyyy")</span>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(employee.Note))
+                {
+                    <div style="margin-top: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 8px;">
+                        <span class="bi bi-sticky" style="color: var(--spa-accent);"></span>
+                        <span style="margin-left: 0.5rem;">@employee.Note</span>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    @if (isTherapist)
+    {
+        <!-- THERAPIST VIEW - Commission Based -->
+        <!-- Stats Cards for Therapist -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div class="card" style="text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; color: var(--spa-success); font-weight: bold;">₱@totalCommissions.ToString("N2")</div>
+                <div style="color: var(--spa-text-light);">Total Commissions Earned</div>
+            </div>
+
+            <div class="card" style="text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; color: var(--spa-primary); font-weight: bold;">@commissionServices.Count</div>
+                <div style="color: var(--spa-text-light);">Services Performed</div>
+            </div>
+
+            <div class="card" style="text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; color: var(--spa-accent); font-weight: bold;">₱@(commissionServices.Any() ? commissionServices.Average(c => c.CommissionAmount).ToString("N2") : "0.00")</div>
+                <div style="color: var(--spa-text-light);">Avg Commission/Service</div>
+            </div>
+
+            <div class="card" style="text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; color: var(--spa-warning); font-weight: bold;">@qualifiedServices.Count</div>
+                <div style="color: var(--spa-text-light);">Qualified Services</div>
+            </div>
+        </div>
+
+        <!-- Commission Rates -->
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h4 class="card-title"><span class="bi bi-percent"></span> Commission Rates</h4>
+            
+            @if (!qualifiedServices.Any())
+            {
+                <div class="alert alert-info">
+                    <span class="bi bi-info-circle-fill"></span>
+                    <div>No commission rates configured for this therapist.</div>
+                </div>
+            }
+            else
+            {
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Service</th>
+                                <th>Service Price</th>
+                                <th>Commission Type</th>
+                                <th>Commission Rate</th>
+                                <th>Effective From</th>
+                                <th>Effective To</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var q in qualifiedServices.Where(s => !s.IsArchived))
+                            {
+                                <tr>
+                                    <td style="font-weight: 500;">@q.Service.Name</td>
+                                    <td>₱@q.Service.Price.ToString("N2")</td>
+                                    <td>
+                                        <span class="badge" style="background: @(q.CommissionType == "percent" ? "var(--spa-primary)" : "var(--spa-accent)"); color: white; padding: 0.25rem 0.5rem; border-radius: 8px;">
+                                            @q.CommissionType.ToUpper()
+                                        </span>
+                                    </td>
+                                    <td style="font-weight: 600;">
+                                        @if (q.CommissionType == "percent")
+                                        {
+                                            <span>@q.CommissionValue.ToString("N0")%</span>
+                                        }
+                                        else
+                                        {
+                                            <span>₱@q.CommissionValue.ToString("N2")</span>
+                                        }
+                                    </td>
+                                    <td>@(q.EffectiveFrom?.ToString("MMM dd, yyyy") ?? "-")</td>
+                                    <td>@(q.EffectiveTo?.ToString("MMM dd, yyyy") ?? "Ongoing")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <!-- Commission History -->
+        <div class="card">
+            <h4 class="card-title"><span class="bi bi-cash-stack"></span> Commission History</h4>
+            
+            @if (!commissionServices.Any())
+            {
+                <div class="alert alert-info">
+                    <span class="bi bi-info-circle-fill"></span>
+                    <div>No commission records found for this therapist.</div>
+                </div>
+            }
+            else
+            {
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Service</th>
+                                <th>Customer</th>
+                                <th>Service Price</th>
+                                <th>Commission</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var cs in commissionServices.OrderByDescending(c => c.Appointment.ScheduledStart))
+                            {
+                                <tr>
+                                    <td>@cs.Appointment.ScheduledStart.ToString("MMM dd, yyyy")</td>
+                                    <td style="font-weight: 500;">@cs.Service.Name</td>
+                                    <td>@cs.Appointment.Customer?.Person?.FirstName @cs.Appointment.Customer?.Person?.LastName</td>
+                                    <td>₱@cs.Price.ToString("N2")</td>
+                                    <td style="font-weight: 600; color: var(--spa-success);">₱@cs.CommissionAmount.ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Summary Footer -->
+                <div style="margin-top: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; text-align: center;">
+                        <div>
+                            <div style="color: var(--spa-text-light); font-size: 0.85rem;">Total Services</div>
+                            <div style="font-size: 1.25rem; font-weight: 600;">@commissionServices.Count</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--spa-text-light); font-size: 0.85rem;">Total Service Value</div>
+                            <div style="font-size: 1.25rem; font-weight: 600;">₱@commissionServices.Sum(c => c.Price).ToString("N2")</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--spa-text-light); font-size: 0.85rem;">Total Commissions</div>
+                            <div style="font-size: 1.25rem; font-weight: 600; color: var(--spa-success);">₱@totalCommissions.ToString("N2")</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--spa-text-light); font-size: 0.85rem;">Avg Rate</div>
+                            <div style="font-size: 1.25rem; font-weight: 600;">@(commissionServices.Sum(c => c.Price) > 0 ? (totalCommissions / commissionServices.Sum(c => c.Price) * 100).ToString("N1") : "0")%</div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <!-- NON-THERAPIST VIEW - Payroll Based -->
+        <!-- Stats Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div class="card" style="text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; color: var(--spa-success); font-weight: bold;">₱@totalNetPay.ToString("N2")</div>
+                <div style="color: var(--spa-text-light);">Total Net Pay (All Time)</div>
+            </div>
+
+            <div class="card" style="text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; color: var(--spa-primary); font-weight: bold;">@payrolls.Count</div>
+                <div style="color: var(--spa-text-light);">Total Payroll Records</div>
+            </div>
+
+            <div class="card" style="text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; color: var(--spa-accent); font-weight: bold;">@payrolls.Count(p => p.Status == "paid")</div>
+                <div style="color: var(--spa-text-light);">Paid Payrolls</div>
+            </div>
+
+            <div class="card" style="text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; color: var(--spa-warning); font-weight: bold;">@payrolls.Count(p => p.Status == "draft")</div>
+                <div style="color: var(--spa-text-light);">Pending Payrolls</div>
+            </div>
+        </div>
+
+        <!-- Payroll History -->
+        <div class="card">
+            <h4 class="card-title"><span class="bi bi-cash-stack"></span> Payroll History</h4>
+            
+            @if (!payrolls.Any())
+            {
+                <div class="alert alert-info">
+                    <span class="bi bi-info-circle-fill"></span>
+                    <div>No payroll records found for this employee.</div>
+                </div>
+            }
+            else
+            {
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Period</th>
+                                <th>Days Worked</th>
+                                <th>Daily Rate</th>
+                                <th>Gross Pay</th>
+                                <th>Deductions</th>
+                                <th>Net Pay</th>
+                                <th>Status</th>
+                                <th>Paid Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var payroll in payrolls.OrderByDescending(p => p.PeriodEnd))
+                            {
+                                <tr>
+                                    <td>
+                                        <div style="font-weight: 500;">@payroll.PeriodStart.ToString("MMM dd") - @payroll.PeriodEnd.ToString("MMM dd, yyyy")</div>
+                                    </td>
+                                    <td>@payroll.DaysWorked</td>
+                                    <td>₱@payroll.DailyRate.ToString("N2")</td>
+                                    <td>₱@payroll.GrossPay.ToString("N2")</td>
+                                    <td style="color: var(--spa-danger);">-₱@payroll.Deductions.ToString("N2")</td>
+                                    <td style="font-weight: 600; color: var(--spa-success);">₱@payroll.NetPay.ToString("N2")</td>
+                                    <td>
+                                        <span class="badge" style="background: @(payroll.Status == "paid" ? "var(--spa-success)" : "var(--spa-warning)"); color: white; padding: 0.25rem 0.75rem; border-radius: 12px;">
+                                            @payroll.Status.ToUpper()
+                                        </span>
+                                    </td>
+                                    <td>@(payroll.PaidAt?.ToString("MMM dd, yyyy") ?? "-")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Summary Footer -->
+                <div style="margin-top: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; text-align: center;">
+                        <div>
+                            <div style="color: var(--spa-text-light); font-size: 0.85rem;">Total Gross Pay</div>
+                            <div style="font-size: 1.25rem; font-weight: 600;">₱@payrolls.Sum(p => p.GrossPay).ToString("N2")</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--spa-text-light); font-size: 0.85rem;">Total Deductions</div>
+                            <div style="font-size: 1.25rem; font-weight: 600; color: var(--spa-danger);">₱@payrolls.Sum(p => p.Deductions).ToString("N2")</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--spa-text-light); font-size: 0.85rem;">Total Net Pay</div>
+                            <div style="font-size: 1.25rem; font-weight: 600; color: var(--spa-success);">₱@totalNetPay.ToString("N2")</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--spa-text-light); font-size: 0.85rem;">Avg Days/Period</div>
+                            <div style="font-size: 1.25rem; font-weight: 600;">@(payrolls.Any() ? payrolls.Average(p => p.DaysWorked).ToString("N1") : "0")</div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter]
+    public long EmployeeId { get; set; }
+
+    private Employee? employee;
+    private bool isTherapist = false;
+    
+    // For non-therapists (payroll)
+    private List<PayrollModel> payrolls = new();
+    private decimal totalNetPay = 0;
+    
+    // For therapists (commissions)
+    private List<AppointmentService> commissionServices = new();
+    private List<EmployeeServiceCommission> qualifiedServices = new();
+    private decimal totalCommissions = 0;
+    
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEmployeeData();
+    }
+
+    private async Task LoadEmployeeData()
+    {
+        isLoading = true;
+        try
+        {
+            employee = await DbContext.Employees
+                .Include(e => e.Person)
+                .Include(e => e.Role)
+                .FirstOrDefaultAsync(e => e.EmployeeId == EmployeeId);
+
+            if (employee != null)
+            {
+                // Check if this employee is a Therapist
+                isTherapist = employee.Role.Name == "Therapist";
+                
+                if (isTherapist)
+                {
+                    // Load commission data for therapists
+                    commissionServices = await DbContext.AppointmentServices
+                        .Include(aps => aps.Appointment)
+                            .ThenInclude(a => a.Customer)
+                                .ThenInclude(c => c!.Person)
+                        .Include(aps => aps.Service)
+                        .Where(aps => aps.TherapistEmployeeId == EmployeeId && aps.Appointment.Status == "completed")
+                        .OrderByDescending(aps => aps.Appointment.ScheduledStart)
+                        .ToListAsync();
+                    
+                    totalCommissions = commissionServices.Sum(c => c.CommissionAmount);
+                    
+                    // Load commission rates/qualifications
+                    qualifiedServices = await DbContext.EmployeeServiceCommissions
+                        .Include(esc => esc.Service)
+                        .Where(esc => esc.EmployeeId == EmployeeId)
+                        .ToListAsync();
+                }
+                else
+                {
+                    // Load payroll data for non-therapists
+                    payrolls = await DbContext.Payrolls
+                        .Where(p => p.EmployeeId == EmployeeId)
+                        .OrderByDescending(p => p.PeriodEnd)
+                        .ToListAsync();
+
+                    totalNetPay = payrolls.Sum(p => p.NetPay);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading employee: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetInitials()
+    {
+        if (employee?.Person == null) return "?";
+        var first = !string.IsNullOrEmpty(employee.Person.FirstName) ? employee.Person.FirstName[0].ToString().ToUpper() : "";
+        var last = !string.IsNullOrEmpty(employee.Person.LastName) ? employee.Person.LastName[0].ToString().ToUpper() : "";
+        return first + last;
+    }
+}

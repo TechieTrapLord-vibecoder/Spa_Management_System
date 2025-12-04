@@ -67,7 +67,12 @@ else
                                 {
                                     var stock = GetStockLevel(product.ProductId);
                                     var isOutOfStock = stock <= 0;
-                                    <div class="item-card @(isOutOfStock ? "out-of-stock" : "")" @onclick="() => AddProductToCart(product)">
+                                    var cartQty = GetCartQuantity(product.ProductId);
+                                    <div class="item-card @(isOutOfStock ? "out-of-stock" : "") @(cartQty > 0 ? "in-cart" : "")" @onclick="() => AddProductToCart(product)">
+                                        @if (cartQty > 0)
+                                        {
+                                            <div class="cart-qty-badge">@cartQty</div>
+                                        }
                                         <div class="item-icon"><span class="bi bi-box"></span></div>
                                         <div class="item-name">@product.Name</div>
                                         <div class="item-price">₱@product.UnitPrice.ToString("N0")</div>
@@ -224,7 +229,15 @@ else
                         <span>Discount</span>
                         <span>-₱@totalDiscount.ToString("N2")</span>
                     </div>
+                    <div class="total-row subtotal-row">
+                        <span>After Discount</span>
+                        <span>₱@discountedSubtotal.ToString("N2")</span>
+                    </div>
                 }
+                <div class="total-row vat-row">
+                    <span>VAT (@TAX_RATE.ToString("N0")%)</span>
+                    <span>₱@taxAmount.ToString("N2")</span>
+                </div>
                 <div class="total-row grand-total">
                     <span>TOTAL</span>
                     <span>₱@grandTotal.ToString("N2")</span>
@@ -372,6 +385,20 @@ else
                     }
                 </div>
 
+                <div class="receipt-totals">
+                    <div class="receipt-row">
+                        <span>Subtotal</span>
+                        <span>₱@lastSale.Subtotal.ToString("N2")</span>
+                    </div>
+                    @if (lastSale.TaxAmount > 0)
+                    {
+                        <div class="receipt-row">
+                            <span>VAT (@lastSale.TaxRate.ToString("N0")%)</span>
+                            <span>₱@lastSale.TaxAmount.ToString("N2")</span>
+                        </div>
+                    }
+                </div>
+
                 <div class="receipt-total">
                     <span>TOTAL</span>
                     <span>₱@lastSale.TotalAmount.ToString("N2")</span>
@@ -426,12 +453,15 @@ else
     private Service? pendingService;
     private Sale? lastSale;
 
-    // Computed
+    // Computed - VAT/Tax Calculations
+    private const decimal TAX_RATE = 12.00m; // 12% VAT (Philippines standard)
     private decimal subtotal => cartItems.Sum(i => i.LineTotal);
     private decimal percentDiscount => subtotal * (discountPercent / 100);
     private decimal pointsRedemptionValue => pointsToRedeem * 1.00m; // 1 point = ₱1
     private decimal totalDiscount => percentDiscount + discountAmount + pointsRedemptionValue;
-    private decimal grandTotal => Math.Max(0, subtotal - totalDiscount);
+    private decimal discountedSubtotal => Math.Max(0, subtotal - totalDiscount); // After discount, before VAT
+    private decimal taxAmount => discountedSubtotal * (TAX_RATE / 100); // VAT on discounted amount
+    private decimal grandTotal => discountedSubtotal + taxAmount; // Final total with VAT
     private int pointsToEarn => selectedCustomer != null ? (int)(grandTotal / 100) : 0; // Earn 1 point per ₱100 spent
     private int maxRedeemablePoints => selectedCustomer != null 
         ? Math.Min(selectedCustomer.LoyaltyPoints, (int)subtotal) // Can redeem up to subtotal amount
@@ -510,6 +540,7 @@ else
 
     private decimal GetStockLevel(long productId) => inventory.TryGetValue(productId, out var inv) ? inv.QuantityOnHand : 0;
     private decimal GetReorderLevel(long productId) => inventory.TryGetValue(productId, out var inv) ? inv.ReorderLevel : 5;
+    private int GetCartQuantity(long productId) => cartItems.FirstOrDefault(c => c.ProductId == productId && c.Type == "product")?.Quantity ?? 0;
 
     private string GetInitials(Customer? customer)
     {
@@ -714,13 +745,16 @@ else
 
         try
         {
-            // Create Sale
+            // Create Sale with VAT breakdown
             var sale = new Sale
             {
                 CustomerId = selectedCustomer?.CustomerId,
                 CreatedByUserId = AuthState.CurrentUser?.UserId,
                 SaleNumber = $"SL-{DateTime.Now:yyyyMMdd-HHmmss}",
-                TotalAmount = grandTotal,
+                Subtotal = discountedSubtotal, // After discount, before VAT
+                TaxRate = TAX_RATE, // 12% VAT
+                TaxAmount = taxAmount, // Calculated VAT
+                TotalAmount = grandTotal, // Final total including VAT
                 PaymentStatus = "paid",
                 CreatedAt = DateTime.Now
             };
@@ -970,12 +1004,43 @@ else
         text-align: center;
         cursor: pointer;
         transition: all 0.2s;
+        position: relative;
     }
 
     .item-card:hover {
         border-color: #4a7c59;
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .item-card.in-cart {
+        border-color: #4a7c59;
+        background: #f0f7f2;
+    }
+
+    .cart-qty-badge {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        background: #4a7c59;
+        color: white;
+        font-weight: bold;
+        font-size: 0.85rem;
+        min-width: 24px;
+        height: 24px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 6px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        animation: cartBadgePop 0.2s ease-out;
+    }
+
+    @@keyframes cartBadgePop {
+        0% { transform: scale(0); }
+        80% { transform: scale(1.2); }
+        100% { transform: scale(1); }
     }
 
     .item-card.out-of-stock {
@@ -1336,6 +1401,12 @@ else
         margin-bottom: 0.25rem;
     }
 
+    .total-row.vat-row {
+        color: #17a2b8;
+        margin-bottom: 0.25rem;
+        font-weight: 500;
+    }
+
     .total-row.grand-total {
         font-size: 1.3rem;
         font-weight: 700;
@@ -1642,6 +1713,20 @@ else
         display: flex;
         justify-content: space-between;
         margin-bottom: 0.5rem;
+    }
+
+    .receipt-totals {
+        border-top: 1px dashed #ddd;
+        padding-top: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .receipt-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.9rem;
+        color: #666;
+        margin-bottom: 0.25rem;
     }
 
     .receipt-total {

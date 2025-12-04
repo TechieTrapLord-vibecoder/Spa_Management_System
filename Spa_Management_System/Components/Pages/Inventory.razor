@@ -5,10 +5,10 @@
 @using Microsoft.EntityFrameworkCore
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
-@inject AppDbContext DbContext
+@inject IDbContextFactory<AppDbContext> DbContextFactory
 @inject IJSRuntime JSRuntime
 
-<PageTitle>Inventory - Serenity Spa</PageTitle>
+<PageTitle>Inventory</PageTitle>
 
 @if (!AuthState.IsAuthenticated)
 {
@@ -355,6 +355,8 @@ else
         
         try
         {
+            using var DbContext = await DbContextFactory.CreateDbContextAsync();
+            
             products = await DbContext.Products
                 .Where(p => p.Active)
                 .OrderBy(p => p.Name)
@@ -557,6 +559,8 @@ else
                 return;
             }
 
+            using var DbContext = await DbContextFactory.CreateDbContextAsync();
+
             if (isEditMode)
             {
                 var existing = await DbContext.Inventories.FindAsync(currentInventory.InventoryId);
@@ -603,6 +607,8 @@ else
                 errorMessage = "No inventory selected.";
                 return;
             }
+
+            using var DbContext = await DbContextFactory.CreateDbContextAsync();
 
             var existing = await DbContext.Inventories.FindAsync(adjustingInventory.InventoryId);
             if (existing == null)

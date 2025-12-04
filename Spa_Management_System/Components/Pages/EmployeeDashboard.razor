@@ -577,7 +577,9 @@ else
 }
 
 @code {
+    #pragma warning disable CS0414
     private bool isLoading = true;
+    #pragma warning restore CS0414
     private int todayAppointments = 0;
     private int completedToday = 0;
     private int inProgressToday = 0;

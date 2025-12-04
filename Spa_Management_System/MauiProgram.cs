@@ -35,8 +35,11 @@ namespace Spa_Management_System
 
             // Configure Database from configuration
             var connectionString = config.GetConnectionString("DefaultConnection");
-            builder.Services.AddDbContext<AppDbContext>(options =>
+            builder.Services.AddDbContextFactory<AppDbContext>(options =>
                 options.UseSqlServer(connectionString));
+            // Also register AppDbContext directly for backward compatibility
+            builder.Services.AddDbContext<AppDbContext>(options =>
+                options.UseSqlServer(connectionString), ServiceLifetime.Transient);
 
             // Register Generic Repository
             builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));

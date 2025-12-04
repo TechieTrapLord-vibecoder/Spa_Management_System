@@ -3,7 +3,7 @@
 @using Spa_Management_System.Data
 @using Spa_Management_System.Models
 @using Spa_Management_System.Services
-@inject AppDbContext DbContext
+@inject IDbContextFactory<AppDbContext> DbContextFactory
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -361,37 +361,67 @@ else
                         <p style="color: var(--spa-text-light); margin: 0;">As of @asOfDate.ToString("MMMM d, yyyy")</p>
                     </div>
 
-                    <table class="table" id="trialBalanceTable">
+                    <!-- Search and Filter Controls -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
+                        <div class="table-search" style="flex: 1; max-width: 400px;">
+                            <input type="text" placeholder="Search by code or name..." 
+                                   @bind="trialBalanceSearchTerm" @bind:event="oninput" @bind:after="ApplyTrialBalanceFilter" 
+                                   style="width: 100%;" />
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <label style="font-size: 0.85rem; color: var(--spa-text-light);">Show:</label>
+                            <select class="form-control" style="width: auto; min-width: 180px;" @bind="trialBalanceFilterMode" @bind:after="ApplyTrialBalanceFilter">
+                                <option value="all">All Accounts</option>
+                                <option value="withBalance">With Balance Only</option>
+                                <option value="asset">Assets Only</option>
+                                <option value="liability">Liabilities Only</option>
+                                <option value="equity">Equity Only</option>
+                                <option value="revenue">Revenue Only</option>
+                                <option value="expense">Expenses Only</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <table class="data-table" id="trialBalanceTable">
                         <thead>
                             <tr>
-                                <th>Account Code</th>
-                                <th>Account Name</th>
-                                <th>Type</th>
-                                <th style="text-align: right;">Debit</th>
-                                <th style="text-align: right;">Credit</th>
+                                <th style="cursor: pointer;" @onclick='() => SortTrialBalanceBy("code")'>Account Code @GetTrialBalanceSortIcon("code")</th>
+                                <th style="cursor: pointer;" @onclick='() => SortTrialBalanceBy("name")'>Account Name @GetTrialBalanceSortIcon("name")</th>
+                                <th style="cursor: pointer;" @onclick='() => SortTrialBalanceBy("type")'>Type @GetTrialBalanceSortIcon("type")</th>
+                                <th style="text-align: right; cursor: pointer;" @onclick='() => SortTrialBalanceBy("debit")'>Debit @GetTrialBalanceSortIcon("debit")</th>
+                                <th style="text-align: right; cursor: pointer;" @onclick='() => SortTrialBalanceBy("credit")'>Credit @GetTrialBalanceSortIcon("credit")</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var account in allAccounts.OrderBy(a => a.Code))
+                            @foreach (var account in GetPagedTrialBalanceAccounts())
                             {
                                 var balance = GetAccountBalance(account);
-                                var isDebit = account.NormalBalance == "debit";
-                                <tr>
+                                var isDebitAccount = account.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase);
+                                var hasBalance = balance != 0;
+                                <tr style="@(!hasBalance ? "opacity: 0.6;" : "")">
                                     <td><strong style="font-family: monospace;">@account.Code</strong></td>
                                     <td>@account.Name</td>
                                     <td>
-                                        <span class="badge @GetAccountTypeBadge(account.AccountType)">@account.AccountType</span>
+                                        <span class="badge @GetAccountTypeBadge(account.AccountType)">@account.AccountType.ToUpper()</span>
                                     </td>
                                     <td style="text-align: right;">
-                                        @if (isDebit && balance != 0)
+                                        @if (isDebitAccount && hasBalance)
                                         {
                                             <span>₱@Math.Abs(balance).ToString("N2")</span>
                                         }
+                                        else if (isDebitAccount)
+                                        {
+                                            <span style="color: var(--spa-text-light);">₱0.00</span>
+                                        }
                                     </td>
                                     <td style="text-align: right;">
-                                        @if (!isDebit && balance != 0)
+                                        @if (!isDebitAccount && hasBalance)
                                         {
                                             <span>₱@Math.Abs(balance).ToString("N2")</span>
+                                        }
+                                        else if (!isDebitAccount)
+                                        {
+                                            <span style="color: var(--spa-text-light);">₱0.00</span>
                                         }
                                     </td>
                                 </tr>
@@ -406,16 +436,42 @@ else
                         </tfoot>
                     </table>
 
+                    <!-- Pagination -->
+                    <div class="table-pagination">
+                        <div class="pagination-info">
+                            Showing @(Math.Min((trialBalanceCurrentPage - 1) * trialBalancePageSize + 1, filteredTrialBalanceAccounts.Count)) to @(Math.Min(trialBalanceCurrentPage * trialBalancePageSize, filteredTrialBalanceAccounts.Count)) of @filteredTrialBalanceAccounts.Count entries
+                            @if (!string.IsNullOrEmpty(trialBalanceSearchTerm) || trialBalanceFilterMode != "all")
+                            {
+                                <span style="color: var(--spa-text-light);"> (filtered from @allAccounts.Count total)</span>
+                            }
+                        </div>
+                        <div class="pagination-controls">
+                            <button class="page-btn" @onclick="TrialBalancePreviousPage" disabled="@(trialBalanceCurrentPage <= 1)">‹ Prev</button>
+                            @foreach (var pageNum in GetTrialBalancePageNumbers())
+                            {
+                                @if (pageNum == -1)
+                                {
+                                    <span style="padding: 0.5rem;">...</span>
+                                }
+                                else
+                                {
+                                    <button class="page-btn @(trialBalanceCurrentPage == pageNum ? "active" : "")" @onclick="() => TrialBalanceGoToPage(pageNum)">@pageNum</button>
+                                }
+                            }
+                            <button class="page-btn" @onclick="TrialBalanceNextPage" disabled="@(trialBalanceCurrentPage >= TrialBalanceTotalPages)">Next ›</button>
+                        </div>
+                    </div>
+
                     @if (Math.Abs(totalDebits - totalCredits) < 0.01m)
                     {
-                        <div class="alert alert-success">
+                        <div class="alert alert-success" style="margin-top: 1rem;">
                             <span class="bi bi-check-circle-fill"></span>
                             Trial balance is balanced! Debits = Credits
                         </div>
                     }
                     else
                     {
-                        <div class="alert alert-danger">
+                        <div class="alert alert-danger" style="margin-top: 1rem;">
                             <span class="bi bi-x-circle-fill"></span>
                             Trial balance is out of balance by ₱@Math.Abs(totalDebits - totalCredits).ToString("N2")
                         </div>
@@ -472,7 +528,17 @@ else
     // Trial Balance totals
     private decimal totalDebits = 0;
     private decimal totalCredits = 0;
-    
+
+    // Trial Balance pagination and filtering
+    private string trialBalanceSearchTerm = "";
+    private string trialBalanceFilterMode = "all";
+    private string trialBalanceSortColumn = "code";
+    private bool trialBalanceSortAscending = true;
+    private int trialBalanceCurrentPage = 1;
+    private int trialBalancePageSize = 15;
+    private List<LedgerAccount> filteredTrialBalanceAccounts = new();
+    private int TrialBalanceTotalPages => (int)Math.Ceiling(filteredTrialBalanceAccounts.Count / (double)trialBalancePageSize);
+
     // Error handling
     private string? errorMessage = null;
 
@@ -542,18 +608,20 @@ else
         
         try
         {
+            using var DbContext = await DbContextFactory.CreateDbContextAsync();
+            
             // Load all accounts
             allAccounts = await DbContext.LedgerAccounts
                 .AsNoTracking()
                 .OrderBy(a => a.Code)
                 .ToListAsync();
 
-            // Categorize accounts
-            assetAccounts = allAccounts.Where(a => a.AccountType == "asset").ToList();
-            liabilityAccounts = allAccounts.Where(a => a.AccountType == "liability").ToList();
-            equityAccounts = allAccounts.Where(a => a.AccountType == "equity").ToList();
-            revenueAccounts = allAccounts.Where(a => a.AccountType == "revenue").ToList();
-            expenseAccounts = allAccounts.Where(a => a.AccountType == "expense").ToList();
+            // Categorize accounts (case-insensitive)
+            assetAccounts = allAccounts.Where(a => a.AccountType.Equals("asset", StringComparison.OrdinalIgnoreCase)).ToList();
+            liabilityAccounts = allAccounts.Where(a => a.AccountType.Equals("liability", StringComparison.OrdinalIgnoreCase)).ToList();
+            equityAccounts = allAccounts.Where(a => a.AccountType.Equals("equity", StringComparison.OrdinalIgnoreCase)).ToList();
+            revenueAccounts = allAccounts.Where(a => a.AccountType.Equals("revenue", StringComparison.OrdinalIgnoreCase)).ToList();
+            expenseAccounts = allAccounts.Where(a => a.AccountType.Equals("expense", StringComparison.OrdinalIgnoreCase)).ToList();
 
             // Calculate CUMULATIVE account balances (for Balance Sheet & Trial Balance)
             var allJournalLines = await DbContext.JournalEntryLines
@@ -570,7 +638,7 @@ else
                 var totalCredit = lines.Sum(l => l.Credit);
 
                 decimal balance;
-                if (account.NormalBalance == "debit")
+                if (account.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase))
                     balance = totalDebit - totalCredit;
                 else
                     balance = totalCredit - totalDebit;
@@ -586,14 +654,14 @@ else
                 .ToListAsync();
 
             incomeAccountBalances.Clear();
-            foreach (var account in allAccounts.Where(a => a.AccountType == "revenue" || a.AccountType == "expense"))
+            foreach (var account in allAccounts.Where(a => a.AccountType.Equals("revenue", StringComparison.OrdinalIgnoreCase) || a.AccountType.Equals("expense", StringComparison.OrdinalIgnoreCase)))
             {
                 var lines = periodJournalLines.Where(l => l.LedgerAccountId == account.LedgerAccountId);
                 var totalDebit = lines.Sum(l => l.Debit);
                 var totalCredit = lines.Sum(l => l.Credit);
 
                 decimal balance;
-                if (account.NormalBalance == "debit")
+                if (account.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase))
                     balance = totalDebit - totalCredit;
                 else
                     balance = totalCredit - totalDebit;
@@ -635,11 +703,14 @@ else
             foreach (var account in allAccounts)
             {
                 var balance = GetAccountBalance(account);
-                if (account.NormalBalance == "debit")
+                if (account.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase))
                     totalDebits += Math.Abs(balance);
                 else
                     totalCredits += Math.Abs(balance);
             }
+
+            // Apply trial balance filter after balances are calculated
+            ApplyTrialBalanceFilter();
         }
         catch (Exception ex)
         {
@@ -727,5 +798,116 @@ else
         };
 
         await JS.InvokeVoidAsync("exportUtils.exportTableToExcel", containerId, $"{filename}_{asOfDate:yyyyMMdd}", filename);
+    }
+
+    // Trial Balance filtering and pagination methods
+    private void ApplyTrialBalanceFilter()
+    {
+        var filtered = allAccounts.AsEnumerable();
+
+        // Apply search filter
+        if (!string.IsNullOrWhiteSpace(trialBalanceSearchTerm))
+        {
+            var term = trialBalanceSearchTerm.ToLower();
+            filtered = filtered.Where(a =>
+                (a.Code?.ToLower().Contains(term) ?? false) ||
+                (a.Name?.ToLower().Contains(term) ?? false));
+        }
+
+        // Apply type filter
+        filtered = trialBalanceFilterMode switch
+        {
+            "withBalance" => filtered.Where(a => GetAccountBalance(a) != 0),
+            "asset" => filtered.Where(a => a.AccountType.Equals("asset", StringComparison.OrdinalIgnoreCase)),
+            "liability" => filtered.Where(a => a.AccountType.Equals("liability", StringComparison.OrdinalIgnoreCase)),
+            "equity" => filtered.Where(a => a.AccountType.Equals("equity", StringComparison.OrdinalIgnoreCase)),
+            "revenue" => filtered.Where(a => a.AccountType.Equals("revenue", StringComparison.OrdinalIgnoreCase)),
+            "expense" => filtered.Where(a => a.AccountType.Equals("expense", StringComparison.OrdinalIgnoreCase)),
+            _ => filtered
+        };
+
+        // Apply sorting
+        filtered = trialBalanceSortColumn switch
+        {
+            "code" => trialBalanceSortAscending ? filtered.OrderBy(a => a.Code) : filtered.OrderByDescending(a => a.Code),
+            "name" => trialBalanceSortAscending ? filtered.OrderBy(a => a.Name) : filtered.OrderByDescending(a => a.Name),
+            "type" => trialBalanceSortAscending ? filtered.OrderBy(a => a.AccountType) : filtered.OrderByDescending(a => a.AccountType),
+            "debit" => trialBalanceSortAscending 
+                ? filtered.OrderBy(a => a.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase) ? GetAccountBalance(a) : 0)
+                : filtered.OrderByDescending(a => a.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase) ? GetAccountBalance(a) : 0),
+            "credit" => trialBalanceSortAscending 
+                ? filtered.OrderBy(a => !a.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase) ? GetAccountBalance(a) : 0)
+                : filtered.OrderByDescending(a => !a.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase) ? GetAccountBalance(a) : 0),
+            _ => filtered.OrderBy(a => a.Code)
+        };
+
+        filteredTrialBalanceAccounts = filtered.ToList();
+        trialBalanceCurrentPage = 1; // Reset to first page when filter changes
+    }
+
+    private void SortTrialBalanceBy(string column)
+    {
+        if (trialBalanceSortColumn == column)
+        {
+            trialBalanceSortAscending = !trialBalanceSortAscending;
+        }
+        else
+        {
+            trialBalanceSortColumn = column;
+            trialBalanceSortAscending = true;
+        }
+        ApplyTrialBalanceFilter();
+    }
+
+    private string GetTrialBalanceSortIcon(string column)
+    {
+        if (trialBalanceSortColumn != column) return "";
+        return trialBalanceSortAscending ? "↑" : "↓";
+    }
+
+    private List<LedgerAccount> GetPagedTrialBalanceAccounts()
+    {
+        return filteredTrialBalanceAccounts
+            .Skip((trialBalanceCurrentPage - 1) * trialBalancePageSize)
+            .Take(trialBalancePageSize)
+            .ToList();
+    }
+
+    private void TrialBalanceGoToPage(int page) => trialBalanceCurrentPage = page;
+    private void TrialBalancePreviousPage() { if (trialBalanceCurrentPage > 1) trialBalanceCurrentPage--; }
+    private void TrialBalanceNextPage() { if (trialBalanceCurrentPage < TrialBalanceTotalPages) trialBalanceCurrentPage++; }
+
+    private IEnumerable<int> GetTrialBalancePageNumbers()
+    {
+        var totalPages = TrialBalanceTotalPages;
+        var current = trialBalanceCurrentPage;
+        var pages = new List<int>();
+
+        if (totalPages <= 7)
+        {
+            // Show all pages if 7 or fewer
+            for (int i = 1; i <= totalPages; i++)
+                pages.Add(i);
+        }
+        else
+        {
+            // Always show first page
+            pages.Add(1);
+
+            if (current > 3)
+                pages.Add(-1); // Ellipsis
+
+            // Show pages around current
+            for (int i = Math.Max(2, current - 1); i <= Math.Min(totalPages - 1, current + 1); i++)
+                pages.Add(i);
+
+            if (current < totalPages - 2)
+                pages.Add(-1); // Ellipsis
+
+            // Always show last page
+            pages.Add(totalPages);
+        }
+
+        return pages;
     }
 }

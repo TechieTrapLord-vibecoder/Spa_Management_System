@@ -9,14 +9,14 @@
 
 <PageTitle>Service Commissions - Serenity Spa</PageTitle>
 
-@if (!AuthState.IsAuthenticated || !AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+@if (!AuthState.IsAuthenticated)
 {
     <div class="card">
         <div class="alert alert-danger">
             <span class="bi bi-shield-x"></span>
             <div>
                 <h4 style="margin: 0 0 0.5rem 0;">Access Denied</h4>
-                <p style="margin: 0;">You need SuperAdmin access to manage service commissions.</p>
+                <p style="margin: 0;">Please log in to view service commissions.</p>
             </div>
         </div>
         <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/login")'>
@@ -29,320 +29,187 @@ else
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
             <div>
-                <h3 class="card-title" style="margin: 0;"><span class="bi bi-cash-stack"></span> Service Commissions</h3>
-                <p style="color: var(--spa-text-light); margin: 0.5rem 0 0 0;">Set up commission rates for employees per service</p>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-cash-stack"></span> Service Commission Rates</h3>
+                <p style="color: var(--spa-text-light); margin: 0.5rem 0 0 0;">Commission rates are set per service - all therapists earn the same rate</p>
             </div>
-            <div style="display: flex; align-items: center; gap: 1rem;">
-                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                    <input type="checkbox" @bind="showArchived" @bind:after="LoadData" style="width: 18px; height: 18px;" />
-                    <span>Show Archived</span>
-                </label>
-                <button class="btn btn-primary" @onclick="OpenAddDialog">
-                    <span class="bi bi-plus-circle"></span> Add Commission
+            @if (AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+            {
+                <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/services")'>
+                    <span class="bi bi-gear"></span> Manage in Services
                 </button>
-            </div>
-        </div>
-
-        @if (!string.IsNullOrEmpty(successMessage))
-        {
-            <div class="alert alert-success">
-                <span class="bi bi-check-circle-fill"></span>
-                <div>@successMessage</div>
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(errorMessage))
-        {
-            <div class="alert alert-danger">
-                <span class="bi bi-exclamation-triangle-fill"></span>
-                <div>@errorMessage</div>
-            </div>
-        }
-
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-            <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Filter by Employee:</label>
-                <select class="form-control" @onchange="OnEmployeeFilterChanged">
-                    <option value="">All Employees</option>
-                    @foreach (var emp in employees)
-                    {
-                        <option value="@emp.EmployeeId">@GetEmployeeName(emp)</option>
-                    }
-                </select>
-            </div>
-            <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Filter by Service:</label>
-                <select class="form-control" @onchange="OnServiceFilterChanged">
-                    <option value="">All Services</option>
-                    @foreach (var srv in services)
-                    {
-                        <option value="@srv.ServiceId">@srv.Name</option>
-                    }
-                </select>
-            </div>
+            }
         </div>
 
         @if (isLoading)
         {
             <div style="padding: 2rem; text-align: center;">
                 <div class="loading"></div>
-                <p style="margin-top: 1rem; color: var(--spa-text-light);">Loading commissions...</p>
-            </div>
-        }
-        else if (!filteredCommissions.Any())
-        {
-            <div class="alert alert-info">
-                <span class="bi bi-info-circle-fill"></span>
-                <div>
-                    <strong>No Commissions Set Up</strong><br />
-                    Define how much employees earn per service (percentage or fixed amount).
-                </div>
+                <p style="margin-top: 1rem; color: var(--spa-text-light);">Loading commission rates...</p>
             </div>
         }
         else
         {
-            <div class="table-search">
-                <input type="text" placeholder="Search employee or service..." @bind="searchTerm" @bind:event="oninput" @bind:after="ApplyFilter" />
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                <div class="card" style="padding: 1.25rem; background: #DCD8CE; color: #454F4A; margin-bottom: 0;">
+                    <div style="font-size: 0.85rem;">Total Services</div>
+                    <div style="font-size: 2rem; font-weight: 700;">@services.Count</div>
+                </div>
+                <div class="card" style="padding: 1.25rem; background: #DCD8CE; color: #454F4A; margin-bottom: 0;">
+                    <div style="font-size: 0.85rem;">With Commission</div>
+                    <div style="font-size: 2rem; font-weight: 700;">@services.Count(s => s.CommissionValue > 0)</div>
+                </div>
+                <div class="card" style="padding: 1.25rem; background: #DCD8CE; color: #454F4A; margin-bottom: 0;">
+                    <div style="font-size: 0.85rem;">Percentage Based</div>
+                    <div style="font-size: 2rem; font-weight: 700;">@services.Count(s => s.CommissionType == "percentage")</div>
+                </div>
+                <div class="card" style="padding: 1.25rem; background: #DCD8CE; color: #454F4A; margin-bottom: 0;">
+                    <div style="font-size: 0.85rem;">Fixed Amount</div>
+                    <div style="font-size: 2rem; font-weight: 700;">@services.Count(s => s.CommissionType == "fixed")</div>
+                </div>
             </div>
 
-            <div style="overflow-x: auto;">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th style="cursor: pointer;" @onclick='() => SortBy("employee")'>Employee @GetSortIcon("employee")</th>
-                            <th style="cursor: pointer;" @onclick='() => SortBy("service")'>Service @GetSortIcon("service")</th>
-                            <th style="cursor: pointer;" @onclick='() => SortBy("type")'>Commission Type @GetSortIcon("type")</th>
-                            <th style="cursor: pointer;" @onclick='() => SortBy("value")'>Commission Value @GetSortIcon("value")</th>
-                            <th style="cursor: pointer;" @onclick='() => SortBy("from")'>Effective From @GetSortIcon("from")</th>
-                            <th style="cursor: pointer;" @onclick='() => SortBy("to")'>Effective To @GetSortIcon("to")</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var commission in GetPagedCommissions())
-                        {
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Filter by Category:</label>
+                <select class="form-control" style="max-width: 300px;" @bind="selectedCategoryId" @bind:after="ApplyFilter">
+                    <option value="0">All Categories</option>
+                    @foreach (var cat in categories)
+                    {
+                        <option value="@cat.ServiceCategoryId">@cat.Name</option>
+                    }
+                </select>
+            </div>
+
+            @if (!filteredServices.Any())
+            {
+                <div class="alert alert-info">
+                    <span class="bi bi-info-circle-fill"></span>
+                    <div>No services found matching your filters.</div>
+                </div>
+            }
+            else
+            {
+                <div class="table-search">
+                    <input type="text" placeholder="Search services..." @bind="searchTerm" @bind:event="oninput" @bind:after="ApplyFilter" />
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead>
                             <tr>
-                                <td><strong>@GetEmployeeName(commission.Employee)</strong></td>
-                                <td>@commission.Service?.Name</td>
-                                <td>
-                                    @if (commission.CommissionType == "percent")
-                                    {
-                                        <span class="badge badge-info">Percentage</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge badge-secondary">Fixed Amount</span>
-                                    }
-                                </td>
-                                <td>
-                                    <strong>
-                                        @if (commission.CommissionType == "percent")
+                                <th style="cursor: pointer;" @onclick='() => SortBy("category")'>Category @GetSortIcon("category")</th>
+                                <th style="cursor: pointer;" @onclick='() => SortBy("service")'>Service @GetSortIcon("service")</th>
+                                <th style="cursor: pointer; text-align: right;" @onclick='() => SortBy("price")'>Price @GetSortIcon("price")</th>
+                                <th style="cursor: pointer;" @onclick='() => SortBy("type")'>Commission Type @GetSortIcon("type")</th>
+                                <th style="cursor: pointer; text-align: right;" @onclick='() => SortBy("rate")'>Rate @GetSortIcon("rate")</th>
+                                <th style="text-align: right;">Therapist Earns</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var service in GetPagedServices())
+                            {
+                                var earnings = CalculateEarnings(service);
+                                <tr>
+                                    <td>
+                                        <span class="badge" style="background: var(--spa-secondary); color: var(--spa-dark);">
+                                            @(service.ServiceCategory?.Name ?? "Uncategorized")
+                                        </span>
+                                    </td>
+                                    <td><strong>@service.Name</strong></td>
+                                    <td style="text-align: right; font-weight: 600;">₱@service.Price.ToString("N2")</td>
+                                    <td>
+                                        @if (service.CommissionType == "percentage")
                                         {
-                                            @($"{commission.CommissionValue}%")
+                                            <span class="badge badge-info"><span class="bi bi-percent"></span> Percentage</span>
                                         }
                                         else
                                         {
-                                            @($"₱{commission.CommissionValue:N2}")
+                                            <span class="badge badge-secondary"><span class="bi bi-cash"></span> Fixed</span>
                                         }
-                                    </strong>
-                                </td>
-                                <td>@(commission.EffectiveFrom?.ToString("MMM dd, yyyy") ?? "Not set")</td>
-                                <td>@(commission.EffectiveTo?.ToString("MMM dd, yyyy") ?? "No end date")</td>
-                                <td>
-                                    <div class="btn-group">
-                                        <button class="btn btn-sm btn-light" @onclick="() => OpenEditDialog(commission)">
-                                            Edit
-                                        </button>
-                                        @if (commission.IsArchived)
+                                    </td>
+                                    <td style="text-align: right;">
+                                        @if (service.CommissionValue > 0)
                                         {
-                                            <button class="btn btn-sm btn-success" @onclick="() => RestoreCommission(commission.CommissionId)">
-                                                Restore
-                                            </button>
+                                            <strong style="color: var(--spa-primary);">
+                                                @(service.CommissionType == "percentage" ? $"{service.CommissionValue:N0}%" : $"₱{service.CommissionValue:N2}")
+                                            </strong>
                                         }
                                         else
                                         {
-                                            <button class="btn btn-sm btn-warning" @onclick="() => ConfirmArchiveCommission(commission.CommissionId)">
-                                                Archive
-                                            </button>
+                                            <span style="color: var(--spa-text-light);">Not set</span>
                                         }
-                                    </div>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        @if (earnings > 0)
+                                        {
+                                            <strong style="color: var(--spa-success);">₱@earnings.ToString("N2")</strong>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: var(--spa-text-light);">₱0.00</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr style="background: var(--spa-light); font-weight: 600;">
+                                <td colspan="4" style="text-align: right;">Average Commission per Service:</td>
+                                <td colspan="2" style="text-align: right; color: var(--spa-success);">
+                                    ₱@(filteredServices.Any() ? filteredServices.Average(s => CalculateEarnings(s)).ToString("N2") : "0.00")
                                 </td>
                             </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="table-pagination">
-                <span>Showing @(Math.Min((currentPage - 1) * pageSize + 1, filteredCommissions.Count))-@(Math.Min(currentPage * pageSize, filteredCommissions.Count)) of @filteredCommissions.Count entries</span>
-                <div class="pagination-buttons">
-                    <button class="btn btn-sm btn-light" disabled="@(currentPage <= 1)" @onclick="PreviousPage">Previous</button>
-                    @for (int i = 1; i <= TotalPages; i++)
-                    {
-                        var pageNum = i;
-                        <button class="btn btn-sm @(pageNum == currentPage ? "btn-primary" : "btn-light")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
-                    }
-                    <button class="btn btn-sm btn-light" disabled="@(currentPage >= TotalPages)" @onclick="NextPage">Next</button>
+                        </tfoot>
+                    </table>
                 </div>
+
+                <div class="table-pagination">
+                    <span>Showing @(Math.Min((currentPage - 1) * pageSize + 1, filteredServices.Count))-@(Math.Min(currentPage * pageSize, filteredServices.Count)) of @filteredServices.Count entries</span>
+                    <div class="pagination-buttons">
+                        <button class="btn btn-sm btn-light" disabled="@(currentPage <= 1)" @onclick="PreviousPage">Previous</button>
+                        @for (int i = 1; i <= TotalPages; i++)
+                        {
+                            var pageNum = i;
+                            <button class="btn btn-sm @(pageNum == currentPage ? "btn-primary" : "btn-light")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                        }
+                        <button class="btn btn-sm btn-light" disabled="@(currentPage >= TotalPages)" @onclick="NextPage">Next</button>
+                    </div>
+                </div>
+            }
+
+            <div style="margin-top: 1.5rem; padding: 1rem; background: rgba(170, 148, 120, 0.1); border-radius: 8px; border: 1px solid var(--spa-secondary);">
+                <h5 style="margin: 0 0 0.5rem 0; color: var(--spa-primary);"><span class="bi bi-info-circle"></span> How Commissions Work</h5>
+                <ul style="margin: 0; padding-left: 1.5rem; color: var(--spa-text);">
+                    <li><strong>Percentage:</strong> Therapist earns a percentage of the service price</li>
+                    <li><strong>Fixed Amount:</strong> Therapist earns a fixed peso amount</li>
+                    <li>All therapists earn the same commission for a given service</li>
+                </ul>
+                @if (AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+                {
+                    <p style="margin: 1rem 0 0 0; color: var(--spa-text-light);">
+                        <span class="bi bi-lightbulb"></span> To change rates, go to <a href="/services" style="color: var(--spa-primary);">Services</a> and edit the service.
+                    </p>
+                }
             </div>
         }
     </div>
-
-    @if (showDialog)
-    {
-        <div class="modal-overlay" @onclick="CloseDialog">
-            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 600px;">
-                <div class="modal-header">
-                    <h4 style="margin: 0; color: var(--spa-primary);">
-                        @(isEditMode ? "Edit Commission" : "Add Commission")
-                    </h4>
-                    <button class="btn-close" @onclick="CloseDialog">
-                        <span class="bi bi-x-lg"></span>
-                    </button>
-                </div>
-
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label>Employee *</label>
-                        <select class="form-control" @bind="currentCommission.EmployeeId">
-                            <option value="0">-- Select Employee --</option>
-                            @foreach (var emp in employees)
-                            {
-                                <option value="@emp.EmployeeId">@GetEmployeeName(emp) - @emp.Role?.Name</option>
-                            }
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Service *</label>
-                        <select class="form-control" @bind="currentCommission.ServiceId">
-                            <option value="0">-- Select Service --</option>
-                            @foreach (var srv in services)
-                            {
-                                <option value="@srv.ServiceId">@srv.Name (₱@srv.Price.ToString("N2"))</option>
-                            }
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Commission Type *</label>
-                        <select class="form-control" @bind="currentCommission.CommissionType">
-                            <option value="percent">Percentage (%)</option>
-                            <option value="fixed">Fixed Amount (₱)</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>
-                            @if (currentCommission.CommissionType == "percent")
-                            {
-                                <span>Commission Percentage (%) *</span>
-                            }
-                            else
-                            {
-                                <span>Commission Amount (₱) *</span>
-                            }
-                        </label>
-                        <input type="number" class="form-control" @bind="currentCommission.CommissionValue" 
-                               step="0.01" min="0" placeholder="@(currentCommission.CommissionType == "percent" ? "e.g., 15" : "e.g., 100.00")" />
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                        <div class="form-group">
-                            <label>Effective From</label>
-                            <input type="date" class="form-control" value="@effectiveFromInput" @onchange="@((e) => effectiveFromInput = e.Value?.ToString())" />
-                        </div>
-
-                        <div class="form-group">
-                            <label>Effective To</label>
-                            <input type="date" class="form-control" value="@effectiveToInput" @onchange="@((e) => effectiveToInput = e.Value?.ToString())" />
-                            <small style="color: var(--spa-text-light);">Leave empty for no end date</small>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="CloseDialog">
-                        <span class="bi bi-x-circle"></span> Cancel
-                    </button>
-                    <button class="btn btn-primary" @onclick="SaveCommission" 
-                            disabled="@(currentCommission.EmployeeId == 0 || currentCommission.ServiceId == 0)">
-                        <span class="bi bi-check-circle"></span> @(isEditMode ? "Update" : "Create")
-                    </button>
-                </div>
-            </div>
-        </div>
-    }
-
-    <!-- Archive Confirmation Dialog -->
-    @if (showArchiveConfirm)
-    {
-        <div class="modal-overlay" @onclick="CancelArchive">
-            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 400px;">
-                <div class="modal-header" style="background: var(--spa-warning); color: white;">
-                    <h4 style="margin: 0;"><span class="bi bi-archive"></span> Confirm Archive</h4>
-                </div>
-                <div class="modal-body" style="text-align: center; padding: 2rem;">
-                    <div style="font-size: 3rem; margin-bottom: 1rem;"><span class="bi bi-archive"></span></div>
-                    <p style="font-size: 1.1rem;">Are you sure you want to archive this commission?</p>
-                    <p style="color: var(--spa-text-light);">Archived commissions can be restored later if needed.</p>
-                </div>
-                <div class="modal-footer" style="justify-content: center; gap: 1rem;">
-                    <button class="btn btn-secondary" @onclick="CancelArchive">
-                        <span class="bi bi-x-circle"></span> Cancel
-                    </button>
-                    <button class="btn btn-warning" @onclick="() => ArchiveCommission(archiveCommissionId!.Value)">
-                        <span class="bi bi-archive"></span> Yes, Archive
-                    </button>
-                </div>
-            </div>
-        </div>
-    }
 }
 
 @code {
-    private List<EmployeeServiceCommission> commissions = new();
-    private List<EmployeeServiceCommission> filteredCommissions = new();
-    private List<Employee> employees = new();
     private List<Service> services = new();
-    private EmployeeServiceCommission currentCommission = new();
+    private List<Service> filteredServices = new();
+    private List<ServiceCategory> categories = new();
     private bool isLoading = true;
-    private bool showDialog = false;
-    private bool isEditMode = false;
-    private string? successMessage;
-    private string? errorMessage;
-    private long? selectedEmployeeFilter = null;
-    private long? selectedServiceFilter = null;
-    private string? effectiveFromInput;
-    private string? effectiveToInput;
-    private bool showArchived = false;
-    
-    // Archive confirmation
-    private bool showArchiveConfirm = false;
-    private long? archiveCommissionId = null;
-
-    // Pagination and sorting
+    private int selectedCategoryId = 0;
     private string searchTerm = "";
-    private string sortColumn = "employee";
-    private bool sortAscending = true;
+
+    // Pagination
     private int currentPage = 1;
     private int pageSize = 10;
-    private int TotalPages => (int)Math.Ceiling((double)filteredCommissions.Count / pageSize);
+    private int TotalPages => (int)Math.Ceiling((double)filteredServices.Count / pageSize);
 
-    protected override void OnInitialized()
-    {
-        if (!AuthState.IsAuthenticated)
-        {
-            Navigation.NavigateTo("/login");
-            return;
-        }
-
-        if (!AuthState.GetUserRole().Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
-        {
-            Navigation.NavigateTo("/dashboard");
-            return;
-        }
-    }
+    // Sorting
+    private string sortColumn = "service";
+    private bool sortAscending = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -354,41 +221,17 @@ else
         isLoading = true;
         try
         {
-            employees = await DbContext.Employees
-                .Include(e => e.Person)
-                .Include(e => e.Role)
-                .Where(e => e.Status == "active")
-                .OrderBy(e => e.Person!.FirstName)
-                .ThenBy(e => e.Person!.LastName)
-                .ToListAsync();
-
             services = await DbContext.Services
+                .Include(s => s.ServiceCategory)
                 .Where(s => s.Active)
                 .OrderBy(s => s.Name)
                 .ToListAsync();
 
-            var commissionsQuery = DbContext.EmployeeServiceCommissions
-                .Include(c => c.Employee)
-                    .ThenInclude(e => e!.Person)
-                .Include(c => c.Service)
-                .AsQueryable();
-            
-            if (!showArchived)
-            {
-                commissionsQuery = commissionsQuery.Where(c => !c.IsArchived);
-            }
-            
-            commissions = await commissionsQuery
-                .OrderBy(c => c.Employee!.Person!.FirstName)
-                .ThenBy(c => c.Employee!.Person!.LastName)
-                .ThenBy(c => c.Service!.Name)
+            categories = await DbContext.ServiceCategories
+                .OrderBy(c => c.Name)
                 .ToListAsync();
 
             ApplyFilter();
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error loading data: {ex.Message}";
         }
         finally
         {
@@ -396,60 +239,44 @@ else
         }
     }
 
-    private string GetEmployeeName(Employee? employee)
-    {
-        if (employee?.Person == null) return "Unknown";
-        return $"{employee.Person.FirstName} {employee.Person.LastName}";
-    }
-
     private void ApplyFilter()
     {
-        filteredCommissions = commissions;
+        IEnumerable<Service> filtered = services;
 
-        // Search filter
-        if (!string.IsNullOrWhiteSpace(searchTerm))
-        {
-            var search = searchTerm.ToLower();
-            filteredCommissions = filteredCommissions.Where(c => 
-                GetEmployeeName(c.Employee).ToLower().Contains(search) ||
-                (c.Service?.Name?.ToLower().Contains(search) ?? false)
-            ).ToList();
-        }
+        if (selectedCategoryId > 0)
+            filtered = filtered.Where(s => s.ServiceCategoryId == selectedCategoryId);
 
-        if (selectedEmployeeFilter.HasValue)
+        if (!string.IsNullOrEmpty(searchTerm))
         {
-            filteredCommissions = filteredCommissions.Where(c => c.EmployeeId == selectedEmployeeFilter.Value).ToList();
-        }
-
-        if (selectedServiceFilter.HasValue)
-        {
-            filteredCommissions = filteredCommissions.Where(c => c.ServiceId == selectedServiceFilter.Value).ToList();
+            var term = searchTerm.ToLower();
+            filtered = filtered.Where(s => 
+                s.Name.ToLower().Contains(term) ||
+                (s.Code ?? "").ToLower().Contains(term) ||
+                (s.ServiceCategory?.Name ?? "").ToLower().Contains(term));
         }
 
         // Apply sorting
-        filteredCommissions = sortColumn switch
+        filtered = sortColumn switch
         {
-            "employee" => sortAscending 
-                ? filteredCommissions.OrderBy(c => GetEmployeeName(c.Employee)).ToList()
-                : filteredCommissions.OrderByDescending(c => GetEmployeeName(c.Employee)).ToList(),
+            "category" => sortAscending 
+                ? filtered.OrderBy(s => s.ServiceCategory?.Name) 
+                : filtered.OrderByDescending(s => s.ServiceCategory?.Name),
             "service" => sortAscending 
-                ? filteredCommissions.OrderBy(c => c.Service?.Name).ToList()
-                : filteredCommissions.OrderByDescending(c => c.Service?.Name).ToList(),
+                ? filtered.OrderBy(s => s.Name) 
+                : filtered.OrderByDescending(s => s.Name),
+            "price" => sortAscending 
+                ? filtered.OrderBy(s => s.Price) 
+                : filtered.OrderByDescending(s => s.Price),
             "type" => sortAscending 
-                ? filteredCommissions.OrderBy(c => c.CommissionType).ToList()
-                : filteredCommissions.OrderByDescending(c => c.CommissionType).ToList(),
-            "value" => sortAscending 
-                ? filteredCommissions.OrderBy(c => c.CommissionValue).ToList()
-                : filteredCommissions.OrderByDescending(c => c.CommissionValue).ToList(),
-            "from" => sortAscending 
-                ? filteredCommissions.OrderBy(c => c.EffectiveFrom).ToList()
-                : filteredCommissions.OrderByDescending(c => c.EffectiveFrom).ToList(),
-            "to" => sortAscending 
-                ? filteredCommissions.OrderBy(c => c.EffectiveTo).ToList()
-                : filteredCommissions.OrderByDescending(c => c.EffectiveTo).ToList(),
-            _ => filteredCommissions
+                ? filtered.OrderBy(s => s.CommissionType) 
+                : filtered.OrderByDescending(s => s.CommissionType),
+            "rate" => sortAscending 
+                ? filtered.OrderBy(s => s.CommissionValue) 
+                : filtered.OrderByDescending(s => s.CommissionValue),
+            _ => filtered
         };
 
+        filteredServices = filtered.ToList();
         currentPage = 1;
     }
 
@@ -470,12 +297,12 @@ else
     private string GetSortIcon(string column)
     {
         if (sortColumn != column) return "";
-        return sortAscending ? "▲" : "▼";
+        return sortAscending ? "↑" : "↓";
     }
 
-    private List<EmployeeServiceCommission> GetPagedCommissions()
+    private List<Service> GetPagedServices()
     {
-        return filteredCommissions
+        return filteredServices
             .Skip((currentPage - 1) * pageSize)
             .Take(pageSize)
             .ToList();
@@ -483,18 +310,12 @@ else
 
     private void PreviousPage()
     {
-        if (currentPage > 1)
-        {
-            currentPage--;
-        }
+        if (currentPage > 1) currentPage--;
     }
 
     private void NextPage()
     {
-        if (currentPage < TotalPages)
-        {
-            currentPage++;
-        }
+        if (currentPage < TotalPages) currentPage++;
     }
 
     private void GoToPage(int page)
@@ -502,196 +323,11 @@ else
         currentPage = page;
     }
 
-    private void OnEmployeeFilterChanged(ChangeEventArgs e)
+    private decimal CalculateEarnings(Service service)
     {
-        if (long.TryParse(e.Value?.ToString(), out long employeeId))
-        {
-            selectedEmployeeFilter = employeeId;
-        }
-        else
-        {
-            selectedEmployeeFilter = null;
-        }
-        ApplyFilter();
-    }
-
-    private void OnServiceFilterChanged(ChangeEventArgs e)
-    {
-        if (long.TryParse(e.Value?.ToString(), out long serviceId))
-        {
-            selectedServiceFilter = serviceId;
-        }
-        else
-        {
-            selectedServiceFilter = null;
-        }
-        ApplyFilter();
-    }
-
-    private void OpenAddDialog()
-    {
-        currentCommission = new EmployeeServiceCommission { CommissionType = "percent", CommissionValue = 0 };
-        effectiveFromInput = null;
-        effectiveToInput = null;
-        isEditMode = false;
-        showDialog = true;
-        ClearMessages();
-    }
-
-    private void OpenEditDialog(EmployeeServiceCommission commission)
-    {
-        currentCommission = new EmployeeServiceCommission
-        {
-            CommissionId = commission.CommissionId,
-            EmployeeId = commission.EmployeeId,
-            ServiceId = commission.ServiceId,
-            CommissionType = commission.CommissionType,
-            CommissionValue = commission.CommissionValue,
-            EffectiveFrom = commission.EffectiveFrom,
-            EffectiveTo = commission.EffectiveTo
-        };
-        effectiveFromInput = commission.EffectiveFrom?.ToString("yyyy-MM-dd");
-        effectiveToInput = commission.EffectiveTo?.ToString("yyyy-MM-dd");
-        isEditMode = true;
-        showDialog = true;
-        ClearMessages();
-    }
-
-    private void CloseDialog()
-    {
-        showDialog = false;
-        currentCommission = new();
-        effectiveFromInput = null;
-        effectiveToInput = null;
-        isEditMode = false;
-    }
-
-    private async Task SaveCommission()
-    {
-        try
-        {
-            ClearMessages();
-
-            if (currentCommission.EmployeeId == 0 || currentCommission.ServiceId == 0)
-            {
-                errorMessage = "Please select both employee and service.";
-                return;
-            }
-
-            // Parse dates
-            if (!string.IsNullOrEmpty(effectiveFromInput))
-            {
-                currentCommission.EffectiveFrom = DateTime.Parse(effectiveFromInput);
-            }
-
-            if (!string.IsNullOrEmpty(effectiveToInput))
-            {
-                currentCommission.EffectiveTo = DateTime.Parse(effectiveToInput);
-            }
-
-            if (isEditMode)
-            {
-                var existing = await DbContext.EmployeeServiceCommissions.FindAsync(currentCommission.CommissionId);
-                if (existing != null)
-                {
-                    existing.EmployeeId = currentCommission.EmployeeId;
-                    existing.ServiceId = currentCommission.ServiceId;
-                    existing.CommissionType = currentCommission.CommissionType;
-                    existing.CommissionValue = currentCommission.CommissionValue;
-                    existing.EffectiveFrom = currentCommission.EffectiveFrom;
-                    existing.EffectiveTo = currentCommission.EffectiveTo;
-                    await DbContext.SaveChangesAsync();
-                    successMessage = "Commission updated successfully!";
-                }
-            }
-            else
-            {
-                var newCommission = new EmployeeServiceCommission
-                {
-                    EmployeeId = currentCommission.EmployeeId,
-                    ServiceId = currentCommission.ServiceId,
-                    CommissionType = currentCommission.CommissionType,
-                    CommissionValue = currentCommission.CommissionValue,
-                    EffectiveFrom = currentCommission.EffectiveFrom,
-                    EffectiveTo = currentCommission.EffectiveTo
-                };
-                DbContext.EmployeeServiceCommissions.Add(newCommission);
-                await DbContext.SaveChangesAsync();
-                successMessage = "Commission created successfully!";
-            }
-
-            CloseDialog();
-            await LoadData();
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error saving commission: {ex.Message}";
-        }
-    }
-
-    private void ConfirmArchiveCommission(long commissionId)
-    {
-        archiveCommissionId = commissionId;
-        showArchiveConfirm = true;
-    }
-
-    private void CancelArchive()
-    {
-        showArchiveConfirm = false;
-        archiveCommissionId = null;
-    }
-
-    private async Task ArchiveCommission(long commissionId)
-    {
-        showArchiveConfirm = false;
-        try
-        {
-            ClearMessages();
-            var commission = await DbContext.EmployeeServiceCommissions.FindAsync(commissionId);
-            if (commission == null)
-            {
-                errorMessage = "Commission not found.";
-                return;
-            }
-
-            commission.IsArchived = true;
-            await DbContext.SaveChangesAsync();
-            successMessage = "Commission archived successfully!";
-            await LoadData();
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error archiving commission: {ex.Message}";
-        }
-        archiveCommissionId = null;
-    }
-
-    private async Task RestoreCommission(long commissionId)
-    {
-        try
-        {
-            ClearMessages();
-            var commission = await DbContext.EmployeeServiceCommissions.FindAsync(commissionId);
-            if (commission == null)
-            {
-                errorMessage = "Commission not found.";
-                return;
-            }
-
-            commission.IsArchived = false;
-            await DbContext.SaveChangesAsync();
-            successMessage = "Commission restored successfully!";
-            await LoadData();
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error restoring commission: {ex.Message}";
-        }
-    }
-
-    private void ClearMessages()
-    {
-        successMessage = null;
-        errorMessage = null;
+        if (service.CommissionValue <= 0) return 0;
+        return service.CommissionType == "percentage"
+            ? service.Price * service.CommissionValue / 100
+            : service.CommissionValue;
     }
 }

@@ -57,4 +57,5 @@ public class Product : ISyncable
     public virtual ICollection<StockTransaction> StockTransactions { get; set; } = new List<StockTransaction>();
     public virtual ICollection<PurchaseOrderItem> PurchaseOrderItems { get; set; } = new List<PurchaseOrderItem>();
     public virtual ICollection<SaleItem> SaleItems { get; set; } = new List<SaleItem>();
+    public virtual ICollection<SupplierProduct> SupplierProducts { get; set; } = new List<SupplierProduct>();
 }

@@ -393,11 +393,11 @@ else
         {
             var term = searchTerm.ToLower();
             query = query.Where(c =>
-                c.CustomerCode.ToLower().Contains(term) ||
-                c.Person.FirstName.ToLower().Contains(term) ||
-                c.Person.LastName.ToLower().Contains(term) ||
-                (c.Person.Email?.ToLower().Contains(term) ?? false) ||
-                (c.Person.Phone?.ToLower().Contains(term) ?? false)
+                (c.CustomerCode ?? "").ToLower().Contains(term) ||
+                (c.Person != null && (c.Person.FirstName ?? "").ToLower().Contains(term)) ||
+                (c.Person != null && (c.Person.LastName ?? "").ToLower().Contains(term)) ||
+                (c.Person != null && c.Person.Email != null && c.Person.Email.ToLower().Contains(term)) ||
+                (c.Person != null && c.Person.Phone != null && c.Person.Phone.ToLower().Contains(term))
             );
         }
 

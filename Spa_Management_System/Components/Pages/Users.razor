@@ -78,7 +78,7 @@
                             }
                         </td>
                         <td>
-                            @if (user.Employee != null)
+                            @if (user.Employee?.Role != null)
                             {
                                 <span class="badge badge-info">@user.Employee.Role.Name</span>
                             }
@@ -169,12 +169,67 @@
 
             <div style="margin-bottom: 1rem;">
                 <label class="form-label">Password <span style="color: var(--spa-danger);">*</span></label>
-                <input class="form-control" type="password" @bind="password" placeholder="Enter password" />
+                <div style="position: relative;">
+                    <input class="form-control" type="@(showPassword ? "text" : "password")" 
+                           @bind="password" @bind:event="oninput" placeholder="Enter password" 
+                           style="padding-right: 2.5rem;" />
+                    <button type="button" @onclick="() => showPassword = !showPassword"
+                            style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--spa-text-light);">
+                        <span class="bi @(showPassword ? "bi-eye-slash" : "bi-eye")"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Password Requirements Checklist -->
+            <div style="background: #f8f9fa; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.85rem;">
+                <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--spa-text);">Password Requirements:</div>
+                <div style="display: grid; gap: 0.25rem;">
+                    <div style="color: @(HasMinLength ? "var(--spa-success)" : "var(--spa-text-light)");">
+                        <span class="bi @(HasMinLength ? "bi-check-circle-fill" : "bi-x-circle")" style="margin-right: 0.5rem;"></span>
+                        At least 10 characters
+                    </div>
+                    <div style="color: @(HasUppercase ? "var(--spa-success)" : "var(--spa-text-light)");">
+                        <span class="bi @(HasUppercase ? "bi-check-circle-fill" : "bi-x-circle")" style="margin-right: 0.5rem;"></span>
+                        One uppercase letter (A-Z)
+                    </div>
+                    <div style="color: @(HasLowercase ? "var(--spa-success)" : "var(--spa-text-light)");">
+                        <span class="bi @(HasLowercase ? "bi-check-circle-fill" : "bi-x-circle")" style="margin-right: 0.5rem;"></span>
+                        One lowercase letter (a-z)
+                    </div>
+                    <div style="color: @(HasNumber ? "var(--spa-success)" : "var(--spa-text-light)");">
+                        <span class="bi @(HasNumber ? "bi-check-circle-fill" : "bi-x-circle")" style="margin-right: 0.5rem;"></span>
+                        One number (0-9)
+                    </div>
+                    <div style="color: @(HasSpecialChar ? "var(--spa-success)" : "var(--spa-text-light)");">
+                        <span class="bi @(HasSpecialChar ? "bi-check-circle-fill" : "bi-x-circle")" style="margin-right: 0.5rem;"></span>
+                        One special character (!@@&#35;$%^&amp;*...)
+                    </div>
+                </div>
             </div>
 
             <div style="margin-bottom: 1rem;">
                 <label class="form-label">Confirm Password <span style="color: var(--spa-danger);">*</span></label>
-                <input class="form-control" type="password" @bind="confirmPassword" placeholder="Re-enter password" />
+                <div style="position: relative;">
+                    <input class="form-control" type="@(showConfirmPassword ? "text" : "password")" 
+                           @bind="confirmPassword" @bind:event="oninput" placeholder="Re-enter password" 
+                           style="padding-right: 2.5rem;" />
+                    <button type="button" @onclick="() => showConfirmPassword = !showConfirmPassword"
+                            style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--spa-text-light);">
+                        <span class="bi @(showConfirmPassword ? "bi-eye-slash" : "bi-eye")"></span>
+                    </button>
+                </div>
+                @if (!string.IsNullOrEmpty(confirmPassword) && password != confirmPassword)
+                {
+                    <div style="color: var(--spa-danger); font-size: 0.8rem; margin-top: 0.25rem;">
+                        <span class="bi bi-x-circle"></span> Passwords do not match
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(confirmPassword) && password == confirmPassword)
+                {
+                    <div style="color: var(--spa-success); font-size: 0.8rem; margin-top: 0.25rem;">
+                        <span class="bi bi-check-circle-fill"></span> Passwords match
+                    </div>
+                }
             </div>
 
             @if (!string.IsNullOrEmpty(dialogError))
@@ -194,7 +249,7 @@
             }
 
             <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
-                <button class="btn btn-primary" @onclick="SaveUser" disabled="@isSaving">
+                <button class="btn btn-primary" @onclick="SaveUser" disabled="@(isSaving || !IsPasswordValid || password != confirmPassword)">
                     @if (isSaving)
                     {
                         <div class="loading" style="width: 1rem; height: 1rem;"></div>
@@ -220,12 +275,67 @@
             
             <div style="margin-bottom: 1rem;">
                 <label class="form-label">New Password <span style="color: var(--spa-danger);">*</span></label>
-                <input class="form-control" type="password" @bind="newPassword" placeholder="Enter new password" />
+                <div style="position: relative;">
+                    <input class="form-control" type="@(showNewPassword ? "text" : "password")" 
+                           @bind="newPassword" @bind:event="oninput" placeholder="Enter new password" 
+                           style="padding-right: 2.5rem;" />
+                    <button type="button" @onclick="() => showNewPassword = !showNewPassword"
+                            style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--spa-text-light);">
+                        <span class="bi @(showNewPassword ? "bi-eye-slash" : "bi-eye")"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Password Requirements Checklist for Reset -->
+            <div style="background: #f8f9fa; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.85rem;">
+                <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--spa-text);">Password Requirements:</div>
+                <div style="display: grid; gap: 0.25rem;">
+                    <div style="color: @(HasNewMinLength ? "var(--spa-success)" : "var(--spa-text-light)");">
+                        <span class="bi @(HasNewMinLength ? "bi-check-circle-fill" : "bi-x-circle")" style="margin-right: 0.5rem;"></span>
+                        At least 10 characters
+                    </div>
+                    <div style="color: @(HasNewUppercase ? "var(--spa-success)" : "var(--spa-text-light)");">
+                        <span class="bi @(HasNewUppercase ? "bi-check-circle-fill" : "bi-x-circle")" style="margin-right: 0.5rem;"></span>
+                        One uppercase letter (A-Z)
+                    </div>
+                    <div style="color: @(HasNewLowercase ? "var(--spa-success)" : "var(--spa-text-light)");">
+                        <span class="bi @(HasNewLowercase ? "bi-check-circle-fill" : "bi-x-circle")" style="margin-right: 0.5rem;"></span>
+                        One lowercase letter (a-z)
+                    </div>
+                    <div style="color: @(HasNewNumber ? "var(--spa-success)" : "var(--spa-text-light)");">
+                        <span class="bi @(HasNewNumber ? "bi-check-circle-fill" : "bi-x-circle")" style="margin-right: 0.5rem;"></span>
+                        One number (0-9)
+                    </div>
+                    <div style="color: @(HasNewSpecialChar ? "var(--spa-success)" : "var(--spa-text-light)");">
+                        <span class="bi @(HasNewSpecialChar ? "bi-check-circle-fill" : "bi-x-circle")" style="margin-right: 0.5rem;"></span>
+                        One special character (!@@&#35;$%^&amp;*...)
+                    </div>
+                </div>
             </div>
 
             <div style="margin-bottom: 1rem;">
                 <label class="form-label">Confirm New Password <span style="color: var(--spa-danger);">*</span></label>
-                <input class="form-control" type="password" @bind="confirmNewPassword" placeholder="Re-enter new password" />
+                <div style="position: relative;">
+                    <input class="form-control" type="@(showConfirmNewPassword ? "text" : "password")" 
+                           @bind="confirmNewPassword" @bind:event="oninput" placeholder="Re-enter new password" 
+                           style="padding-right: 2.5rem;" />
+                    <button type="button" @onclick="() => showConfirmNewPassword = !showConfirmNewPassword"
+                            style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--spa-text-light);">
+                        <span class="bi @(showConfirmNewPassword ? "bi-eye-slash" : "bi-eye")"></span>
+                    </button>
+                </div>
+                @if (!string.IsNullOrEmpty(confirmNewPassword) && newPassword != confirmNewPassword)
+                {
+                    <div style="color: var(--spa-danger); font-size: 0.8rem; margin-top: 0.25rem;">
+                        <span class="bi bi-x-circle"></span> Passwords do not match
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(confirmNewPassword) && newPassword == confirmNewPassword)
+                {
+                    <div style="color: var(--spa-success); font-size: 0.8rem; margin-top: 0.25rem;">
+                        <span class="bi bi-check-circle-fill"></span> Passwords match
+                    </div>
+                }
             </div>
 
             @if (!string.IsNullOrEmpty(resetError))
@@ -245,7 +355,7 @@
             }
 
             <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
-                <button class="btn btn-primary" @onclick="ResetPassword" disabled="@isResetting">
+                <button class="btn btn-primary" @onclick="ResetPassword" disabled="@(isResetting || !IsNewPasswordValid || newPassword != confirmNewPassword)">
                     @if (isResetting)
                     {
                         <div class="loading" style="width: 1rem; height: 1rem;"></div>
@@ -287,6 +397,16 @@
     private string username = "";
     private string password = "";
     private string confirmPassword = "";
+    private bool showPassword = false;
+    private bool showConfirmPassword = false;
+
+    // Password validation for Create dialog
+    private bool HasMinLength => password.Length >= 10;
+    private bool HasUppercase => System.Text.RegularExpressions.Regex.IsMatch(password, @"[A-Z]");
+    private bool HasLowercase => System.Text.RegularExpressions.Regex.IsMatch(password, @"[a-z]");
+    private bool HasNumber => System.Text.RegularExpressions.Regex.IsMatch(password, @"[0-9]");
+    private bool HasSpecialChar => System.Text.RegularExpressions.Regex.IsMatch(password, @"[!@#$%^&*(),.?""':{}|<>_\-+=\[\]\\\/`~;]");
+    private bool IsPasswordValid => HasMinLength && HasUppercase && HasLowercase && HasNumber && HasSpecialChar;
 
     // Reset password dialog
     private bool showResetDialog = false;
@@ -296,6 +416,16 @@
     private UserAccount? selectedUser;
     private string newPassword = "";
     private string confirmNewPassword = "";
+    private bool showNewPassword = false;
+    private bool showConfirmNewPassword = false;
+
+    // Password validation for Reset dialog
+    private bool HasNewMinLength => newPassword.Length >= 10;
+    private bool HasNewUppercase => System.Text.RegularExpressions.Regex.IsMatch(newPassword, @"[A-Z]");
+    private bool HasNewLowercase => System.Text.RegularExpressions.Regex.IsMatch(newPassword, @"[a-z]");
+    private bool HasNewNumber => System.Text.RegularExpressions.Regex.IsMatch(newPassword, @"[0-9]");
+    private bool HasNewSpecialChar => System.Text.RegularExpressions.Regex.IsMatch(newPassword, @"[!@#$%^&*(),.?""':{}|<>_\-+=\[\]\\\/`~;]");
+    private bool IsNewPasswordValid => HasNewMinLength && HasNewUppercase && HasNewLowercase && HasNewNumber && HasNewSpecialChar;
 
     protected override async Task OnInitializedAsync()
     {
@@ -334,7 +464,14 @@
     {
         try
         {
-            employees = (await EmployeeService.GetActiveEmployeesAsync()).ToList();
+            // Get all active employees
+            var allEmployees = (await EmployeeService.GetActiveEmployeesAsync()).ToList();
+            
+            // Get employee IDs that already have user accounts
+            var employeeIdsWithAccounts = users.Select(u => u.EmployeeId).ToHashSet();
+            
+            // Filter to only show employees without accounts
+            employees = allEmployees.Where(e => !employeeIdsWithAccounts.Contains(e.EmployeeId)).ToList();
         }
         catch (Exception ex)
         {
@@ -396,6 +533,7 @@
             await AuthService.CreateUserAccountAsync(selectedEmployeeId, username.Trim(), password);
             saveSuccess = true;
             await LoadUsers();
+            await LoadEmployees(); // Refresh employees list to remove the one we just created an account for
             
             await Task.Delay(1500);
             CloseAddDialog();
@@ -498,6 +636,8 @@
         confirmPassword = "";
         dialogError = null;
         saveSuccess = false;
+        showPassword = false;
+        showConfirmPassword = false;
     }
 
     private void CloseResetDialog()
@@ -508,6 +648,8 @@
         confirmNewPassword = "";
         resetError = null;
         resetSuccess = false;
+        showNewPassword = false;
+        showConfirmNewPassword = false;
     }
 
     // Filtering, Sorting, Pagination

@@ -7,7 +7,7 @@ public class CloudDbContext : DbContext
 {
     public CloudDbContext(DbContextOptions<CloudDbContext> options) : base(options) { }
 
-    // All 27 tables - exact mirror of local database
+    // All 28 tables - exact mirror of local database
     public DbSet<Person> Persons { get; set; } = null!;
     public DbSet<Role> Roles { get; set; } = null!;
     public DbSet<Employee> Employees { get; set; } = null!;
@@ -20,6 +20,7 @@ public class CloudDbContext : DbContext
     public DbSet<Inventory> Inventories { get; set; } = null!;
     public DbSet<StockTransaction> StockTransactions { get; set; } = null!;
     public DbSet<Supplier> Suppliers { get; set; } = null!;
+    public DbSet<SupplierProduct> SupplierProducts { get; set; } = null!;
     public DbSet<PurchaseOrder> PurchaseOrders { get; set; } = null!;
     public DbSet<PurchaseOrderItem> PurchaseOrderItems { get; set; } = null!;
     public DbSet<Appointment> Appointments { get; set; } = null!;

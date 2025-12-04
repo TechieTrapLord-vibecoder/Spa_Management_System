@@ -1,0 +1,512 @@
+@page "/year-end-closing"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@using Spa_Management_System.Services
+@inject IDbContextFactory<AppDbContext> DbContextFactory
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+
+<PageTitle>Year-End Closing - Kaye Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else if (!CanAccessYearEndClosing())
+{
+    <div class="card">
+        <div class="alert alert-danger">
+            <span class="bi bi-shield-x"></span> Access Denied. Only SuperAdmin or Manager can perform year-end closing.
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div style="margin-bottom: 1.5rem;">
+            <h3 class="card-title" style="margin: 0;"><span class="bi bi-calendar-check"></span> Year-End Closing</h3>
+            <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">Close the fiscal year and transfer net income to retained earnings</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success" style="margin-bottom: 1rem;">
+                <span class="bi bi-check-circle-fill"></span> @successMessage
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger" style="margin-bottom: 1rem;">
+                <span class="bi bi-exclamation-circle-fill"></span> @errorMessage
+            </div>
+        }
+
+        @if (isLoading)
+        {
+            <div style="text-align: center; padding: 3rem;">
+                <div class="loading"></div>
+                <p style="color: var(--spa-text-light); margin-top: 1rem;">Loading fiscal year data...</p>
+            </div>
+        }
+        else
+        {
+            <!-- Fiscal Year Selection -->
+            <div style="display: flex; gap: 1rem; align-items: end; margin-bottom: 2rem; flex-wrap: wrap;">
+                <div class="form-group" style="margin: 0;">
+                    <label class="form-label">Select Fiscal Year to Close</label>
+                    <select class="form-control" @bind="selectedYear" @bind:after="LoadYearData" style="min-width: 200px;">
+                        @for (int year = DateTime.Today.Year; year >= DateTime.Today.Year - 5; year--)
+                        {
+                            <option value="@year">Fiscal Year @year</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <span class="badge @(isYearClosed ? "badge-success" : "badge-warning")" style="font-size: 1rem; padding: 0.5rem 1rem;">
+                        @(isYearClosed ? "✓ Year Closed" : "○ Year Open")
+                    </span>
+                </div>
+            </div>
+
+            <!-- Year Summary -->
+            <div style="background: var(--spa-light); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem;">
+                <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-bar-chart"></span> Fiscal Year @selectedYear Summary</h4>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+                    <div style="background: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 0.85rem; color: var(--spa-text-light);">Total Revenue</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--spa-success);">₱@totalRevenue.ToString("N2")</div>
+                    </div>
+                    <div style="background: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 0.85rem; color: var(--spa-text-light);">Total Expenses</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--spa-danger);">₱@totalExpenses.ToString("N2")</div>
+                    </div>
+                    <div style="background: white; padding: 1rem; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 0.85rem; color: var(--spa-text-light);">Net Income</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: @(netIncome >= 0 ? "var(--spa-success)" : "var(--spa-danger)");">
+                            @(netIncome >= 0 ? "+" : "")₱@netIncome.ToString("N2")
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Revenue Accounts -->
+            <div style="margin-bottom: 2rem;">
+                <h5 style="color: var(--spa-primary);"><span class="bi bi-graph-up-arrow"></span> Revenue Accounts to Close</h5>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Account Name</th>
+                            <th style="text-align: right;">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var account in revenueAccounts)
+                        {
+                            var balance = accountBalances.GetValueOrDefault(account.LedgerAccountId, 0);
+                            <tr>
+                                <td><code>@account.Code</code></td>
+                                <td>@account.Name</td>
+                                <td style="text-align: right; color: var(--spa-success);">₱@balance.ToString("N2")</td>
+                            </tr>
+                        }
+                        @if (!revenueAccounts.Any())
+                        {
+                            <tr><td colspan="3" style="text-align: center; color: var(--spa-text-light);">No revenue accounts</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Expense Accounts -->
+            <div style="margin-bottom: 2rem;">
+                <h5 style="color: var(--spa-primary);"><span class="bi bi-graph-down-arrow"></span> Expense Accounts to Close</h5>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Account Name</th>
+                            <th style="text-align: right;">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var account in expenseAccounts)
+                        {
+                            var balance = accountBalances.GetValueOrDefault(account.LedgerAccountId, 0);
+                            @if (balance != 0)
+                            {
+                                <tr>
+                                    <td><code>@account.Code</code></td>
+                                    <td>@account.Name</td>
+                                    <td style="text-align: right; color: var(--spa-danger);">₱@balance.ToString("N2")</td>
+                                </tr>
+                            }
+                        }
+                        @if (!expenseAccounts.Any(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0) != 0))
+                        {
+                            <tr><td colspan="3" style="text-align: center; color: var(--spa-text-light);">No expense accounts with balance</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Closing Process Explanation -->
+            <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 1rem; margin-bottom: 2rem;">
+                <h5 style="color: #856404; margin-bottom: 0.5rem;"><span class="bi bi-info-circle"></span> What Year-End Closing Does:</h5>
+                <ol style="margin: 0; padding-left: 1.25rem; color: #856404;">
+                    <li>Creates a closing journal entry dated December 31, @selectedYear</li>
+                    <li>Debits all Revenue accounts to zero them out</li>
+                    <li>Credits all Expense accounts to zero them out</li>
+                    <li>Transfers Net Income (₱@netIncome.ToString("N2")) to Retained Earnings</li>
+                    <li>Marks the fiscal year as closed</li>
+                </ol>
+            </div>
+
+            <!-- Action Buttons -->
+            @if (!isYearClosed)
+            {
+                <div style="display: flex; gap: 1rem; justify-content: center;">
+                    <button class="btn btn-primary" style="padding: 1rem 2rem; font-size: 1.1rem;" @onclick="ShowConfirmDialog" disabled="@isProcessing">
+                        @if (isProcessing)
+                        {
+                            <span class="loading" style="width: 1rem; height: 1rem; margin-right: 0.5rem;"></span>
+                            <span>Processing...</span>
+                        }
+                        else
+                        {
+                            <span class="bi bi-lock"></span>
+                            <span>Close Fiscal Year @selectedYear</span>
+                        }
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-success" style="text-align: center;">
+                    <span class="bi bi-check-circle-fill"></span>
+                    Fiscal Year @selectedYear has been closed. Net income of ₱@netIncome.ToString("N2") was transferred to Retained Earnings.
+                </div>
+            }
+
+            <!-- Previous Closings -->
+            @if (closingHistory.Any())
+            {
+                <div style="margin-top: 2rem;">
+                    <h5 style="color: var(--spa-primary);"><span class="bi bi-clock-history"></span> Closing History</h5>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Fiscal Year</th>
+                                <th>Closed On</th>
+                                <th>Journal Entry</th>
+                                <th style="text-align: right;">Net Income Transferred</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var closing in closingHistory)
+                            {
+                                <tr>
+                                    <td>@closing.Year</td>
+                                    <td>@closing.ClosedDate.ToString("MMM dd, yyyy HH:mm")</td>
+                                    <td><code>@closing.JournalNo</code></td>
+                                    <td style="text-align: right;">₱@closing.NetIncome.ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </div>
+
+    <!-- Confirmation Dialog -->
+    @if (showConfirmDialog)
+    {
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div class="card" style="max-width: 500px; margin: 1rem;">
+                <h4 style="color: var(--spa-danger);"><span class="bi bi-exclamation-triangle"></span> Confirm Year-End Closing</h4>
+                <p>You are about to close <strong>Fiscal Year @selectedYear</strong>.</p>
+                <p>This will:</p>
+                <ul>
+                    <li>Zero out all Revenue accounts (₱@totalRevenue.ToString("N2"))</li>
+                    <li>Zero out all Expense accounts (₱@totalExpenses.ToString("N2"))</li>
+                    <li>Transfer <strong>₱@netIncome.ToString("N2")</strong> to Retained Earnings</li>
+                </ul>
+                <p style="color: var(--spa-danger); font-weight: bold;"><span class="bi bi-exclamation-circle"></span> This action cannot be undone!</p>
+                
+                <div style="margin-top: 1rem;">
+                    <label class="form-label">Type "CLOSE @selectedYear" to confirm:</label>
+                    <input type="text" class="form-control" @bind="confirmText" placeholder="CLOSE @selectedYear" />
+                </div>
+
+                <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+                    <button class="btn btn-outline" @onclick="() => showConfirmDialog = false">Cancel</button>
+                    <button class="btn btn-danger" @onclick="PerformYearEndClosing" disabled="@(confirmText != $"CLOSE {selectedYear}")">
+                        <span class="bi bi-lock"></span> Confirm Closing
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool isLoading = true;
+    private bool isProcessing = false;
+    private bool showConfirmDialog = false;
+    private string confirmText = "";
+    private string? successMessage;
+    private string? errorMessage;
+
+    private int selectedYear = DateTime.Today.Year;
+    private bool isYearClosed = false;
+
+    private List<LedgerAccount> revenueAccounts = new();
+    private List<LedgerAccount> expenseAccounts = new();
+    private Dictionary<long, decimal> accountBalances = new();
+
+    private decimal totalRevenue = 0;
+    private decimal totalExpenses = 0;
+    private decimal netIncome => totalRevenue - totalExpenses;
+
+    private List<ClosingHistoryItem> closingHistory = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadYearData();
+    }
+
+    private async Task LoadYearData()
+    {
+        isLoading = true;
+        errorMessage = null;
+        
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            var yearStart = new DateTime(selectedYear, 1, 1);
+            var yearEnd = new DateTime(selectedYear, 12, 31);
+
+            // Load accounts
+            var allAccounts = await context.LedgerAccounts.AsNoTracking().ToListAsync();
+            revenueAccounts = allAccounts.Where(a => a.AccountType.Equals("revenue", StringComparison.OrdinalIgnoreCase)).OrderBy(a => a.Code).ToList();
+            expenseAccounts = allAccounts.Where(a => a.AccountType.Equals("expense", StringComparison.OrdinalIgnoreCase)).OrderBy(a => a.Code).ToList();
+
+            // Calculate balances for the year
+            var yearJournalLines = await context.JournalEntryLines
+                .AsNoTracking()
+                .Include(jl => jl.JournalEntry)
+                .Where(jl => jl.JournalEntry.Date >= yearStart && jl.JournalEntry.Date <= yearEnd)
+                .ToListAsync();
+
+            accountBalances.Clear();
+            foreach (var account in revenueAccounts.Concat(expenseAccounts))
+            {
+                var lines = yearJournalLines.Where(l => l.LedgerAccountId == account.LedgerAccountId);
+                var totalDebit = lines.Sum(l => l.Debit);
+                var totalCredit = lines.Sum(l => l.Credit);
+
+                decimal balance;
+                if (account.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase))
+                    balance = totalDebit - totalCredit;
+                else
+                    balance = totalCredit - totalDebit;
+
+                accountBalances[account.LedgerAccountId] = balance;
+            }
+
+            totalRevenue = revenueAccounts.Sum(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0));
+            totalExpenses = expenseAccounts.Sum(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0));
+
+            // Check if year is already closed (look for closing entry)
+            isYearClosed = await context.JournalEntries
+                .AnyAsync(je => je.JournalNo == $"YE-CLOSE-{selectedYear}" || 
+                               je.Description.Contains($"Year-End Closing {selectedYear}"));
+
+            // Load closing history
+            var closingEntries = await context.JournalEntries
+                .AsNoTracking()
+                .Where(je => je.JournalNo != null && je.JournalNo.StartsWith("YE-CLOSE-"))
+                .OrderByDescending(je => je.Date)
+                .ToListAsync();
+
+            closingHistory = new List<ClosingHistoryItem>();
+            foreach (var entry in closingEntries)
+            {
+                if (int.TryParse(entry.JournalNo?.Replace("YE-CLOSE-", ""), out int year))
+                {
+                    // Get the retained earnings credit amount
+                    var retainedEarningsLine = await context.JournalEntryLines
+                        .Include(jl => jl.LedgerAccount)
+                        .Where(jl => jl.JournalId == entry.JournalId && jl.LedgerAccount.Code == "3200")
+                        .FirstOrDefaultAsync();
+
+                    closingHistory.Add(new ClosingHistoryItem
+                    {
+                        Year = year,
+                        ClosedDate = entry.CreatedAt,
+                        JournalNo = entry.JournalNo ?? "",
+                        NetIncome = retainedEarningsLine?.Credit ?? retainedEarningsLine?.Debit ?? 0
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading year data: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ShowConfirmDialog()
+    {
+        confirmText = "";
+        showConfirmDialog = true;
+    }
+
+    private async Task PerformYearEndClosing()
+    {
+        if (confirmText != $"CLOSE {selectedYear}")
+            return;
+
+        isProcessing = true;
+        showConfirmDialog = false;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            // Get or create Retained Earnings account
+            var retainedEarningsAccount = await context.LedgerAccounts
+                .FirstOrDefaultAsync(la => la.Code == "3200");
+
+            if (retainedEarningsAccount == null)
+            {
+                retainedEarningsAccount = new LedgerAccount
+                {
+                    Code = "3200",
+                    Name = "Retained Earnings",
+                    AccountType = "equity",
+                    NormalBalance = "credit"
+                };
+                context.LedgerAccounts.Add(retainedEarningsAccount);
+                await context.SaveChangesAsync();
+            }
+
+            // Create closing journal entry
+            var closingEntry = new JournalEntry
+            {
+                JournalNo = $"YE-CLOSE-{selectedYear}",
+                Date = new DateTime(selectedYear, 12, 31),
+                Description = $"Year-End Closing {selectedYear} - Transfer Net Income to Retained Earnings",
+                CreatedByUserId = AuthState.CurrentUser?.UserId,
+                CreatedAt = DateTime.Now
+            };
+
+            // Reload accounts with fresh context
+            var freshRevenueAccounts = await context.LedgerAccounts
+                .Where(a => a.AccountType.ToLower() == "revenue")
+                .ToListAsync();
+
+            var freshExpenseAccounts = await context.LedgerAccounts
+                .Where(a => a.AccountType.ToLower() == "expense")
+                .ToListAsync();
+
+            // Debit Revenue accounts (to zero them out - revenues have credit balances)
+            foreach (var account in freshRevenueAccounts)
+            {
+                var balance = accountBalances.GetValueOrDefault(account.LedgerAccountId, 0);
+                if (balance > 0)
+                {
+                    closingEntry.JournalEntryLines.Add(new JournalEntryLine
+                    {
+                        LedgerAccountId = account.LedgerAccountId,
+                        Debit = balance,
+                        Credit = 0,
+                        LineMemo = $"Close {account.Name} for FY{selectedYear}"
+                    });
+                }
+            }
+
+            // Credit Expense accounts (to zero them out - expenses have debit balances)
+            foreach (var account in freshExpenseAccounts)
+            {
+                var balance = accountBalances.GetValueOrDefault(account.LedgerAccountId, 0);
+                if (balance > 0)
+                {
+                    closingEntry.JournalEntryLines.Add(new JournalEntryLine
+                    {
+                        LedgerAccountId = account.LedgerAccountId,
+                        Debit = 0,
+                        Credit = balance,
+                        LineMemo = $"Close {account.Name} for FY{selectedYear}"
+                    });
+                }
+            }
+
+            // Credit/Debit Retained Earnings for Net Income
+            if (netIncome >= 0)
+            {
+                // Profit - Credit Retained Earnings
+                closingEntry.JournalEntryLines.Add(new JournalEntryLine
+                {
+                    LedgerAccountId = retainedEarningsAccount.LedgerAccountId,
+                    Debit = 0,
+                    Credit = netIncome,
+                    LineMemo = $"Net Income for FY{selectedYear}"
+                });
+            }
+            else
+            {
+                // Loss - Debit Retained Earnings
+                closingEntry.JournalEntryLines.Add(new JournalEntryLine
+                {
+                    LedgerAccountId = retainedEarningsAccount.LedgerAccountId,
+                    Debit = Math.Abs(netIncome),
+                    Credit = 0,
+                    LineMemo = $"Net Loss for FY{selectedYear}"
+                });
+            }
+
+            context.JournalEntries.Add(closingEntry);
+            await context.SaveChangesAsync();
+
+            successMessage = $"Fiscal Year {selectedYear} has been closed successfully! Net income of ₱{netIncome:N2} transferred to Retained Earnings.";
+            isYearClosed = true;
+
+            // Reload data
+            await LoadYearData();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error closing year: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private bool CanAccessYearEndClosing()
+    {
+        var role = AuthState.GetUserRole()?.ToLower();
+        return role == "superadmin" || role == "manager";
+    }
+
+    private class ClosingHistoryItem
+    {
+        public int Year { get; set; }
+        public DateTime ClosedDate { get; set; }
+        public string JournalNo { get; set; } = "";
+        public decimal NetIncome { get; set; }
+    }
+}

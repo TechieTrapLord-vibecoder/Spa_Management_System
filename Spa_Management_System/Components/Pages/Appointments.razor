@@ -1291,29 +1291,22 @@ else
 
                 appointment.Status = newStatus;
                 
-                // Calculate commissions when status changes to completed
+                // Calculate commissions when status changes to completed - use SERVICE commission rates
                 if (newStatus == STATUS_COMPLETED)
                 {
                     foreach (var apptService in appointment.AppointmentServices)
                     {
-                        if (apptService.TherapistEmployeeId.HasValue)
+                        if (apptService.TherapistEmployeeId.HasValue && apptService.Service != null)
                         {
-                            // Find applicable commission rate for this employee and service
-                            var commission = await DbContext.EmployeeServiceCommissions
-                                .Where(c => c.EmployeeId == apptService.TherapistEmployeeId.Value
-                                         && c.ServiceId == apptService.ServiceId
-                                         && (c.EffectiveFrom == null || c.EffectiveFrom <= DateTime.Now)
-                                         && (c.EffectiveTo == null || c.EffectiveTo >= DateTime.Now))
-                                .FirstOrDefaultAsync();
+                            // Use commission from the Service itself (not employee-specific)
+                            var commValue = apptService.Service.CommissionValue;
+                            var commType = apptService.Service.CommissionType ?? "percentage";
                             
-                            if (commission != null)
+                            if (commValue > 0)
                             {
-                                // Calculate commission amount based on type
-                                decimal commissionAmount = commission.CommissionType == "percent"
-                                    ? (apptService.Price * commission.CommissionValue / 100)
-                                    : commission.CommissionValue;
-                                
-                                apptService.CommissionAmount = commissionAmount;
+                                apptService.CommissionAmount = commType == "percentage"
+                                    ? (apptService.Price * commValue / 100)
+                                    : commValue;
                             }
                         }
                     }

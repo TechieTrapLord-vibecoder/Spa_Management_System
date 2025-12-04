@@ -713,7 +713,8 @@ public class SyncService : ISyncService
         var checkSql = $"SELECT COUNT(*) FROM [{tableName}] WHERE [{pkColumn}] = @pkValue";
         using var checkCmd = new Microsoft.Data.SqlClient.SqlCommand(checkSql, connection);
         checkCmd.Parameters.AddWithValue("@pkValue", pkValue ?? DBNull.Value);
-        var exists = (int)await checkCmd.ExecuteScalarAsync()! > 0;
+        var scalarResult = await checkCmd.ExecuteScalarAsync();
+        var exists = scalarResult != null && (int)scalarResult > 0;
 
         if (exists)
         {
@@ -803,7 +804,7 @@ public class SyncService : ISyncService
         entity.PersonId = item.GetProperty("person_id").GetInt64();
         entity.RoleId = item.TryGetProperty("role_id", out var r) && r.ValueKind != JsonValueKind.Null ? (short)r.GetInt32() : (short)1;
         entity.HireDate = item.TryGetProperty("hire_date", out var h) && h.ValueKind != JsonValueKind.Null ? h.GetDateTime() : null;
-        entity.Status = item.TryGetProperty("status", out var s) ? s.GetString() : "active";
+        entity.Status = item.TryGetProperty("status", out var s) ? s.GetString() ?? "active" : "active";
         entity.Note = item.TryGetProperty("note", out var n) ? n.GetString() : null;
         entity.CreatedAt = item.TryGetProperty("created_at", out var c) ? c.GetDateTime() : DateTime.Now;
         SetSyncProperties(entity, item);
@@ -1043,11 +1044,11 @@ public class SyncService : ISyncService
             _context.Expenses.Add(entity);
         }
         entity.ExpenseDate = item.TryGetProperty("expense_date", out var ed) ? ed.GetDateTime() : DateTime.Now;
-        entity.Category = item.TryGetProperty("category", out var c) ? c.GetString() : null;
-        entity.Description = item.TryGetProperty("description", out var d) ? d.GetString() : null;
+        entity.Category = item.TryGetProperty("category", out var c) && c.ValueKind != JsonValueKind.Null ? c.GetString() ?? string.Empty : string.Empty;
+        entity.Description = item.TryGetProperty("description", out var d) && d.ValueKind != JsonValueKind.Null ? d.GetString() ?? string.Empty : string.Empty;
         entity.Amount = item.TryGetProperty("amount", out var a) ? a.GetDecimal() : 0;
-        entity.Vendor = item.TryGetProperty("vendor", out var v) ? v.GetString() : null;
-        entity.PaymentMethod = item.TryGetProperty("payment_method", out var pm) ? pm.GetString() : null;
+        entity.Vendor = item.TryGetProperty("vendor", out var v) && v.ValueKind != JsonValueKind.Null ? v.GetString() : null;
+        entity.PaymentMethod = item.TryGetProperty("payment_method", out var pm) && pm.ValueKind != JsonValueKind.Null ? pm.GetString() ?? "Cash" : "Cash";
         entity.CreatedByUserId = item.TryGetProperty("created_by_user_id", out var cb) && cb.ValueKind != JsonValueKind.Null ? cb.GetInt64() : null;
         entity.CreatedAt = item.TryGetProperty("created_at", out var ca) ? ca.GetDateTime() : DateTime.Now;
         SetSyncProperties(entity, item);

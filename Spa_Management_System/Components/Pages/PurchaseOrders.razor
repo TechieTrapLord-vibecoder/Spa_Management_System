@@ -46,19 +46,19 @@ else
         <!-- Summary Cards -->
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
             <div style="padding: 1rem; background: #DCD8CE; border-radius: 12px; text-align: center;">
-                <div style="font-size: 1.5rem; font-weight: bold; color: var(--spa-warning);">@purchaseOrders.Count(p => p.Status == "pending")</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: #454F4A;">@purchaseOrders.Count(p => p.Status == "pending")</div>
                 <div style="font-size: 0.85rem; color: #454F4A;">Pending</div>
             </div>
             <div style="padding: 1rem; background: #DCD8CE; border-radius: 12px; text-align: center;">
-                <div style="font-size: 1.5rem; font-weight: bold; color: var(--spa-info);">@purchaseOrders.Count(p => p.Status == "ordered")</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: #454F4A;">@purchaseOrders.Count(p => p.Status == "ordered")</div>
                 <div style="font-size: 0.85rem; color: #454F4A;">Ordered</div>
             </div>
             <div style="padding: 1rem; background: #DCD8CE; border-radius: 12px; text-align: center;">
-                <div style="font-size: 1.5rem; font-weight: bold; color: var(--spa-accent);">@purchaseOrders.Count(p => p.Status == "in-transit")</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: #454F4A;">@purchaseOrders.Count(p => p.Status == "in-transit")</div>
                 <div style="font-size: 0.85rem; color: #454F4A;">In Transit</div>
             </div>
             <div style="padding: 1rem; background: #DCD8CE; border-radius: 12px; text-align: center;">
-                <div style="font-size: 1.5rem; font-weight: bold; color: var(--spa-success);">@purchaseOrders.Count(p => p.Status == "received")</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: #454F4A;">@purchaseOrders.Count(p => p.Status == "received")</div>
                 <div style="font-size: 0.85rem; color: #454F4A;">Received</div>
             </div>
         </div>
@@ -188,7 +188,7 @@ else
                 <div class="modal-body">
                     <div class="form-group">
                         <label>Supplier <span style="color: var(--spa-danger);">*</span></label>
-                        <select class="form-control" @bind="selectedSupplierId">
+                        <select class="form-control" value="@selectedSupplierId" @onchange="OnSupplierChanged">
                             <option value="0">-- Select Supplier --</option>
                             @foreach (var supplier in suppliers)
                             {
@@ -199,28 +199,43 @@ else
 
                     <h5 style="color: var(--spa-primary); margin: 1.5rem 0 1rem 0;"><span class="bi bi-box"></span> Order Items</h5>
                     
-                    <!-- Product Selection or Add New -->
-                    @if (!showAddProductForm)
+                    @if (selectedSupplierId == 0)
                     {
-                        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                            <select class="form-control" @bind="selectedProductId" style="flex: 2;">
-                                <option value="0">-- Select Existing Product --</option>
-                                @foreach (var product in products)
-                                {
-                                    <option value="@product.ProductId">@product.Name (@product.Sku) - ₱@product.CostPrice.ToString("N2")</option>
-                                }
-                            </select>
-                            <input type="number" class="form-control" @bind="itemQty" placeholder="Qty" min="1" style="width: 100px;" />
-                            <button class="btn btn-secondary" @onclick="AddItemToOrder" disabled="@(selectedProductId == 0)">
-                                <span class="bi bi-plus"></span> Add
-                            </button>
-                        </div>
-                        <div style="margin-bottom: 1rem;">
-                            <button class="btn btn-sm btn-outline" @onclick="ShowAddProductForm" style="font-size: 0.85rem;">
-                                <span class="bi bi-plus-circle"></span> Product not in list? Add New Product
-                            </button>
+                        <div class="alert alert-info" style="margin-bottom: 1rem;">
+                            <span class="bi bi-info-circle"></span> Please select a supplier first to see available products.
                         </div>
                     }
+                    else
+                    {
+                        <!-- Product Selection or Add New -->
+                        @if (!showAddProductForm)
+                        {
+                            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                <select class="form-control" @bind="selectedProductId" style="flex: 2;">
+                                    <option value="0">-- Select Product from @(suppliers.FirstOrDefault(s => s.SupplierId == selectedSupplierId)?.Name ?? "Supplier") --</option>
+                                    @foreach (var sp in supplierProductsForPO)
+                                    {
+                                        <option value="@sp.ProductId">@sp.Product?.Name (@sp.Product?.Sku) - ₱@sp.SupplierPrice.ToString("N2")</option>
+                                    }
+                                </select>
+                                <input type="number" class="form-control" @bind="itemQty" placeholder="Qty" min="1" style="width: 100px;" />
+                                <button class="btn btn-secondary" @onclick="AddItemToOrder" disabled="@(selectedProductId == 0)">
+                                    <span class="bi bi-plus"></span> Add
+                                </button>
+                            </div>
+                            @if (!supplierProductsForPO.Any())
+                            {
+                                <div class="alert alert-warning" style="margin-bottom: 0.5rem;">
+                                    <span class="bi bi-exclamation-triangle"></span> No products assigned to this supplier yet. 
+                                    <a href="/suppliers" style="color: var(--spa-primary); text-decoration: underline;">Manage supplier products</a> or add a new product below.
+                                </div>
+                            }
+                            <div style="margin-bottom: 1rem;">
+                                <button class="btn btn-sm btn-outline" @onclick="ShowAddProductForm" style="font-size: 0.85rem;">
+                                    <span class="bi bi-plus-circle"></span> Product not in list? Add New Product
+                                </button>
+                            </div>
+                        }
                     else
                     {
                         <!-- Add New Product Form -->
@@ -267,6 +282,7 @@ else
                             </button>
                         </div>
                     }
+                    } @* End of selectedSupplierId check *@
 
                     @if (orderItems.Any())
                     {
@@ -401,6 +417,7 @@ else
     private List<PurchaseOrder> filteredOrders = new();
     private List<Supplier> suppliers = new();
     private List<Product> products = new();
+    private List<SupplierProduct> supplierProductsForPO = new();
 
     // Pagination and sorting
     private string searchTerm = "";
@@ -446,7 +463,7 @@ else
                 .OrderByDescending(p => p.CreatedAt)
                 .ToListAsync();
 
-            suppliers = await DbContext.Suppliers.OrderBy(s => s.Name).ToListAsync();
+            suppliers = await DbContext.Suppliers.Where(s => !s.IsArchived).OrderBy(s => s.Name).ToListAsync();
             products = await DbContext.Products.Where(p => p.Active).OrderBy(p => p.Name).ToListAsync();
 
             ApplyFilter();
@@ -458,6 +475,29 @@ else
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private async Task OnSupplierChanged(ChangeEventArgs e)
+    {
+        if (long.TryParse(e.Value?.ToString(), out var supplierId))
+        {
+            selectedSupplierId = supplierId;
+            selectedProductId = 0;
+            
+            if (supplierId > 0)
+            {
+                // Load products for this supplier
+                supplierProductsForPO = await DbContext.SupplierProducts
+                    .Include(sp => sp.Product)
+                    .Where(sp => sp.SupplierId == supplierId && sp.IsActive && sp.Product!.Active)
+                    .OrderBy(sp => sp.Product!.Name)
+                    .ToListAsync();
+            }
+            else
+            {
+                supplierProductsForPO = new();
+            }
         }
     }
 
@@ -569,6 +609,7 @@ else
         selectedProductId = 0;
         itemQty = 1;
         orderItems.Clear();
+        supplierProductsForPO = new();
         dialogError = null;
         showAddProductForm = false;
         ResetNewProductFields();
@@ -634,6 +675,25 @@ else
             DbContext.Products.Add(newProduct);
             await DbContext.SaveChangesAsync();
 
+            // Also add this product to the SupplierProduct table for the selected supplier
+            if (selectedSupplierId > 0)
+            {
+                var supplierProduct = new SupplierProduct
+                {
+                    SupplierId = selectedSupplierId,
+                    ProductId = newProduct.ProductId,
+                    SupplierPrice = newProductCostPrice,
+                    IsActive = true,
+                    CreatedAt = DateTime.Now
+                };
+                DbContext.SupplierProducts.Add(supplierProduct);
+                await DbContext.SaveChangesAsync();
+
+                // Add to the current supplier products list
+                supplierProduct.Product = newProduct;
+                supplierProductsForPO.Add(supplierProduct);
+            }
+
             // Add to products list
             products.Add(newProduct);
 
@@ -669,7 +729,13 @@ else
     {
         if (selectedProductId == 0 || itemQty <= 0) return;
 
-        var product = products.First(p => p.ProductId == selectedProductId);
+        // Get the supplier-specific product info (with supplier price)
+        var supplierProduct = supplierProductsForPO.FirstOrDefault(sp => sp.ProductId == selectedProductId);
+        if (supplierProduct?.Product == null) return;
+
+        var product = supplierProduct.Product;
+        var supplierPrice = supplierProduct.SupplierPrice;
+
         var existing = orderItems.FirstOrDefault(i => i.Product.ProductId == selectedProductId);
         
         if (existing != null)
@@ -683,8 +749,8 @@ else
             {
                 Product = product,
                 Quantity = itemQty,
-                UnitCost = product.CostPrice,
-                LineTotal = itemQty * product.CostPrice
+                UnitCost = supplierPrice,  // Use the supplier-specific price
+                LineTotal = itemQty * supplierPrice
             });
         }
 

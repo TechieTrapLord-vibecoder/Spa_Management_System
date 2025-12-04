@@ -51,6 +51,14 @@ public class Service : ISyncable
     [Column("active")]
     public bool Active { get; set; } = true;
 
+    // Commission settings - fixed per service for all therapists
+    [MaxLength(20)]
+    [Column("commission_type")]
+    public string CommissionType { get; set; } = "percentage"; // 'percentage' or 'fixed'
+
+    [Column("commission_value", TypeName = "decimal(12,2)")]
+    public decimal CommissionValue { get; set; } = 0.00m; // e.g., 30 for 30%, or 100 for ₱100 fixed
+
     // Navigation properties
     [ForeignKey("ServiceCategoryId")]
     public virtual ServiceCategory? ServiceCategory { get; set; }

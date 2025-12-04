@@ -22,6 +22,7 @@ public class AppDbContext : DbContext
     public DbSet<Inventory> Inventories { get; set; }
     public DbSet<StockTransaction> StockTransactions { get; set; }
     public DbSet<Supplier> Suppliers { get; set; }
+    public DbSet<SupplierProduct> SupplierProducts { get; set; }
     public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
     public DbSet<PurchaseOrderItem> PurchaseOrderItems { get; set; }
     public DbSet<Appointment> Appointments { get; set; }
@@ -105,6 +106,23 @@ public class AppDbContext : DbContext
             .HasOne(i => i.Product)
             .WithOne(p => p.Inventory)
             .HasForeignKey<Inventory>(i => i.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // SupplierProduct: unique constraint on supplier + product combination
+        modelBuilder.Entity<SupplierProduct>()
+            .HasIndex(sp => new { sp.SupplierId, sp.ProductId })
+            .IsUnique();
+
+        modelBuilder.Entity<SupplierProduct>()
+            .HasOne(sp => sp.Supplier)
+            .WithMany(s => s.SupplierProducts)
+            .HasForeignKey(sp => sp.SupplierId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SupplierProduct>()
+            .HasOne(sp => sp.Product)
+            .WithMany(p => p.SupplierProducts)
+            .HasForeignKey(sp => sp.ProductId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

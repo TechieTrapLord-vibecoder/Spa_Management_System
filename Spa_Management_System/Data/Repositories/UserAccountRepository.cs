@@ -43,6 +43,8 @@ public class UserAccountRepository : Repository<UserAccount>, IUserAccountReposi
         return await _dbSet
             .Include(u => u.Employee)
                 .ThenInclude(e => e!.Person)
+            .Include(u => u.Employee)
+                .ThenInclude(e => e!.Role)
             .Where(u => u.IsActive)
             .ToListAsync();
     }
@@ -52,6 +54,8 @@ public class UserAccountRepository : Repository<UserAccount>, IUserAccountReposi
         return await _dbSet
             .Include(u => u.Employee)
                 .ThenInclude(e => e!.Person)
+            .Include(u => u.Employee)
+                .ThenInclude(e => e!.Role)
             .ToListAsync();
     }
 

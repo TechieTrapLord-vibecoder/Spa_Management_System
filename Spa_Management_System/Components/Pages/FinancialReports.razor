@@ -82,6 +82,11 @@ else
                     <div style="font-size: 0.8rem; opacity: 0.8;">@productsSold items sold</div>
                 </div>
                 <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                    <div style="font-size: 0.85rem; opacity: 0.9;">VAT Collected (12%)</div>
+                    <div style="font-size: 2rem; font-weight: bold;">₱@totalVatCollected.ToString("N2")</div>
+                    <div style="font-size: 0.8rem; opacity: 0.8;">to be remitted</div>
+                </div>
+                <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
                     <div style="font-size: 0.85rem; opacity: 0.9;">Commissions Paid</div>
                     <div style="font-size: 2rem; font-weight: bold;">₱@totalCommissions.ToString("N2")</div>
                     <div style="font-size: 0.8rem; opacity: 0.8;">to @therapistCount therapists</div>
@@ -480,6 +485,7 @@ else
     private decimal serviceRevenue = 0;
     private decimal productRevenue = 0;
     private decimal totalCommissions = 0;
+    private decimal totalVatCollected = 0;
     private int salesCount = 0;
     private int completedAppointments = 0;
     private int productsSold = 0;
@@ -525,6 +531,9 @@ else
                 .Include(s => s.SaleItems).ThenInclude(si => si.Product)
                 .Where(s => paidSaleIds.Contains(s.SaleId))
                 .ToListAsync();
+
+            // VAT Collected = Sum of tax amounts from paid sales
+            totalVatCollected = paidSales.Sum(s => s.TaxAmount);
 
             // Service Revenue = Sum of service items in paid sales
             serviceRevenue = paidSales

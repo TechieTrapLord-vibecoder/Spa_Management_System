@@ -33,6 +33,19 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   box-sizing: border-box;
 }
 
+/* Remove focus outline from non-interactive elements */
+h1:focus,
+h2:focus,
+h3:focus,
+h4:focus,
+h5:focus,
+h6:focus,
+div:focus,
+span:focus,
+p:focus {
+  outline: none;
+}
+
 html,
 body {
   font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;

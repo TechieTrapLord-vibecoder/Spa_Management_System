@@ -1,0 +1,375 @@
+@page "/vat-report"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Data
+@using Spa_Management_System.Models
+@using Spa_Management_System.Services
+@inject IDbContextFactory<AppDbContext> DbContextFactory
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>VAT Report - Kaye Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-receipt-cutoff"></span> VAT Summary Report</h3>
+                <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">For BIR Quarterly VAT Filing</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-outline" @onclick="PrintReport">
+                    <span class="bi bi-printer"></span> Print
+                </button>
+                <button class="btn btn-outline" @onclick="ExportToExcel">
+                    <span class="bi bi-file-earmark-excel"></span> Export
+                </button>
+            </div>
+        </div>
+
+        <!-- Period Selection -->
+        <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: end;">
+            <div class="form-group" style="margin: 0;">
+                <label class="form-label">Year</label>
+                <select class="form-control" @bind="selectedYear" @bind:after="LoadVatData" style="min-width: 120px;">
+                    @for (int year = DateTime.Today.Year; year >= DateTime.Today.Year - 3; year--)
+                    {
+                        <option value="@year">@year</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label class="form-label">Quarter</label>
+                <select class="form-control" @bind="selectedQuarter" @bind:after="LoadVatData" style="min-width: 150px;">
+                    <option value="1">Q1 (Jan - Mar)</option>
+                    <option value="2">Q2 (Apr - Jun)</option>
+                    <option value="3">Q3 (Jul - Sep)</option>
+                    <option value="4">Q4 (Oct - Dec)</option>
+                </select>
+            </div>
+            <div>
+                <span class="badge badge-info" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+                    @periodStart.ToString("MMM dd") - @periodEnd.ToString("MMM dd, yyyy")
+                </span>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="text-align: center; padding: 3rem;">
+                <div class="loading"></div>
+                <p style="color: var(--spa-text-light); margin-top: 1rem;">Loading VAT data...</p>
+            </div>
+        }
+        else
+        {
+            <!-- VAT Summary Cards -->
+            <div id="vatReportContent">
+                <div style="text-align: center; margin-bottom: 2rem; padding: 1rem; background: var(--spa-light); border-radius: 12px;">
+                    <h2 style="color: var(--spa-primary); margin: 0;">Kaye Spa</h2>
+                    <p style="margin: 0.25rem 0; color: var(--spa-text-light);">VAT Summary Report</p>
+                    <p style="margin: 0; font-weight: 600;">Q@selectedQuarter @selectedYear (@periodStart.ToString("MMMM d") - @periodEnd.ToString("MMMM d, yyyy"))</p>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-bottom: 2rem;">
+                    <!-- Output VAT -->
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: var(--spa-primary);">
+                        <div style="font-size: 0.85rem; color: var(--spa-text-light);"><span class="bi bi-arrow-up-circle"></span> Output VAT (Sales)</div>
+                        <div style="font-size: 2rem; font-weight: bold;">₱@outputVat.ToString("N2")</div>
+                        <div style="font-size: 0.8rem; color: var(--spa-text-light);">VAT collected from customers</div>
+                    </div>
+
+                    <!-- Input VAT -->
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: var(--spa-primary);">
+                        <div style="font-size: 0.85rem; color: var(--spa-text-light);"><span class="bi bi-arrow-down-circle"></span> Input VAT (Purchases)</div>
+                        <div style="font-size: 2rem; font-weight: bold;">₱@inputVat.ToString("N2")</div>
+                        <div style="font-size: 0.8rem; color: var(--spa-text-light);">VAT paid on purchases</div>
+                    </div>
+
+                    <!-- Net VAT -->
+                    <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: var(--spa-primary);">
+                        <div style="font-size: 0.85rem; color: var(--spa-text-light);"><span class="bi bi-calculator"></span> Net VAT Payable</div>
+                        <div style="font-size: 2rem; font-weight: bold;">₱@netVatPayable.ToString("N2")</div>
+                        <div style="font-size: 0.8rem; color: var(--spa-text-light);">@(netVatPayable >= 0 ? "Amount due to BIR" : "Excess input VAT")</div>
+                    </div>
+                </div>
+
+                <!-- Sales Breakdown -->
+                <div style="margin-bottom: 2rem;">
+                    <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-cart-check"></span> Output VAT - Sales Breakdown</h4>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Description</th>
+                                <th style="text-align: right;">Gross Sales</th>
+                                <th style="text-align: right;">VAT Rate</th>
+                                <th style="text-align: right;">VAT Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Taxable Sales (Services)</td>
+                                <td style="text-align: right;">₱@taxableServiceSales.ToString("N2")</td>
+                                <td style="text-align: right;">12%</td>
+                                <td style="text-align: right;">₱@((taxableServiceSales * 0.12m).ToString("N2"))</td>
+                            </tr>
+                            <tr>
+                                <td>Taxable Sales (Products)</td>
+                                <td style="text-align: right;">₱@taxableProductSales.ToString("N2")</td>
+                                <td style="text-align: right;">12%</td>
+                                <td style="text-align: right;">₱@((taxableProductSales * 0.12m).ToString("N2"))</td>
+                            </tr>
+                        </tbody>
+                        <tfoot style="background: var(--spa-secondary);">
+                            <tr>
+                                <td style="font-weight: bold;">Total Taxable Sales</td>
+                                <td style="text-align: right; font-weight: bold;">₱@totalTaxableSales.ToString("N2")</td>
+                                <td></td>
+                                <td style="text-align: right; font-weight: bold; color: var(--spa-success);">₱@outputVat.ToString("N2")</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Purchases Breakdown -->
+                <div style="margin-bottom: 2rem;">
+                    <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-box-seam"></span> Input VAT - Purchases Breakdown</h4>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Description</th>
+                                <th style="text-align: right;">Gross Amount</th>
+                                <th style="text-align: right;">VAT Rate</th>
+                                <th style="text-align: right;">VAT Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Inventory Purchases</td>
+                                <td style="text-align: right;">₱@inventoryPurchases.ToString("N2")</td>
+                                <td style="text-align: right;">12%</td>
+                                <td style="text-align: right;">₱@((inventoryPurchases * 0.12m / 1.12m).ToString("N2"))</td>
+                            </tr>
+                            <tr>
+                                <td>Operating Expenses (VAT-able)</td>
+                                <td style="text-align: right;">₱@vatableExpenses.ToString("N2")</td>
+                                <td style="text-align: right;">12%</td>
+                                <td style="text-align: right;">₱@((vatableExpenses * 0.12m / 1.12m).ToString("N2"))</td>
+                            </tr>
+                        </tbody>
+                        <tfoot style="background: var(--spa-secondary);">
+                            <tr>
+                                <td style="font-weight: bold;">Total Input VAT</td>
+                                <td style="text-align: right; font-weight: bold;">₱@((inventoryPurchases + vatableExpenses).ToString("N2"))</td>
+                                <td></td>
+                                <td style="text-align: right; font-weight: bold; color: var(--spa-danger);">₱@inputVat.ToString("N2")</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- VAT Computation Summary -->
+                <div style="background: var(--spa-light); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem;">
+                    <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-calculator"></span> VAT Computation Summary</h4>
+                    <table style="width: 100%; max-width: 500px;">
+                        <tr>
+                            <td style="padding: 0.5rem 0;">Output VAT (from Sales)</td>
+                            <td style="text-align: right; padding: 0.5rem 0;">₱@outputVat.ToString("N2")</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 0.5rem 0;">Less: Input VAT (from Purchases)</td>
+                            <td style="text-align: right; padding: 0.5rem 0;">(₱@inputVat.ToString("N2"))</td>
+                        </tr>
+                        <tr style="border-top: 2px solid var(--spa-primary); font-weight: bold; font-size: 1.1rem;">
+                            <td style="padding: 0.75rem 0;">@(netVatPayable >= 0 ? "VAT Payable to BIR" : "Excess Input VAT (Carry Forward)")</td>
+                            <td style="text-align: right; padding: 0.75rem 0; color: @(netVatPayable >= 0 ? "var(--spa-danger)" : "var(--spa-success)");">
+                                ₱@Math.Abs(netVatPayable).ToString("N2")
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- BIR Filing Reminder -->
+                <div style="background: #e7f3ff; border: 1px solid #2196F3; border-radius: 8px; padding: 1rem;">
+                    <h5 style="color: #1976D2; margin-bottom: 0.5rem;"><span class="bi bi-info-circle"></span> BIR Filing Reminder</h5>
+                    <p style="margin: 0; color: #1976D2;">
+                        <strong>Deadline:</strong> File <strong>BIR Form 2550Q</strong> on or before the <strong>25th day</strong> of the month following the end of the quarter.
+                        <br>For Q@selectedQuarter @selectedYear, the deadline is: <strong>@GetFilingDeadline().ToString("MMMM dd, yyyy")</strong>
+                    </p>
+                </div>
+
+                <!-- Sales Details -->
+                @if (salesDetails.Any())
+                {
+                    <div style="margin-top: 2rem;">
+                        <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-list-ul"></span> Sales Details (with VAT)</h4>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Sale #</th>
+                                    <th>Customer</th>
+                                    <th style="text-align: right;">Subtotal</th>
+                                    <th style="text-align: right;">VAT</th>
+                                    <th style="text-align: right;">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var sale in salesDetails.Take(20))
+                                {
+                                    <tr>
+                                        <td>@sale.CreatedAt.ToString("MMM dd, yyyy")</td>
+                                        <td><code>@sale.SaleNumber</code></td>
+                                        <td>@(sale.Customer?.Person?.FirstName ?? "Walk-in") @(sale.Customer?.Person?.LastName ?? "")</td>
+                                        <td style="text-align: right;">₱@sale.Subtotal.ToString("N2")</td>
+                                        <td style="text-align: right;">₱@sale.TaxAmount.ToString("N2")</td>
+                                        <td style="text-align: right;">₱@sale.TotalAmount.ToString("N2")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        @if (salesDetails.Count > 20)
+                        {
+                            <p style="color: var(--spa-text-light); text-align: center; margin-top: 0.5rem;">
+                                Showing 20 of @salesDetails.Count sales. Export for complete list.
+                            </p>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private int selectedYear = DateTime.Today.Year;
+    private int selectedQuarter = (DateTime.Today.Month - 1) / 3 + 1;
+
+    private DateTime periodStart => new DateTime(selectedYear, (selectedQuarter - 1) * 3 + 1, 1);
+    private DateTime periodEnd => periodStart.AddMonths(3).AddDays(-1);
+
+    // Output VAT (Sales)
+    private decimal taxableServiceSales = 0;
+    private decimal taxableProductSales = 0;
+    private decimal totalTaxableSales => taxableServiceSales + taxableProductSales;
+    private decimal outputVat = 0;
+
+    // Input VAT (Purchases)
+    private decimal inventoryPurchases = 0;
+    private decimal vatableExpenses = 0;
+    private decimal inputVat = 0;
+
+    // Net VAT
+    private decimal netVatPayable => outputVat - inputVat;
+
+    private List<Sale> salesDetails = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadVatData();
+    }
+
+    private async Task LoadVatData()
+    {
+        isLoading = true;
+
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+
+            var periodEndPlusOne = periodEnd.AddDays(1);
+
+            // Get all paid sales in the quarter
+            var sales = await context.Sales
+                .AsNoTracking()
+                .Include(s => s.Customer).ThenInclude(c => c!.Person)
+                .Include(s => s.SaleItems)
+                .Where(s => s.PaymentStatus == "paid" && s.CreatedAt >= periodStart && s.CreatedAt < periodEndPlusOne)
+                .OrderByDescending(s => s.CreatedAt)
+                .ToListAsync();
+
+            salesDetails = sales;
+
+            // Calculate service vs product sales (from subtotals, before VAT)
+            taxableServiceSales = 0;
+            taxableProductSales = 0;
+
+            foreach (var sale in sales)
+            {
+                foreach (var item in sale.SaleItems)
+                {
+                    if (item.ItemType == "service")
+                        taxableServiceSales += item.LineTotal;
+                    else if (item.ItemType == "product")
+                        taxableProductSales += item.LineTotal;
+                }
+            }
+
+            // Output VAT = Total VAT collected from sales
+            outputVat = sales.Sum(s => s.TaxAmount);
+
+            // Get inventory purchases (assuming VAT-inclusive pricing from suppliers)
+            var purchaseOrders = await context.PurchaseOrders
+                .AsNoTracking()
+                .Include(po => po.PurchaseOrderItems)
+                .Where(po => po.CreatedAt >= periodStart && po.CreatedAt < periodEndPlusOne)
+                .ToListAsync();
+
+            inventoryPurchases = purchaseOrders.Sum(po => po.PurchaseOrderItems.Sum(i => i.QtyOrdered * i.UnitCost));
+
+            // Get VAT-able expenses (utilities, supplies, etc. - assume some categories are VAT-able)
+            var expenses = await context.Expenses
+                .AsNoTracking()
+                .Where(e => e.ExpenseDate >= periodStart && e.ExpenseDate < periodEndPlusOne && e.Status == "paid")
+                .ToListAsync();
+
+            // Categories typically with VAT: Utilities, Supplies, Rent, Professional Services
+            var vatableCategories = new[] { "Utilities", "Supplies", "Rent", "Professional Services", "Maintenance", "Equipment" };
+            vatableExpenses = expenses
+                .Where(e => vatableCategories.Any(c => e.Category.Contains(c, StringComparison.OrdinalIgnoreCase)))
+                .Sum(e => e.Amount);
+
+            // Input VAT = VAT on purchases (assuming 12% VAT inclusive)
+            inputVat = (inventoryPurchases * 0.12m / 1.12m) + (vatableExpenses * 0.12m / 1.12m);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading VAT data: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private DateTime GetFilingDeadline()
+    {
+        // Filing deadline is 25th of the month after quarter ends
+        var deadlineMonth = selectedQuarter * 3 + 1;
+        var deadlineYear = selectedYear;
+        
+        if (deadlineMonth > 12)
+        {
+            deadlineMonth = 1;
+            deadlineYear++;
+        }
+
+        return new DateTime(deadlineYear, deadlineMonth, 25);
+    }
+
+    private async Task PrintReport()
+    {
+        await JS.InvokeVoidAsync("print");
+    }
+
+    private async Task ExportToExcel()
+    {
+        await JS.InvokeVoidAsync("exportUtils.exportTableToExcel", "vatReportContent", $"VAT_Report_Q{selectedQuarter}_{selectedYear}", "VAT Report");
+    }
+}

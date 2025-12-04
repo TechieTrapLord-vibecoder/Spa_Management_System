@@ -56,6 +56,10 @@ else
                     <h3 style="margin: 0.25rem 0 0 0;">₱@sales.Sum(s => s.TotalAmount).ToString("N0")</h3>
                 </div>
                 <div style="padding: 1rem; background: #DCD8CE; border-radius: 10px; color: #454F4A;">
+                    <p style="margin: 0; opacity: 0.9; font-size: 0.8rem;">VAT Collected</p>
+                    <h3 style="margin: 0.25rem 0 0 0;">₱@sales.Sum(s => s.TaxAmount).ToString("N0")</h3>
+                </div>
+                <div style="padding: 1rem; background: #DCD8CE; border-radius: 10px; color: #454F4A;">
                     <p style="margin: 0; opacity: 0.9; font-size: 0.8rem;">Paid</p>
                     <h3 style="margin: 0.25rem 0 0 0;">@sales.Count(s => s.PaymentStatus == "paid")</h3>
                 </div>
@@ -260,11 +264,12 @@ else
                                         <tr>
                                             <td colspan="3"></td>
                                             <td style="text-align: right; font-weight: 600; padding: 0.75rem;">Subtotal:</td>
-                                            <td style="text-align: right; font-weight: 600; padding: 0.75rem;">₱@selectedSale.SaleItems.Sum(i => i.LineTotal).ToString("N2")</td>
+                                            <td style="text-align: right; font-weight: 600; padding: 0.75rem;">₱@(selectedSale.Subtotal > 0 ? selectedSale.Subtotal : selectedSale.SaleItems.Sum(i => i.LineTotal)).ToString("N2")</td>
                                         </tr>
                                         @{
-                                            var discount = selectedSale.SaleItems.Sum(i => i.LineTotal) - selectedSale.TotalAmount;
-                                            if (discount > 0)
+                                            var itemsTotal = selectedSale.SaleItems.Sum(i => i.LineTotal);
+                                            var discount = itemsTotal - selectedSale.Subtotal;
+                                            if (selectedSale.Subtotal > 0 && discount > 0)
                                             {
                                                 <tr>
                                                     <td colspan="3"></td>
@@ -272,6 +277,14 @@ else
                                                     <td style="text-align: right; color: #dc3545; padding: 0.75rem;">-₱@discount.ToString("N2")</td>
                                                 </tr>
                                             }
+                                        }
+                                        @if (selectedSale.TaxAmount > 0)
+                                        {
+                                            <tr>
+                                                <td colspan="3"></td>
+                                                <td style="text-align: right; color: #17a2b8; padding: 0.75rem;">VAT (@selectedSale.TaxRate.ToString("N0")%):</td>
+                                                <td style="text-align: right; color: #17a2b8; padding: 0.75rem;">₱@selectedSale.TaxAmount.ToString("N2")</td>
+                                            </tr>
                                         }
                                         <tr style="font-size: 1.1rem;">
                                             <td colspan="3"></td>
@@ -407,7 +420,7 @@ else
         {
             var query = DbContext.Sales
                 .Include(s => s.Customer)
-                    .ThenInclude(c => c.Person)
+                    .ThenInclude(c => c!.Person)
                 .Include(s => s.SaleItems)
                 .Include(s => s.Payments)
                 .Where(s => s.CreatedAt.Date >= startDate.Date && s.CreatedAt.Date <= endDate.Date);

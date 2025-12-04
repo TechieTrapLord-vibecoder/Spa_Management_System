@@ -41,28 +41,29 @@ public class AccountingService : IAccountingService
     // Standard Chart of Accounts codes - matching existing LedgerAccount table
     private static class AccountCodes
     {
-        // Assets
-        public const string CASH = "1000";              // Cash on Hand
-        public const string ACCOUNTS_RECEIVABLE = "1100"; // Accounts Receivable
-        public const string INVENTORY = "1200";          // Inventory
+        // Assets (1xxx)
+        public const string CASH = "1100";              // Cash on Hand
+        public const string ACCOUNTS_RECEIVABLE = "1200"; // Accounts Receivable
+        public const string INVENTORY = "1300";          // Inventory
         
-        // Liabilities
-        public const string ACCOUNTS_PAYABLE = "2000";   // Accounts Payable
-        public const string SALARIES_PAYABLE = "2100";   // Salaries Payable
+        // Liabilities (2xxx)
+        public const string ACCOUNTS_PAYABLE = "2100";   // Accounts Payable
+        public const string SALARIES_PAYABLE = "2200";   // Salaries Payable
+        public const string VAT_PAYABLE = "2300";        // VAT Payable (Output VAT)
         
-        // Revenue
-        public const string SERVICE_REVENUE = "4000";    // Service Revenue
-        public const string PRODUCT_REVENUE = "4100";    // Product Sales
+        // Revenue (4xxx)
+        public const string SERVICE_REVENUE = "4100";    // Service Revenue
+        public const string PRODUCT_REVENUE = "4200";    // Product Sales
         
-        // Expenses
-        public const string SALARY_EXPENSE = "5000";     // Salary Expense
-        public const string COMMISSION_EXPENSE = "5100"; // Commission Expense
-        public const string RENT_EXPENSE = "5200";       // Rent Expense
-        public const string UTILITIES_EXPENSE = "5300";  // Utilities Expense
+        // Expenses (5xxx)
+        public const string SALARY_EXPENSE = "5300";     // Salaries Expense
+        public const string COMMISSION_EXPENSE = "5600"; // Commission Expense
+        public const string RENT_EXPENSE = "5100";       // Rent Expense
+        public const string UTILITIES_EXPENSE = "5200";  // Utilities Expense
         public const string SUPPLIES_EXPENSE = "5400";   // Supplies Expense
-        public const string COST_OF_GOODS_SOLD = "5500"; // Cost of Goods Sold
-        public const string MARKETING_EXPENSE = "5600"; // Marketing Expense
-        public const string MAINTENANCE_EXPENSE = "5700"; // Maintenance Expense
+        public const string COST_OF_GOODS_SOLD = "5700"; // Cost of Goods Sold
+        public const string MARKETING_EXPENSE = "5500";  // Marketing Expense
+        public const string MAINTENANCE_EXPENSE = "5750"; // Maintenance Expense
         public const string INSURANCE_EXPENSE = "5800"; // Insurance Expense
         public const string TRANSPORT_EXPENSE = "5900"; // Transportation Expense
         public const string EQUIPMENT_EXPENSE = "6000"; // Equipment Expense
@@ -194,6 +195,18 @@ public class AccountingService : IAccountingService
                     Debit = 0,
                     Credit = productTotal,
                     LineMemo = "Product sales revenue"
+                });
+            }
+
+            // Credit: VAT Payable (Output VAT collected from customer)
+            if (saleWithDetails.TaxAmount > 0)
+            {
+                revenueEntry.JournalEntryLines.Add(new JournalEntryLine
+                {
+                    LedgerAccountId = accounts["VAT_PAYABLE"],
+                    Debit = 0,
+                    Credit = saleWithDetails.TaxAmount,
+                    LineMemo = $"VAT collected ({saleWithDetails.TaxRate}%)"
                 });
             }
 
@@ -459,6 +472,7 @@ public class AccountingService : IAccountingService
             // Liabilities
             (AccountCodes.ACCOUNTS_PAYABLE, "Accounts Payable", "liability", "credit", "AP"),
             (AccountCodes.SALARIES_PAYABLE, "Salaries Payable", "liability", "credit", "SALARIES_PAYABLE"),
+            (AccountCodes.VAT_PAYABLE, "VAT Payable", "liability", "credit", "VAT_PAYABLE"),
             // Revenue
             (AccountCodes.SERVICE_REVENUE, "Service Revenue", "revenue", "credit", "SERVICE_REVENUE"),
             (AccountCodes.PRODUCT_REVENUE, "Product Revenue", "revenue", "credit", "PRODUCT_REVENUE"),

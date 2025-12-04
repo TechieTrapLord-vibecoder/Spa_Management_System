@@ -37,6 +37,15 @@ public class Sale : ISyncable
     [Column("sale_number")]
     public string? SaleNumber { get; set; }
 
+    [Column("subtotal", TypeName = "decimal(12,2)")]
+    public decimal Subtotal { get; set; } = 0.00m;
+
+    [Column("tax_rate", TypeName = "decimal(5,2)")]
+    public decimal TaxRate { get; set; } = 12.00m; // Default 12% VAT
+
+    [Column("tax_amount", TypeName = "decimal(12,2)")]
+    public decimal TaxAmount { get; set; } = 0.00m;
+
     [Column("total_amount", TypeName = "decimal(12,2)")]
     public decimal TotalAmount { get; set; } = 0.00m;
 

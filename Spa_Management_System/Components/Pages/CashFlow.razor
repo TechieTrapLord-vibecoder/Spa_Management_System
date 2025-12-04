@@ -1,0 +1,538 @@
+@page "/cash-flow"
+@using Microsoft.EntityFrameworkCore
+@using Spa_Management_System.Services
+@using Spa_Management_System.Models
+@using Spa_Management_System.Data
+@inject IAuthStateService AuthState
+@inject NavigationManager Navigation
+@inject AppDbContext DbContext
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Cash Flow - Serenity Spa</PageTitle>
+
+@if (!AuthState.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+            <div>
+                <h3 class="card-title" style="margin: 0;"><span class="bi bi-cash-stack"></span> Cash Flow Statement</h3>
+                <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">
+                    Track money coming in and going out of your business
+                </p>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-outline-secondary" @onclick="PrintReport" title="Print">
+                    <span class="bi bi-printer"></span>
+                </button>
+                <button class="btn btn-outline-danger" @onclick="ExportToPdf" title="Export PDF">
+                    <span class="bi bi-file-pdf"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Date Range Filter -->
+        <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center;">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="font-size: 0.85rem;">From</label>
+                <input type="date" class="form-control" @bind="startDate" @bind:after="LoadData" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="font-size: 0.85rem;">To</label>
+                <input type="date" class="form-control" @bind="endDate" @bind:after="LoadData" />
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: flex-end; padding-top: 1.25rem;">
+                <button class="btn btn-outline" @onclick="SetToday">Today</button>
+                <button class="btn btn-outline" @onclick="SetWeek">This Week</button>
+                <button class="btn btn-outline" @onclick="SetMonth">This Month</button>
+                <button class="btn btn-outline" @onclick="SetLastMonth">Last Month</button>
+                <button class="btn btn-outline" @onclick="SetYear">This Year</button>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="padding: 2rem; text-align: center;">
+                <div class="loading"></div>
+                <p style="margin-top: 1rem; color: var(--spa-text-light);">Loading cash flow data...</p>
+            </div>
+        }
+        else
+        {
+            <!-- Cash Position Cards -->
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                <div style="padding: 1.25rem; background: linear-gradient(135deg, #454F4A 0%, #5a665f 100%); border-radius: 12px; color: white;">
+                    <div style="font-size: 0.85rem; opacity: 0.9;"><span class="bi bi-wallet"></span> Opening Cash Balance</div>
+                    <div style="font-size: 1.75rem; font-weight: bold;">₱@openingCashBalance.ToString("N2")</div>
+                    <div style="font-size: 0.8rem; opacity: 0.8;">as of @startDate.ToString("MMM dd, yyyy")</div>
+                </div>
+                <div style="padding: 1.25rem; background: linear-gradient(135deg, @(endingCashBalance >= openingCashBalance ? "#28a745" : "#dc3545") 0%, @(endingCashBalance >= openingCashBalance ? "#34c759" : "#ff6b6b") 100%); border-radius: 12px; color: white;">
+                    <div style="font-size: 0.85rem; opacity: 0.9;"><span class="bi bi-wallet-fill"></span> Ending Cash Balance</div>
+                    <div style="font-size: 1.75rem; font-weight: bold;">₱@endingCashBalance.ToString("N2")</div>
+                    <div style="font-size: 0.8rem; opacity: 0.8;">as of @endDate.ToString("MMM dd, yyyy")</div>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: var(--spa-primary);">
+                    <div style="font-size: 0.85rem; color: var(--spa-text-light);"><span class="bi bi-arrow-down-circle"></span> Cash Inflows</div>
+                    <div style="font-size: 2rem; font-weight: bold;">₱@totalInflows.ToString("N2")</div>
+                    <div style="font-size: 0.8rem; color: var(--spa-text-light);">from @inflowTransactions transactions</div>
+                </div>
+                <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: var(--spa-primary);">
+                    <div style="font-size: 0.85rem; color: var(--spa-text-light);"><span class="bi bi-arrow-up-circle"></span> Cash Outflows</div>
+                    <div style="font-size: 2rem; font-weight: bold;">₱@totalOutflows.ToString("N2")</div>
+                    <div style="font-size: 0.8rem; color: var(--spa-text-light);">from @outflowTransactions transactions</div>
+                </div>
+                <div style="padding: 1.5rem; background: #DCD8CE; border-radius: 12px; color: var(--spa-primary);">
+                    <div style="font-size: 0.85rem; color: var(--spa-text-light);"><span class="bi bi-wallet2"></span> Net Cash Flow</div>
+                    <div style="font-size: 2rem; font-weight: bold;">@(netCashFlow >= 0 ? "+" : "")₱@netCashFlow.ToString("N2")</div>
+                    <div style="font-size: 0.8rem; color: var(--spa-text-light);">@(netCashFlow >= 0 ? "Positive flow" : "Negative flow")</div>
+                </div>
+            </div>
+
+            <!-- Cash Flow Details -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+                <!-- Inflows Section -->
+                <div style="background: #DCD8CE; border-radius: 12px; padding: 1.5rem;">
+                    <h4 style="color: var(--spa-primary); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span class="bi bi-arrow-down-circle-fill"></span> Cash Inflows
+                    </h4>
+                    <table class="data-table" style="margin-bottom: 0;">
+                        <tbody>
+                            <tr>
+                                <td><span class="bi bi-cart-check"></span> Product Sales</td>
+                                <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">₱@productSalesInflow.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td><span class="bi bi-heart"></span> Service Revenue</td>
+                                <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">₱@serviceRevenueInflow.ToString("N2")</td>
+                            </tr>
+                            <tr style="background: rgba(0,0,0,0.05);">
+                                <td style="font-weight: bold;">Total Inflows</td>
+                                <td style="text-align: right; font-weight: bold; color: var(--spa-primary);">₱@totalInflows.ToString("N2")</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Outflows Section -->
+                <div style="background: #DCD8CE; border-radius: 12px; padding: 1.5rem;">
+                    <h4 style="color: var(--spa-primary); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span class="bi bi-arrow-up-circle-fill"></span> Cash Outflows
+                    </h4>
+                    <table class="data-table" style="margin-bottom: 0;">
+                        <tbody>
+                            <tr>
+                                <td><span class="bi bi-receipt"></span> Operating Expenses</td>
+                                <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">₱@expensesOutflow.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td><span class="bi bi-people"></span> Payroll (Net Pay)</td>
+                                <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">₱@payrollOutflow.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td><span class="bi bi-percent"></span> Commissions</td>
+                                <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">₱@commissionsOutflow.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td><span class="bi bi-box-seam"></span> Inventory Purchases</td>
+                                <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">₱@purchasesOutflow.ToString("N2")</td>
+                            </tr>
+                            <tr style="background: rgba(0,0,0,0.05);">
+                                <td style="font-weight: bold;">Total Outflows</td>
+                                <td style="text-align: right; font-weight: bold; color: var(--spa-primary);">₱@totalOutflows.ToString("N2")</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Expense Breakdown by Category -->
+            <div style="margin-bottom: 2rem;">
+                <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-pie-chart"></span> Expense Breakdown by Category</h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                    @foreach (var category in expensesByCategory.OrderByDescending(e => e.Value))
+                    {
+                        var percentage = totalOutflows > 0 ? (category.Value / totalOutflows * 100) : 0;
+                        <div style="padding: 1rem; background: #DCD8CE; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 0.8rem; color: var(--spa-text-light);">@category.Key</div>
+                            <div style="font-size: 1.25rem; font-weight: bold; color: var(--spa-primary);">₱@category.Value.ToString("N0")</div>
+                            <div style="font-size: 0.75rem; color: var(--spa-text-light);">@percentage.ToString("N1")%</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Daily Cash Flow Table -->
+            <div>
+                <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-calendar3"></span> Daily Cash Flow</h4>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th style="text-align: right;">Inflows</th>
+                                <th style="text-align: right;">Outflows</th>
+                                <th style="text-align: right;">Net Flow</th>
+                                <th style="text-align: right;">Running Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{
+                                decimal runningBalance = openingCashBalance;
+                            }
+                            <!-- Opening Balance Row -->
+                            <tr style="background: rgba(69, 79, 74, 0.1); font-style: italic;">
+                                <td><span class="bi bi-arrow-right-circle"></span> Opening Balance</td>
+                                <td style="text-align: right;">—</td>
+                                <td style="text-align: right;">—</td>
+                                <td style="text-align: right;">—</td>
+                                <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">₱@openingCashBalance.ToString("N2")</td>
+                            </tr>
+                            @foreach (var day in dailyCashFlow.OrderBy(d => d.Date))
+                            {
+                                var netFlow = day.Inflows - day.Outflows;
+                                runningBalance += netFlow;
+                                <tr>
+                                    <td>@day.Date.ToString("MMM dd, yyyy")</td>
+                                    <td style="text-align: right; color: var(--spa-success);">₱@day.Inflows.ToString("N2")</td>
+                                    <td style="text-align: right; color: var(--spa-danger);">₱@day.Outflows.ToString("N2")</td>
+                                    <td style="text-align: right; font-weight: 600; color: @(netFlow >= 0 ? "var(--spa-success)" : "var(--spa-danger)");">
+                                        @(netFlow >= 0 ? "+" : "")₱@netFlow.ToString("N2")
+                                    </td>
+                                    <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">
+                                        ₱@runningBalance.ToString("N2")
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot style="background: var(--spa-primary); color: white;">
+                            <tr>
+                                <td style="font-weight: bold;">ENDING BALANCE</td>
+                                <td style="text-align: right; font-weight: bold;">₱@totalInflows.ToString("N2")</td>
+                                <td style="text-align: right; font-weight: bold;">₱@totalOutflows.ToString("N2")</td>
+                                <td style="text-align: right; font-weight: bold;">
+                                    @(netCashFlow >= 0 ? "+" : "")₱@netCashFlow.ToString("N2")
+                                </td>
+                                <td style="text-align: right; font-weight: bold;">₱@endingCashBalance.ToString("N2")</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                @if (!dailyCashFlow.Any())
+                {
+                    <div style="text-align: center; padding: 2rem; color: var(--spa-text-light);">
+                        <span class="bi bi-inbox" style="font-size: 2rem;"></span>
+                        <p>No cash flow data for the selected period</p>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private DateTime startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime endDate = DateTime.Today;
+
+    // Inflows
+    private decimal productSalesInflow = 0;
+    private decimal serviceRevenueInflow = 0;
+    private decimal totalInflows = 0;
+    private int inflowTransactions = 0;
+
+    // Outflows
+    private decimal expensesOutflow = 0;
+    private decimal payrollOutflow = 0;
+    private decimal commissionsOutflow = 0;
+    private decimal purchasesOutflow = 0;
+    private decimal totalOutflows = 0;
+    private int outflowTransactions = 0;
+
+    // Net
+    private decimal netCashFlow => totalInflows - totalOutflows;
+
+    // Cash Balance
+    private decimal openingCashBalance = 0;
+    private decimal endingCashBalance = 0;
+
+    // Breakdown
+    private Dictionary<string, decimal> expensesByCategory = new();
+    private List<DailyCashFlow> dailyCashFlow = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            // Date validation - swap if end is before start
+            if (endDate < startDate)
+            {
+                (startDate, endDate) = (endDate, startDate);
+            }
+
+            var endDateEnd = endDate.AddDays(1);
+
+            // Reset all values
+            productSalesInflow = 0;
+            serviceRevenueInflow = 0;
+            totalInflows = 0;
+            inflowTransactions = 0;
+            expensesOutflow = 0;
+            payrollOutflow = 0;
+            commissionsOutflow = 0;
+            purchasesOutflow = 0;
+            totalOutflows = 0;
+            outflowTransactions = 0;
+            openingCashBalance = 0;
+            endingCashBalance = 0;
+            expensesByCategory = new Dictionary<string, decimal>();
+            dailyCashFlow = new List<DailyCashFlow>();
+
+            // ===== CALCULATE OPENING CASH BALANCE =====
+            // Get Cash on Hand account balance as of start date (from journal entries)
+            var cashAccountId = await DbContext.LedgerAccounts
+                .Where(la => la.Code == "1100") // Cash on Hand
+                .Select(la => la.LedgerAccountId)
+                .FirstOrDefaultAsync();
+
+            if (cashAccountId > 0)
+            {
+                // Sum all cash transactions BEFORE the start date
+                var cashJournalLines = await DbContext.JournalEntryLines
+                    .Include(jl => jl.JournalEntry)
+                    .Where(jl => jl.LedgerAccountId == cashAccountId && jl.JournalEntry.Date < startDate)
+                    .ToListAsync();
+
+                openingCashBalance = cashJournalLines.Sum(jl => jl.Debit) - cashJournalLines.Sum(jl => jl.Credit);
+            }
+
+            // ===== INFLOWS =====
+            // Get all payments received in the period
+            var payments = await DbContext.Payments
+                .Include(p => p.Sale)
+                    .ThenInclude(s => s!.SaleItems)
+                        .ThenInclude(si => si.Service)
+                .Include(p => p.Sale)
+                    .ThenInclude(s => s!.SaleItems)
+                        .ThenInclude(si => si.Product)
+                .Where(p => p.PaidAt >= startDate && p.PaidAt < endDateEnd)
+                .ToListAsync();
+
+            inflowTransactions = payments.Count;
+
+            // Calculate product vs service revenue from paid sales
+            var paidSaleIds = payments.Select(p => p.SaleId).Distinct().ToList();
+            var paidSales = await DbContext.Sales
+                .Include(s => s.SaleItems).ThenInclude(si => si.Service)
+                .Include(s => s.SaleItems).ThenInclude(si => si.Product)
+                .Where(s => paidSaleIds.Contains(s.SaleId))
+                .ToListAsync();
+
+            productSalesInflow = paidSales
+                .SelectMany(s => s.SaleItems.Where(si => si.ItemType == "product"))
+                .Sum(si => si.LineTotal);
+
+            serviceRevenueInflow = paidSales
+                .SelectMany(s => s.SaleItems.Where(si => si.ItemType == "service"))
+                .Sum(si => si.LineTotal);
+
+            totalInflows = payments.Sum(p => p.Amount);
+
+            // ===== OUTFLOWS =====
+            
+            // 1. Expenses (only paid - actual cash outflows)
+            var expenses = await DbContext.Expenses
+                .Where(e => e.Status == "paid" && e.ExpenseDate >= startDate && e.ExpenseDate < endDateEnd)
+                .ToListAsync();
+            
+            expensesOutflow = expenses.Sum(e => e.Amount);
+            
+            // Expenses by category
+            expensesByCategory = expenses
+                .GroupBy(e => e.Category)
+                .ToDictionary(g => g.Key, g => g.Sum(e => e.Amount));
+
+            // 2. Payroll (paid only)
+            var payrolls = await DbContext.Payrolls
+                .Where(p => p.Status == "paid" && p.PaidAt >= startDate && p.PaidAt < endDateEnd)
+                .ToListAsync();
+            
+            payrollOutflow = payrolls.Sum(p => p.NetPay);
+
+            // Add payroll to categories if any
+            if (payrollOutflow > 0)
+            {
+                expensesByCategory["Payroll"] = payrollOutflow;
+            }
+
+            // 3. Commissions - calculate from paid appointments using SERVICE commission rates
+            var paidAppointments = await DbContext.Appointments
+                .Include(a => a.AppointmentServices).ThenInclude(asvc => asvc.Service)
+                .Where(a => a.Status == "paid" && a.ScheduledStart >= startDate && a.ScheduledStart < endDateEnd)
+                .ToListAsync();
+
+            commissionsOutflow = 0;
+            foreach (var appt in paidAppointments)
+            {
+                foreach (var asvc in appt.AppointmentServices ?? new List<AppointmentService>())
+                {
+                    if (asvc.TherapistEmployeeId.HasValue && asvc.Service != null)
+                    {
+                        // Use commission from the Service itself
+                        var commValue = asvc.Service.CommissionValue;
+                        var commType = asvc.Service.CommissionType ?? "percentage";
+                        
+                        if (commValue > 0)
+                        {
+                            commissionsOutflow += commType == "percentage" 
+                                ? asvc.Price * commValue / 100m 
+                                : commValue;
+                        }
+                    }
+                }
+            }
+
+            if (commissionsOutflow > 0)
+            {
+                expensesByCategory["Commissions"] = commissionsOutflow;
+            }
+
+            // 4. Purchase Orders (received/completed only)
+            var purchaseOrders = await DbContext.PurchaseOrders
+                .Include(po => po.PurchaseOrderItems)
+                .Where(po => (po.Status == "received" || po.Status == "completed") && 
+                             po.CreatedAt >= startDate && po.CreatedAt < endDateEnd)
+                .ToListAsync();
+            
+            purchasesOutflow = purchaseOrders.Sum(po => po.PurchaseOrderItems.Sum(i => i.QtyOrdered * i.UnitCost));
+
+            if (purchasesOutflow > 0)
+            {
+                expensesByCategory["Inventory"] = purchasesOutflow;
+            }
+
+            // Total outflows
+            totalOutflows = expensesOutflow + payrollOutflow + commissionsOutflow + purchasesOutflow;
+            outflowTransactions = expenses.Count + payrolls.Count + paidAppointments.Count(a => a.AppointmentServices?.Any(s => s.TherapistEmployeeId.HasValue) ?? false) + purchaseOrders.Count;
+
+            // ===== CALCULATE ENDING CASH BALANCE =====
+            endingCashBalance = openingCashBalance + totalInflows - totalOutflows;
+
+            // ===== DAILY BREAKDOWN =====
+            var allDates = Enumerable.Range(0, (int)(endDate - startDate).TotalDays + 1)
+                .Select(i => startDate.AddDays(i))
+                .ToList();
+
+            dailyCashFlow = new List<DailyCashFlow>();
+
+            foreach (var date in allDates)
+            {
+                var dayInflows = payments.Where(p => p.PaidAt.Date == date).Sum(p => p.Amount);
+                
+                var dayExpenses = expenses.Where(e => e.ExpenseDate.Date == date).Sum(e => e.Amount);
+                var dayPayroll = payrolls.Where(p => p.PaidAt?.Date == date).Sum(p => p.NetPay);
+                var dayPurchases = purchaseOrders.Where(po => po.CreatedAt.Date == date).Sum(po => po.PurchaseOrderItems.Sum(i => i.QtyOrdered * i.UnitCost));
+                
+                // Commissions - use service-based commission rates
+                decimal dayCommissions = 0;
+                var dayAppointments = paidAppointments.Where(a => a.ScheduledStart.Date == date).ToList();
+                foreach (var appt in dayAppointments)
+                {
+                    foreach (var asvc in appt.AppointmentServices ?? new List<AppointmentService>())
+                    {
+                        if (asvc.TherapistEmployeeId.HasValue && asvc.Service != null)
+                        {
+                            var commValue = asvc.Service.CommissionValue;
+                            var commType = asvc.Service.CommissionType ?? "percentage";
+                            
+                            if (commValue > 0)
+                            {
+                                dayCommissions += commType == "percentage" 
+                                    ? asvc.Price * commValue / 100m 
+                                    : commValue;
+                            }
+                        }
+                    }
+                }
+
+                var dayOutflows = dayExpenses + dayPayroll + dayCommissions + dayPurchases;
+
+                if (dayInflows > 0 || dayOutflows > 0)
+                {
+                    dailyCashFlow.Add(new DailyCashFlow
+                    {
+                        Date = date,
+                        Inflows = dayInflows,
+                        Outflows = dayOutflows
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading cash flow: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SetToday()
+    {
+        startDate = DateTime.Today;
+        endDate = DateTime.Today;
+        await LoadData();
+    }
+
+    private async Task SetWeek()
+    {
+        startDate = DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek);
+        endDate = DateTime.Today;
+        await LoadData();
+    }
+
+    private async Task SetMonth()
+    {
+        startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        endDate = DateTime.Today;
+        await LoadData();
+    }
+
+    private async Task SetLastMonth()
+    {
+        var lastMonth = DateTime.Today.AddMonths(-1);
+        startDate = new DateTime(lastMonth.Year, lastMonth.Month, 1);
+        endDate = new DateTime(lastMonth.Year, lastMonth.Month, DateTime.DaysInMonth(lastMonth.Year, lastMonth.Month));
+        await LoadData();
+    }
+
+    private async Task SetYear()
+    {
+        startDate = new DateTime(DateTime.Today.Year, 1, 1);
+        endDate = DateTime.Today;
+        await LoadData();
+    }
+
+    private class DailyCashFlow
+    {
+        public DateTime Date { get; set; }
+        public decimal Inflows { get; set; }
+        public decimal Outflows { get; set; }
+    }
+
+    private async Task PrintReport() => await JSRuntime.InvokeVoidAsync("print");
+    private async Task ExportToPdf() => await JSRuntime.InvokeVoidAsync("print");
+}

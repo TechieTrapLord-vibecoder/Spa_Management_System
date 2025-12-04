@@ -77,6 +77,8 @@ CREATE TABLE Service (
     price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     duration_minutes INT DEFAULT 0,
     active BIT DEFAULT 1,
+    commission_type NVARCHAR(20) NOT NULL DEFAULT 'percentage',
+    commission_value DECIMAL(12,2) NOT NULL DEFAULT 0,
     FOREIGN KEY (service_category_id) REFERENCES ServiceCategory(service_category_id)
 );
 
@@ -140,7 +142,37 @@ CREATE TABLE Supplier (
     phone VARCHAR(50),
     email VARCHAR(150),
     address VARCHAR(MAX),
-    is_archived BIT DEFAULT 0
+    is_archived BIT DEFAULT 0,
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status VARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1
+);
+
+-- 12b. SupplierProduct Table (Many-to-Many: Supplier <-> Product with supplier-specific pricing)
+CREATE TABLE SupplierProduct (
+    supplier_product_id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    supplier_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    supplier_price DECIMAL(12,2) NOT NULL DEFAULT 0,
+    supplier_sku VARCHAR(80),
+    min_order_qty INT,
+    lead_time_days INT,
+    is_preferred BIT DEFAULT 0,
+    is_active BIT DEFAULT 1,
+    notes VARCHAR(MAX),
+    created_at DATETIME DEFAULT GETDATE(),
+    -- Sync columns
+    sync_id UNIQUEIDENTIFIER DEFAULT NEWID(),
+    last_modified_at DATETIME2,
+    last_synced_at DATETIME2,
+    sync_status VARCHAR(20) DEFAULT 'pending',
+    sync_version INT DEFAULT 1,
+    FOREIGN KEY (supplier_id) REFERENCES Supplier(supplier_id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES Product(product_id) ON DELETE CASCADE,
+    CONSTRAINT UQ_SupplierProduct UNIQUE (supplier_id, product_id)
 );
 
 -- 13. PurchaseOrder Table

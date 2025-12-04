@@ -118,6 +118,7 @@ else
                             <th style="cursor: pointer;" @onclick='() => SortBy("name")'>Service Name @GetSortIcon("name")</th>
                             <th style="cursor: pointer;" @onclick='() => SortBy("category")'>Category @GetSortIcon("category")</th>
                             <th style="cursor: pointer;" @onclick='() => SortBy("price")'>Price @GetSortIcon("price")</th>
+                            <th style="cursor: pointer;" @onclick='() => SortBy("commission")'>Commission @GetSortIcon("commission")</th>
                             <th style="cursor: pointer;" @onclick='() => SortBy("duration")'>Duration @GetSortIcon("duration")</th>
                             <th style="cursor: pointer;" @onclick='() => SortBy("status")'>Status @GetSortIcon("status")</th>
                             <th>Actions</th>
@@ -146,6 +147,24 @@ else
                                     }
                                 </td>
                                 <td><strong>₱@service.Price.ToString("N2")</strong></td>
+                                <td>
+                                    @if (service.CommissionValue > 0)
+                                    {
+                                        @if (service.CommissionType == "percentage")
+                                        {
+                                            <span class="badge badge-info">@service.CommissionValue.ToString("N0")%</span>
+                                            <br /><small style="color: var(--spa-text-light);">₱@((service.Price * service.CommissionValue / 100).ToString("N2"))</small>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge badge-info">₱@service.CommissionValue.ToString("N2")</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span style="color: var(--spa-text-light);">-</span>
+                                    }
+                                </td>
                                 <td>@service.DurationMinutes min</td>
                                 <td>
                                     @if (service.Active)
@@ -255,7 +274,46 @@ else
                         </div>
                     </div>
 
-                    <div class="form-group">
+                    <!-- Commission Settings -->
+                    <div style="border: 1px solid var(--spa-secondary); border-radius: 8px; padding: 1rem; margin-top: 0.5rem; background: rgba(170, 148, 120, 0.05);">
+                        <h5 style="margin: 0 0 1rem 0; color: var(--spa-primary);"><span class="bi bi-percent"></span> Therapist Commission</h5>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Commission Type</label>
+                                <select class="form-control" @bind="currentService.CommissionType">
+                                    <option value="percentage">Percentage (%)</option>
+                                    <option value="fixed">Fixed Amount (₱)</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>@(currentService.CommissionType == "percentage" ? "Commission Rate (%)" : "Commission Amount (₱)")</label>
+                                <input type="number" class="form-control" @bind="currentService.CommissionValue" 
+                                       step="0.01" min="0" placeholder="0" />
+                            </div>
+                        </div>
+                        @if (currentService.CommissionValue > 0 && currentService.Price > 0)
+                        {
+                            <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--spa-light); border-radius: 4px;">
+                                <small style="color: var(--spa-text-light);">
+                                    <span class="bi bi-info-circle"></span>
+                                    Therapist earns: 
+                                    <strong style="color: var(--spa-primary);">
+                                        @if (currentService.CommissionType == "percentage")
+                                        {
+                                            @:₱@((currentService.Price * currentService.CommissionValue / 100).ToString("N2"))
+                                        }
+                                        else
+                                        {
+                                            @:₱@currentService.CommissionValue.ToString("N2")
+                                        }
+                                    </strong>
+                                    per service
+                                </small>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="form-group" style="margin-top: 1rem;">
                         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                             <input type="checkbox" @bind="currentService.Active" />
                             <span>Active (available for booking)</span>
@@ -451,7 +509,7 @@ else
 
     private void OpenAddDialog()
     {
-        currentService = new Service { Active = true, DurationMinutes = 60, Price = 0 };
+        currentService = new Service { Active = true, DurationMinutes = 60, Price = 0, CommissionType = "percentage", CommissionValue = 0 };
         isEditMode = false;
         showDialog = true;
         ClearMessages();
@@ -468,7 +526,9 @@ else
             ServiceCategoryId = service.ServiceCategoryId,
             Price = service.Price,
             DurationMinutes = service.DurationMinutes,
-            Active = service.Active
+            Active = service.Active,
+            CommissionType = service.CommissionType ?? "percentage",
+            CommissionValue = service.CommissionValue
         };
         isEditMode = true;
         showDialog = true;
@@ -512,6 +572,8 @@ else
                     existing.Price = currentService.Price;
                     existing.DurationMinutes = currentService.DurationMinutes;
                     existing.Active = currentService.Active;
+                    existing.CommissionType = currentService.CommissionType;
+                    existing.CommissionValue = currentService.CommissionValue;
                     await DbContext.SaveChangesAsync();
                     
                     await AuditLog.LogUpdateAsync("Service", existing.ServiceId.ToString(), 
@@ -531,7 +593,9 @@ else
                     ServiceCategoryId = currentService.ServiceCategoryId,
                     Price = currentService.Price,
                     DurationMinutes = currentService.DurationMinutes,
-                    Active = currentService.Active
+                    Active = currentService.Active,
+                    CommissionType = currentService.CommissionType,
+                    CommissionValue = currentService.CommissionValue
                 };
                 DbContext.Services.Add(newService);
                 await DbContext.SaveChangesAsync();

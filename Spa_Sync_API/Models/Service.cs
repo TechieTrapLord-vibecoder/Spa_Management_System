@@ -51,6 +51,13 @@ public class Service : ISyncable
     [Column("active")]
     public bool Active { get; set; } = true;
 
+    [Column("commission_type")]
+    [MaxLength(20)]
+    public string CommissionType { get; set; } = "percentage";
+
+    [Column("commission_value", TypeName = "decimal(12,2)")]
+    public decimal CommissionValue { get; set; } = 0;
+
     // Navigation properties
     [ForeignKey("ServiceCategoryId")]
     public virtual ServiceCategory? ServiceCategory { get; set; }

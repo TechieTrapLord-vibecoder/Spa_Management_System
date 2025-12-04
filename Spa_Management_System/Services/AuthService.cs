@@ -2,12 +2,14 @@ using Spa_Management_System.Data.Repositories;
 using Spa_Management_System.Models;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Spa_Management_System.Services;
 
 public interface IAuthService
 {
     Task<UserAccount?> AuthenticateAsync(string username, string password);
+    (bool IsValid, string ErrorMessage) ValidatePassword(string password);
     Task<UserAccount> CreateUserAccountAsync(long employeeId, string username, string password);
     Task<bool> ChangePasswordAsync(long userId, string currentPassword, string newPassword);
     Task<bool> ResetPasswordAsync(long userId, string newPassword);
@@ -48,6 +50,13 @@ public class AuthService : IAuthService
 
     public async Task<UserAccount> CreateUserAccountAsync(long employeeId, string username, string password)
     {
+        // Validate password requirements
+        var (isValid, errorMessage) = ValidatePassword(password);
+        if (!isValid)
+        {
+            throw new Exception(errorMessage);
+        }
+
         // Check if username already exists
         if (await _userAccountRepository.UsernameExistsAsync(username))
         {
@@ -68,6 +77,13 @@ public class AuthService : IAuthService
 
     public async Task<bool> ChangePasswordAsync(long userId, string currentPassword, string newPassword)
     {
+        // Validate new password requirements
+        var (isValid, errorMessage) = ValidatePassword(newPassword);
+        if (!isValid)
+        {
+            throw new Exception(errorMessage);
+        }
+
         var user = await _userAccountRepository.GetByIdAsync(userId);
         
         if (user == null)
@@ -86,6 +102,13 @@ public class AuthService : IAuthService
 
     public async Task<bool> ResetPasswordAsync(long userId, string newPassword)
     {
+        // Validate new password requirements
+        var (isValid, errorMessage) = ValidatePassword(newPassword);
+        if (!isValid)
+        {
+            throw new Exception(errorMessage);
+        }
+
         var user = await _userAccountRepository.GetByIdAsync(userId);
         
         if (user == null)
@@ -145,5 +168,34 @@ public class AuthService : IAuthService
         var bytes = Encoding.UTF8.GetBytes(password);
         var hash = sha256.ComputeHash(bytes);
         return Convert.ToBase64String(hash);
+    }
+
+    // Password validation: 10+ chars, uppercase, lowercase, number, special character
+    public (bool IsValid, string ErrorMessage) ValidatePassword(string password)
+    {
+        if (string.IsNullOrEmpty(password))
+            return (false, "Password is required.");
+
+        var errors = new List<string>();
+
+        if (password.Length < 10)
+            errors.Add("at least 10 characters");
+
+        if (!Regex.IsMatch(password, @"[A-Z]"))
+            errors.Add("one uppercase letter");
+
+        if (!Regex.IsMatch(password, @"[a-z]"))
+            errors.Add("one lowercase letter");
+
+        if (!Regex.IsMatch(password, @"[0-9]"))
+            errors.Add("one number");
+
+        if (!Regex.IsMatch(password, @"[!@#$%^&*()_+\-=\[\]{};':""\\|,.<>\/?]"))
+            errors.Add("one special character (!@#$%^&*()_+-=[]{}|;':\",./<>?)");
+
+        if (errors.Count > 0)
+            return (false, $"Password must contain {string.Join(", ", errors)}.");
+
+        return (true, string.Empty);
     }
 }

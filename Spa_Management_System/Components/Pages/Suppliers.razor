@@ -116,22 +116,30 @@ else
                             }
                         </div>
 
-                        <div style="display: flex; gap: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--spa-secondary);">
-                            @if (supplier.IsArchived)
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--spa-secondary);">
+                            @if (!supplier.IsArchived)
                             {
-                                <button class="btn btn-sm btn-success" @onclick="() => RestoreSupplier(supplier.SupplierId)" style="flex: 1; padding: 0.5rem;">
-                                    <span class="bi bi-arrow-counterclockwise"></span> Restore
+                                <button class="btn btn-sm btn-info" @onclick="() => OpenManageProductsDialog(supplier)" style="padding: 0.5rem;">
+                                    <span class="bi bi-box-seam"></span> Manage Products (@GetSupplierProductCount(supplier.SupplierId))
                                 </button>
                             }
-                            else
-                            {
-                                <button class="btn btn-sm btn-light" @onclick="() => OpenEditDialog(supplier)" style="flex: 1; padding: 0.5rem;">
-                                    <span class="bi bi-pencil"></span> Edit
-                                </button>
-                                <button class="btn btn-sm btn-warning" @onclick="() => ConfirmArchiveSupplier(supplier.SupplierId)" style="flex: 1; padding: 0.5rem;">
-                                    <span class="bi bi-archive"></span> Archive
-                                </button>
-                            }
+                            <div style="display: flex; gap: 0.5rem;">
+                                @if (supplier.IsArchived)
+                                {
+                                    <button class="btn btn-sm btn-success" @onclick="() => RestoreSupplier(supplier.SupplierId)" style="flex: 1; padding: 0.5rem;">
+                                        <span class="bi bi-arrow-counterclockwise"></span> Restore
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-light" @onclick="() => OpenEditDialog(supplier)" style="flex: 1; padding: 0.5rem;">
+                                        <span class="bi bi-pencil"></span> Edit
+                                    </button>
+                                    <button class="btn btn-sm btn-warning" @onclick="() => ConfirmArchiveSupplier(supplier.SupplierId)" style="flex: 1; padding: 0.5rem;">
+                                        <span class="bi bi-archive"></span> Archive
+                                    </button>
+                                }
+                            </div>
                         </div>
                     </div>
                 }
@@ -223,6 +231,145 @@ else
             </div>
         </div>
     }
+
+    <!-- Manage Products Dialog -->
+    @if (showManageProductsDialog && managingSupplier != null)
+    {
+        <div class="modal-overlay" @onclick="CloseManageProductsDialog">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 800px; max-height: 85vh; display: flex; flex-direction: column;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);">
+                        <span class="bi bi-box-seam"></span> Products Supplied by @managingSupplier.Name
+                    </h4>
+                    <button class="btn-close" @onclick="CloseManageProductsDialog">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+
+                <div class="modal-body" style="flex: 1; overflow-y: auto;">
+                    <!-- Add Product Section -->
+                    <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                        <h5 style="margin: 0 0 1rem 0; color: var(--spa-primary);"><span class="bi bi-plus-circle"></span> Add Product to Supplier</h5>
+                        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 0.75rem; align-items: end;">
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.85rem;">Product</label>
+                                <select class="form-control" @bind="selectedProductToAdd">
+                                    <option value="0">-- Select Product --</option>
+                                    @foreach (var product in availableProducts)
+                                    {
+                                        <option value="@product.ProductId">@product.Name (@product.Sku)</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.85rem;">Supplier Price (₱)</label>
+                                <input type="number" class="form-control" @bind="newSupplierPrice" step="0.01" min="0" placeholder="0.00" />
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.85rem;">Supplier SKU</label>
+                                <input type="text" class="form-control" @bind="newSupplierSku" placeholder="Optional" />
+                            </div>
+                            <button class="btn btn-primary" @onclick="AddProductToSupplier" disabled="@(selectedProductToAdd == 0)" style="height: 38px;">
+                                <span class="bi bi-plus"></span> Add
+                            </button>
+                        </div>
+                        @if (availableProducts.Count == 0)
+                        {
+                            <div class="alert alert-info" style="margin-top: 1rem; margin-bottom: 0;">
+                                <span class="bi bi-info-circle"></span> All active products are already assigned to this supplier.
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Current Products List -->
+                    <h5 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-list-check"></span> Assigned Products (@supplierProducts.Count)</h5>
+                    
+                    @if (!supplierProducts.Any())
+                    {
+                        <div class="alert alert-info">
+                            <span class="bi bi-info-circle"></span> No products assigned to this supplier yet. Add products above.
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="overflow-x: auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Supplier SKU</th>
+                                        <th style="text-align: right;">Supplier Price</th>
+                                        <th style="text-align: center;">Preferred</th>
+                                        <th style="text-align: center;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var sp in supplierProducts)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <strong>@sp.Product?.Name</strong>
+                                                <br /><small style="color: var(--spa-text-light);">@sp.Product?.Sku</small>
+                                            </td>
+                                            <td>@(sp.SupplierSku ?? "-")</td>
+                                            <td style="text-align: right;">
+                                                @if (editingSupplierProductId == sp.SupplierProductId)
+                                                {
+                                                    <input type="number" class="form-control form-control-sm" @bind="editSupplierPrice" step="0.01" style="width: 100px; display: inline-block;" />
+                                                }
+                                                else
+                                                {
+                                                    <strong>₱@sp.SupplierPrice.ToString("N2")</strong>
+                                                }
+                                            </td>
+                                            <td style="text-align: center;">
+                                                @if (sp.IsPreferred)
+                                                {
+                                                    <span class="badge badge-success"><span class="bi bi-star-fill"></span> Preferred</span>
+                                                }
+                                                else
+                                                {
+                                                    <button class="btn btn-sm btn-light" @onclick="() => SetPreferred(sp)">
+                                                        <span class="bi bi-star"></span>
+                                                    </button>
+                                                }
+                                            </td>
+                                            <td style="text-align: center;">
+                                                @if (editingSupplierProductId == sp.SupplierProductId)
+                                                {
+                                                    <button class="btn btn-sm btn-success" @onclick="SaveEditSupplierProduct">
+                                                        <span class="bi bi-check"></span>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-secondary" @onclick="CancelEditSupplierProduct">
+                                                        <span class="bi bi-x"></span>
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <button class="btn btn-sm btn-light" @onclick="() => StartEditSupplierProduct(sp)">
+                                                        <span class="bi bi-pencil"></span>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-danger" @onclick="() => RemoveProductFromSupplier(sp)">
+                                                        <span class="bi bi-trash"></span>
+                                                    </button>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseManageProductsDialog">
+                        <span class="bi bi-x-circle"></span> Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
 }
 
 @code {
@@ -234,6 +381,7 @@ else
     private bool showArchived = false;
     private string? successMessage;
     private string? errorMessage;
+    private Dictionary<long, int> supplierProductCounts = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -260,6 +408,13 @@ else
                     .OrderBy(s => s.Name)
                     .ToListAsync();
             }
+
+            // Pre-load product counts to avoid DbContext threading issues
+            supplierProductCounts = await DbContext.SupplierProducts
+                .Where(sp => sp.IsActive)
+                .GroupBy(sp => sp.SupplierId)
+                .Select(g => new { SupplierId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.SupplierId, x => x.Count);
         }
         catch (Exception ex)
         {
@@ -434,5 +589,209 @@ else
     {
         successMessage = null;
         errorMessage = null;
+    }
+
+    // Manage Products functionality
+    private bool showManageProductsDialog = false;
+    private Supplier? managingSupplier = null;
+    private List<SupplierProduct> supplierProducts = new();
+    private List<Product> allProducts = new();
+    private List<Product> availableProducts = new();
+    private long selectedProductToAdd = 0;
+    private decimal newSupplierPrice = 0;
+    private string newSupplierSku = "";
+    private long? editingSupplierProductId = null;
+    private decimal editSupplierPrice = 0;
+
+    private int GetSupplierProductCount(long supplierId)
+    {
+        return supplierProductCounts.TryGetValue(supplierId, out var count) ? count : 0;
+    }
+
+    private async Task RefreshSupplierProductCounts()
+    {
+        supplierProductCounts = await DbContext.SupplierProducts
+            .Where(sp => sp.IsActive)
+            .GroupBy(sp => sp.SupplierId)
+            .Select(g => new { SupplierId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.SupplierId, x => x.Count);
+    }
+
+    private async Task OpenManageProductsDialog(Supplier supplier)
+    {
+        managingSupplier = supplier;
+        await LoadSupplierProducts();
+        showManageProductsDialog = true;
+    }
+
+    private void CloseManageProductsDialog()
+    {
+        showManageProductsDialog = false;
+        managingSupplier = null;
+        supplierProducts = new();
+        availableProducts = new();
+        selectedProductToAdd = 0;
+        newSupplierPrice = 0;
+        newSupplierSku = "";
+        editingSupplierProductId = null;
+    }
+
+    private async Task LoadSupplierProducts()
+    {
+        if (managingSupplier == null) return;
+
+        // Load products assigned to this supplier
+        supplierProducts = await DbContext.SupplierProducts
+            .Include(sp => sp.Product)
+            .Where(sp => sp.SupplierId == managingSupplier.SupplierId && sp.IsActive)
+            .OrderBy(sp => sp.Product!.Name)
+            .ToListAsync();
+
+        // Load all active products
+        allProducts = await DbContext.Products
+            .Where(p => p.Active)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+
+        // Get products not yet assigned to this supplier
+        var assignedProductIds = supplierProducts.Select(sp => sp.ProductId).ToHashSet();
+        availableProducts = allProducts.Where(p => !assignedProductIds.Contains(p.ProductId)).ToList();
+    }
+
+    private async Task AddProductToSupplier()
+    {
+        if (managingSupplier == null || selectedProductToAdd == 0) return;
+
+        try
+        {
+            var product = allProducts.FirstOrDefault(p => p.ProductId == selectedProductToAdd);
+            if (product == null) return;
+
+            // Check if relationship already exists (maybe inactive)
+            var existing = await DbContext.SupplierProducts
+                .FirstOrDefaultAsync(sp => sp.SupplierId == managingSupplier.SupplierId && sp.ProductId == selectedProductToAdd);
+
+            if (existing != null)
+            {
+                // Reactivate and update
+                existing.IsActive = true;
+                existing.SupplierPrice = newSupplierPrice > 0 ? newSupplierPrice : product.CostPrice;
+                existing.SupplierSku = string.IsNullOrWhiteSpace(newSupplierSku) ? null : newSupplierSku.Trim();
+                existing.LastModifiedAt = DateTime.Now;
+            }
+            else
+            {
+                // Create new relationship
+                var supplierProduct = new SupplierProduct
+                {
+                    SupplierId = managingSupplier.SupplierId,
+                    ProductId = selectedProductToAdd,
+                    SupplierPrice = newSupplierPrice > 0 ? newSupplierPrice : product.CostPrice,
+                    SupplierSku = string.IsNullOrWhiteSpace(newSupplierSku) ? null : newSupplierSku.Trim(),
+                    IsActive = true,
+                    CreatedAt = DateTime.Now
+                };
+                DbContext.SupplierProducts.Add(supplierProduct);
+            }
+
+            await DbContext.SaveChangesAsync();
+            
+            // Reset form
+            selectedProductToAdd = 0;
+            newSupplierPrice = 0;
+            newSupplierSku = "";
+            
+            await LoadSupplierProducts();
+            await RefreshSupplierProductCounts();
+            successMessage = $"Product added to {managingSupplier.Name}!";
+            _ = AutoDismissSuccess();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error adding product: {ex.Message}";
+        }
+    }
+
+    private async Task RemoveProductFromSupplier(SupplierProduct sp)
+    {
+        try
+        {
+            sp.IsActive = false;
+            sp.LastModifiedAt = DateTime.Now;
+            await DbContext.SaveChangesAsync();
+            await LoadSupplierProducts();
+            await RefreshSupplierProductCounts();
+            successMessage = "Product removed from supplier.";
+            _ = AutoDismissSuccess();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error removing product: {ex.Message}";
+        }
+    }
+
+    private void StartEditSupplierProduct(SupplierProduct sp)
+    {
+        editingSupplierProductId = sp.SupplierProductId;
+        editSupplierPrice = sp.SupplierPrice;
+    }
+
+    private void CancelEditSupplierProduct()
+    {
+        editingSupplierProductId = null;
+        editSupplierPrice = 0;
+    }
+
+    private async Task SaveEditSupplierProduct()
+    {
+        if (editingSupplierProductId == null) return;
+
+        try
+        {
+            var sp = await DbContext.SupplierProducts.FindAsync(editingSupplierProductId.Value);
+            if (sp != null)
+            {
+                sp.SupplierPrice = editSupplierPrice;
+                sp.LastModifiedAt = DateTime.Now;
+                await DbContext.SaveChangesAsync();
+                await LoadSupplierProducts();
+                successMessage = "Price updated!";
+                _ = AutoDismissSuccess();
+            }
+            editingSupplierProductId = null;
+            editSupplierPrice = 0;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error updating price: {ex.Message}";
+        }
+    }
+
+    private async Task SetPreferred(SupplierProduct sp)
+    {
+        try
+        {
+            // Remove preferred status from other suppliers for this product
+            var otherPreferred = await DbContext.SupplierProducts
+                .Where(x => x.ProductId == sp.ProductId && x.IsPreferred)
+                .ToListAsync();
+            
+            foreach (var other in otherPreferred)
+            {
+                other.IsPreferred = false;
+            }
+
+            // Set this one as preferred
+            sp.IsPreferred = true;
+            sp.LastModifiedAt = DateTime.Now;
+            await DbContext.SaveChangesAsync();
+            await LoadSupplierProducts();
+            successMessage = "Set as preferred supplier for this product!";
+            _ = AutoDismissSuccess();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error setting preferred: {ex.Message}";
+        }
     }
 }
