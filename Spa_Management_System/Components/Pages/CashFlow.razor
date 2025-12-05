@@ -38,20 +38,26 @@ else
         <!-- Date Range Filter -->
         <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center;">
             <div class="form-group" style="margin-bottom: 0;">
-                <label style="font-size: 0.85rem;">From</label>
-                <input type="date" class="form-control" @bind="startDate" @bind:after="LoadData" />
+                <label style="font-size: 0.85rem;">Period</label>
+                <select class="form-control" @bind="selectedPeriod" @bind:after="OnPeriodChanged">
+                    <option value="month">Current Month</option>
+                    <option value="quarter">Current Quarter</option>
+                    <option value="year">Current Year</option>
+                    <option value="ytd">Year to Date</option>
+                    <option value="custom">Custom Range</option>
+                </select>
             </div>
-            <div class="form-group" style="margin-bottom: 0;">
-                <label style="font-size: 0.85rem;">To</label>
-                <input type="date" class="form-control" @bind="endDate" @bind:after="LoadData" />
-            </div>
-            <div style="display: flex; gap: 0.5rem; align-items: flex-end; padding-top: 1.25rem;">
-                <button class="btn btn-outline" @onclick="SetToday">Today</button>
-                <button class="btn btn-outline" @onclick="SetWeek">This Week</button>
-                <button class="btn btn-outline" @onclick="SetMonth">This Month</button>
-                <button class="btn btn-outline" @onclick="SetLastMonth">Last Month</button>
-                <button class="btn btn-outline" @onclick="SetYear">This Year</button>
-            </div>
+            @if (selectedPeriod == "custom")
+            {
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.85rem;">From</label>
+                    <input type="date" class="form-control" @bind="startDate" @bind:after="LoadData" />
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.85rem;">To</label>
+                    <input type="date" class="form-control" @bind="endDate" @bind:after="LoadData" />
+                </div>
+            }
         </div>
 
         @if (isLoading)
@@ -65,15 +71,15 @@ else
         {
             <!-- Cash Position Cards -->
             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
-                <div style="padding: 1.25rem; background: linear-gradient(135deg, #454F4A 0%, #5a665f 100%); border-radius: 12px; color: white;">
-                    <div style="font-size: 0.85rem; opacity: 0.9;"><span class="bi bi-wallet"></span> Opening Cash Balance</div>
+                <div style="padding: 1.25rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                    <div style="font-size: 0.85rem;"><span class="bi bi-wallet"></span> Opening Cash Balance</div>
                     <div style="font-size: 1.75rem; font-weight: bold;">₱@openingCashBalance.ToString("N2")</div>
-                    <div style="font-size: 0.8rem; opacity: 0.8;">as of @startDate.ToString("MMM dd, yyyy")</div>
+                    <div style="font-size: 0.8rem; color: var(--spa-text-light);">as of @startDate.ToString("MMM dd, yyyy")</div>
                 </div>
-                <div style="padding: 1.25rem; background: linear-gradient(135deg, @(endingCashBalance >= openingCashBalance ? "#28a745" : "#dc3545") 0%, @(endingCashBalance >= openingCashBalance ? "#34c759" : "#ff6b6b") 100%); border-radius: 12px; color: white;">
-                    <div style="font-size: 0.85rem; opacity: 0.9;"><span class="bi bi-wallet-fill"></span> Ending Cash Balance</div>
-                    <div style="font-size: 1.75rem; font-weight: bold;">₱@endingCashBalance.ToString("N2")</div>
-                    <div style="font-size: 0.8rem; opacity: 0.8;">as of @endDate.ToString("MMM dd, yyyy")</div>
+                <div style="padding: 1.25rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
+                    <div style="font-size: 0.85rem;"><span class="bi bi-wallet-fill"></span> Ending Cash Balance</div>
+                    <div style="font-size: 1.75rem; font-weight: bold; color: @(endingCashBalance >= 0 ? "#454F4A" : "#dc3545");">₱@endingCashBalance.ToString("N2")</div>
+                    <div style="font-size: 0.8rem; color: var(--spa-text-light);">as of @endDate.ToString("MMM dd, yyyy")</div>
                 </div>
             </div>
 
@@ -162,7 +168,7 @@ else
                         var percentage = totalOutflows > 0 ? (category.Value / totalOutflows * 100) : 0;
                         <div style="padding: 1rem; background: #DCD8CE; border-radius: 8px; text-align: center;">
                             <div style="font-size: 0.8rem; color: var(--spa-text-light);">@category.Key</div>
-                            <div style="font-size: 1.25rem; font-weight: bold; color: var(--spa-primary);">₱@category.Value.ToString("N0")</div>
+                            <div style="font-size: 1.25rem; font-weight: bold; color: var(--spa-primary);">₱@category.Value.ToString("N2")</div>
                             <div style="font-size: 0.75rem; color: var(--spa-text-light);">@percentage.ToString("N1")%</div>
                         </div>
                     }
@@ -171,7 +177,19 @@ else
 
             <!-- Daily Cash Flow Table -->
             <div>
-                <h4 style="color: var(--spa-primary); margin-bottom: 1rem;"><span class="bi bi-calendar3"></span> Daily Cash Flow</h4>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h4 style="color: var(--spa-primary); margin: 0;"><span class="bi bi-calendar3"></span> Daily Cash Flow</h4>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <span style="font-size: 0.85rem; color: var(--spa-text-light);">
+                            Showing @(Math.Min((currentPage - 1) * pageSize + 1, dailyCashFlow.Count))-@(Math.Min(currentPage * pageSize, dailyCashFlow.Count)) of @dailyCashFlow.Count days
+                        </span>
+                        <select class="form-control" style="width: auto; padding: 0.25rem 0.5rem;" @bind="pageSize" @bind:after="() => currentPage = 1">
+                            <option value="10">10 per page</option>
+                            <option value="25">25 per page</option>
+                            <option value="50">50 per page</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="table-responsive">
                     <table class="data-table">
                         <thead>
@@ -184,18 +202,25 @@ else
                             </tr>
                         </thead>
                         <tbody>
-                            @{
-                                decimal runningBalance = openingCashBalance;
+                            @if (currentPage == 1)
+                            {
+                                <!-- Opening Balance Row - only on first page -->
+                                <tr style="background: rgba(69, 79, 74, 0.1); font-style: italic;">
+                                    <td><span class="bi bi-arrow-right-circle"></span> Opening Balance</td>
+                                    <td style="text-align: right;">—</td>
+                                    <td style="text-align: right;">—</td>
+                                    <td style="text-align: right;">—</td>
+                                    <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">₱@openingCashBalance.ToString("N2")</td>
+                                </tr>
                             }
-                            <!-- Opening Balance Row -->
-                            <tr style="background: rgba(69, 79, 74, 0.1); font-style: italic;">
-                                <td><span class="bi bi-arrow-right-circle"></span> Opening Balance</td>
-                                <td style="text-align: right;">—</td>
-                                <td style="text-align: right;">—</td>
-                                <td style="text-align: right;">—</td>
-                                <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">₱@openingCashBalance.ToString("N2")</td>
-                            </tr>
-                            @foreach (var day in dailyCashFlow.OrderBy(d => d.Date))
+                            @{
+                                var orderedDays = dailyCashFlow.OrderBy(d => d.Date).ToList();
+                                var skipCount = (currentPage - 1) * pageSize;
+                                // Calculate running balance up to the start of current page
+                                decimal runningBalance = openingCashBalance + orderedDays.Take(skipCount).Sum(d => d.Inflows - d.Outflows);
+                                var pagedDays = orderedDays.Skip(skipCount).Take(pageSize);
+                            }
+                            @foreach (var day in pagedDays)
                             {
                                 var netFlow = day.Inflows - day.Outflows;
                                 runningBalance += netFlow;
@@ -225,6 +250,37 @@ else
                         </tfoot>
                     </table>
                 </div>
+
+                <!-- Pagination Controls -->
+                @if (totalPages > 1)
+                {
+                    <div style="display: flex; justify-content: center; align-items: center; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
+                        <button class="btn btn-outline" style="padding: 0.25rem 0.75rem;" disabled="@(currentPage == 1)" @onclick="() => currentPage = 1">
+                            <span class="bi bi-chevron-double-left"></span>
+                        </button>
+                        <button class="btn btn-outline" style="padding: 0.25rem 0.75rem;" disabled="@(currentPage == 1)" @onclick="() => currentPage--">
+                            <span class="bi bi-chevron-left"></span>
+                        </button>
+
+                        @for (int i = Math.Max(1, currentPage - 2); i <= Math.Min(totalPages, currentPage + 2); i++)
+                        {
+                            var pageNum = i;
+                            <button class="btn @(pageNum == currentPage ? "btn-primary" : "btn-outline")" 
+                                    style="padding: 0.25rem 0.75rem; min-width: 2.5rem;"
+                                    @onclick="() => currentPage = pageNum">
+                                @pageNum
+                            </button>
+                        }
+
+                        <button class="btn btn-outline" style="padding: 0.25rem 0.75rem;" disabled="@(currentPage == totalPages)" @onclick="() => currentPage++">
+                            <span class="bi bi-chevron-right"></span>
+                        </button>
+                        <button class="btn btn-outline" style="padding: 0.25rem 0.75rem;" disabled="@(currentPage == totalPages)" @onclick="() => currentPage = totalPages">
+                            <span class="bi bi-chevron-double-right"></span>
+                        </button>
+                    </div>
+                }
+
                 @if (!dailyCashFlow.Any())
                 {
                     <div style="text-align: center; padding: 2rem; color: var(--spa-text-light);">
@@ -267,14 +323,58 @@ else
     private Dictionary<string, decimal> expensesByCategory = new();
     private List<DailyCashFlow> dailyCashFlow = new();
 
+    // Period selection
+    private string selectedPeriod = "month";
+
+    // Pagination
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int totalPages => (int)Math.Ceiling((double)dailyCashFlow.Count / pageSize);
+
     protected override async Task OnInitializedAsync()
     {
+        SetPeriodDates();
         await LoadData();
+    }
+
+    private async Task OnPeriodChanged()
+    {
+        SetPeriodDates();
+        await LoadData();
+    }
+
+    private void SetPeriodDates()
+    {
+        var today = DateTime.Today;
+        switch (selectedPeriod)
+        {
+            case "month":
+                startDate = new DateTime(today.Year, today.Month, 1);
+                endDate = today;
+                break;
+            case "quarter":
+                int quarter = (today.Month - 1) / 3;
+                startDate = new DateTime(today.Year, quarter * 3 + 1, 1);
+                endDate = today;
+                break;
+            case "year":
+                startDate = new DateTime(today.Year, 1, 1);
+                endDate = new DateTime(today.Year, 12, 31);
+                break;
+            case "ytd":
+                startDate = new DateTime(today.Year, 1, 1);
+                endDate = today;
+                break;
+            case "custom":
+                // Keep current custom dates
+                break;
+        }
     }
 
     private async Task LoadData()
     {
         isLoading = true;
+        currentPage = 1; // Reset to first page on data reload
         try
         {
             // Date validation - swap if end is before start
@@ -303,25 +403,23 @@ else
 
             // ===== CALCULATE OPENING CASH BALANCE =====
             // Get Cash on Hand account balance as of start date (from journal entries)
-            var cashAccountId = await DbContext.LedgerAccounts
+            var cashAccountId = await DbContext.LedgerAccounts.AsNoTracking()
                 .Where(la => la.Code == "1100") // Cash on Hand
                 .Select(la => la.LedgerAccountId)
                 .FirstOrDefaultAsync();
 
             if (cashAccountId > 0)
             {
-                // Sum all cash transactions BEFORE the start date
-                var cashJournalLines = await DbContext.JournalEntryLines
+                // Sum all cash transactions BEFORE the start date - use database aggregation
+                openingCashBalance = await DbContext.JournalEntryLines.AsNoTracking()
                     .Include(jl => jl.JournalEntry)
                     .Where(jl => jl.LedgerAccountId == cashAccountId && jl.JournalEntry.Date < startDate)
-                    .ToListAsync();
-
-                openingCashBalance = cashJournalLines.Sum(jl => jl.Debit) - cashJournalLines.Sum(jl => jl.Credit);
+                    .SumAsync(jl => jl.Debit - jl.Credit);
             }
 
             // ===== INFLOWS =====
             // Get all payments received in the period
-            var payments = await DbContext.Payments
+            var payments = await DbContext.Payments.AsNoTracking()
                 .Include(p => p.Sale)
                     .ThenInclude(s => s!.SaleItems)
                         .ThenInclude(si => si.Service)
@@ -335,7 +433,7 @@ else
 
             // Calculate product vs service revenue from paid sales
             var paidSaleIds = payments.Select(p => p.SaleId).Distinct().ToList();
-            var paidSales = await DbContext.Sales
+            var paidSales = await DbContext.Sales.AsNoTracking()
                 .Include(s => s.SaleItems).ThenInclude(si => si.Service)
                 .Include(s => s.SaleItems).ThenInclude(si => si.Product)
                 .Where(s => paidSaleIds.Contains(s.SaleId))
@@ -354,7 +452,7 @@ else
             // ===== OUTFLOWS =====
             
             // 1. Expenses (only paid - actual cash outflows)
-            var expenses = await DbContext.Expenses
+            var expenses = await DbContext.Expenses.AsNoTracking()
                 .Where(e => e.Status == "paid" && e.ExpenseDate >= startDate && e.ExpenseDate < endDateEnd)
                 .ToListAsync();
             
@@ -366,7 +464,7 @@ else
                 .ToDictionary(g => g.Key, g => g.Sum(e => e.Amount));
 
             // 2. Payroll (paid only)
-            var payrolls = await DbContext.Payrolls
+            var payrolls = await DbContext.Payrolls.AsNoTracking()
                 .Where(p => p.Status == "paid" && p.PaidAt >= startDate && p.PaidAt < endDateEnd)
                 .ToListAsync();
             
@@ -379,7 +477,7 @@ else
             }
 
             // 3. Commissions - calculate from paid appointments using SERVICE commission rates
-            var paidAppointments = await DbContext.Appointments
+            var paidAppointments = await DbContext.Appointments.AsNoTracking()
                 .Include(a => a.AppointmentServices).ThenInclude(asvc => asvc.Service)
                 .Where(a => a.Status == "paid" && a.ScheduledStart >= startDate && a.ScheduledStart < endDateEnd)
                 .ToListAsync();
@@ -411,7 +509,7 @@ else
             }
 
             // 4. Purchase Orders (received/completed only)
-            var purchaseOrders = await DbContext.PurchaseOrders
+            var purchaseOrders = await DbContext.PurchaseOrders.AsNoTracking()
                 .Include(po => po.PurchaseOrderItems)
                 .Where(po => (po.Status == "received" || po.Status == "completed") && 
                              po.CreatedAt >= startDate && po.CreatedAt < endDateEnd)
@@ -491,42 +589,6 @@ else
         }
     }
 
-    private async Task SetToday()
-    {
-        startDate = DateTime.Today;
-        endDate = DateTime.Today;
-        await LoadData();
-    }
-
-    private async Task SetWeek()
-    {
-        startDate = DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek);
-        endDate = DateTime.Today;
-        await LoadData();
-    }
-
-    private async Task SetMonth()
-    {
-        startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
-        endDate = DateTime.Today;
-        await LoadData();
-    }
-
-    private async Task SetLastMonth()
-    {
-        var lastMonth = DateTime.Today.AddMonths(-1);
-        startDate = new DateTime(lastMonth.Year, lastMonth.Month, 1);
-        endDate = new DateTime(lastMonth.Year, lastMonth.Month, DateTime.DaysInMonth(lastMonth.Year, lastMonth.Month));
-        await LoadData();
-    }
-
-    private async Task SetYear()
-    {
-        startDate = new DateTime(DateTime.Today.Year, 1, 1);
-        endDate = DateTime.Today;
-        await LoadData();
-    }
-
     private class DailyCashFlow
     {
         public DateTime Date { get; set; }
@@ -552,7 +614,7 @@ else
                 Outflows = d.Outflows
             }).ToList();
 
-            var pdfBytes = PdfService.GenerateCashFlowReport(startDate, endDate, totalInflows, totalOutflows, netCashFlow, entries);
+            var pdfBytes = PdfService.GenerateCashFlowReport(startDate, endDate, totalInflows, totalOutflows, netCashFlow, entries, AuthState.CurrentUser?.Username ?? "");
             var base64 = Convert.ToBase64String(pdfBytes);
             await JSRuntime.InvokeVoidAsync("exportUtils.downloadFile", base64, $"CashFlow_{startDate:yyyyMMdd}_{endDate:yyyyMMdd}.pdf", "application/pdf");
         }

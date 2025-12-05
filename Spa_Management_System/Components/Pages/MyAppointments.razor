@@ -154,7 +154,7 @@ else
                             <!-- Total & Actions -->
                             <div style="text-align: right;">
                                 <p style="margin: 0 0 0.5rem 0; font-size: 1.25rem; font-weight: 600; color: var(--spa-primary);">
-                                    ₱@services.Sum(s => s.Price).ToString("N0")
+                                    ₱@services.Sum(s => s.Price).ToString("N2")
                                 </p>
                                 
                                 @if (CanCancel(appt))

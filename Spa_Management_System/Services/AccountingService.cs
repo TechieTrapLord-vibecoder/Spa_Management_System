@@ -42,24 +42,24 @@ public class AccountingService : IAccountingService
     private static class AccountCodes
     {
         // Assets (1xxx)
-        public const string CASH = "1100";              // Cash on Hand
-        public const string ACCOUNTS_RECEIVABLE = "1200"; // Accounts Receivable
+        public const string CASH = "1000";              // Cash on Hand
+        public const string ACCOUNTS_RECEIVABLE = "1100"; // Accounts Receivable
         public const string INVENTORY = "1300";          // Inventory
         
         // Liabilities (2xxx)
-        public const string ACCOUNTS_PAYABLE = "2100";   // Accounts Payable
-        public const string SALARIES_PAYABLE = "2200";   // Salaries Payable
+        public const string ACCOUNTS_PAYABLE = "2000";   // Accounts Payable
+        public const string SALARIES_PAYABLE = "2100";   // Accrued Expenses (used for salaries payable)
         public const string VAT_PAYABLE = "2300";        // VAT Payable (Output VAT)
         
         // Revenue (4xxx)
-        public const string SERVICE_REVENUE = "4100";    // Service Revenue
-        public const string PRODUCT_REVENUE = "4200";    // Product Sales
+        public const string SERVICE_REVENUE = "4000";    // Service Revenue
+        public const string PRODUCT_REVENUE = "4100";    // Product Sales
         
         // Expenses (5xxx)
-        public const string SALARY_EXPENSE = "5300";     // Salaries Expense
-        public const string COMMISSION_EXPENSE = "5600"; // Commission Expense
-        public const string RENT_EXPENSE = "5100";       // Rent Expense
-        public const string UTILITIES_EXPENSE = "5200";  // Utilities Expense
+        public const string SALARY_EXPENSE = "5000";     // Salaries & Wages
+        public const string COMMISSION_EXPENSE = "5100"; // Commission Expense
+        public const string RENT_EXPENSE = "5200";       // Rent Expense
+        public const string UTILITIES_EXPENSE = "5300";  // Utilities Expense
         public const string SUPPLIES_EXPENSE = "5400";   // Supplies Expense
         public const string COST_OF_GOODS_SOLD = "5700"; // Cost of Goods Sold
         public const string MARKETING_EXPENSE = "5500";  // Marketing Expense

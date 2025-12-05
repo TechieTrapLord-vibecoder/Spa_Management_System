@@ -559,12 +559,419 @@ window.chartUtils = {
     return this.charts[canvasId];
   },
 
+  // Create an area chart (line chart with fill for revenue vs expenses comparison)
+  createAreaChart: function (canvasId, labels, datasets, options) {
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+
+    if (this.charts[canvasId]) {
+      this.charts[canvasId].destroy();
+    }
+
+    this.charts[canvasId] = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: datasets.map((ds, idx) => ({
+          label: ds.label,
+          data: ds.data,
+          borderColor: ds.color || this.getColor(idx),
+          backgroundColor: (ds.color || this.getColor(idx)) + "40",
+          fill: true,
+          tension: 0.4,
+          borderWidth: 2,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+        })),
+      },
+      options: Object.assign(
+        {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: "index",
+            intersect: false,
+          },
+          plugins: {
+            legend: { position: "top" },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  return (
+                    context.dataset.label +
+                    ": ₱" +
+                    context.parsed.y.toLocaleString()
+                  );
+                },
+              },
+            },
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: function (value) {
+                  return "₱" + value.toLocaleString();
+                },
+              },
+            },
+          },
+        },
+        options || {}
+      ),
+    });
+
+    return this.charts[canvasId];
+  },
+
+  // Create a stacked bar chart (for comparing revenue vs commission)
+  createStackedBarChart: function (canvasId, labels, datasets, options) {
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+
+    if (this.charts[canvasId]) {
+      this.charts[canvasId].destroy();
+    }
+
+    this.charts[canvasId] = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: datasets.map((ds, idx) => ({
+          label: ds.label,
+          data: ds.data,
+          backgroundColor: ds.color || this.getColor(idx),
+          borderColor: ds.borderColor || ds.color || this.getColor(idx),
+          borderWidth: 1,
+        })),
+      },
+      options: Object.assign(
+        {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: "index",
+            intersect: false,
+          },
+          plugins: {
+            legend: { position: "top" },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  return (
+                    context.dataset.label +
+                    ": ₱" +
+                    context.parsed.y.toLocaleString()
+                  );
+                },
+              },
+            },
+          },
+          scales: {
+            x: { stacked: false },
+            y: {
+              stacked: false,
+              beginAtZero: true,
+              ticks: {
+                callback: function (value) {
+                  return "₱" + value.toLocaleString();
+                },
+              },
+            },
+          },
+        },
+        options || {}
+      ),
+    });
+
+    return this.charts[canvasId];
+  },
+
+  // Create horizontal bar chart (for therapist rankings)
+  createHorizontalBarChart: function (canvasId, labels, datasets, options) {
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+
+    if (this.charts[canvasId]) {
+      this.charts[canvasId].destroy();
+    }
+
+    this.charts[canvasId] = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: datasets.map((ds, idx) => ({
+          label: ds.label,
+          data: ds.data,
+          backgroundColor: ds.color || this.getColor(idx),
+          borderColor: ds.borderColor || ds.color || this.getColor(idx),
+          borderWidth: 1,
+        })),
+      },
+      options: Object.assign(
+        {
+          indexAxis: "y",
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  return "₱" + context.parsed.x.toLocaleString();
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              beginAtZero: true,
+              ticks: {
+                callback: function (value) {
+                  return "₱" + value.toLocaleString();
+                },
+              },
+            },
+          },
+        },
+        options || {}
+      ),
+    });
+
+    return this.charts[canvasId];
+  },
+
   // Destroy chart
   destroyChart: function (canvasId) {
     if (this.charts[canvasId]) {
       this.charts[canvasId].destroy();
       delete this.charts[canvasId];
     }
+  },
+
+  // Simple bar chart - takes labels array and data array directly
+  createSimpleBarChart: function (canvasId, labels, data, colors) {
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+
+    if (this.charts[canvasId]) {
+      this.charts[canvasId].destroy();
+    }
+
+    var bgColors = Array.isArray(colors)
+      ? colors
+      : labels.map((_, idx) => this.getColor(idx));
+
+    this.charts[canvasId] = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            data: data,
+            backgroundColor: bgColors,
+            borderColor: bgColors,
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (context) {
+                return "₱" + context.parsed.y.toLocaleString();
+              },
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function (value) {
+                return "₱" + value.toLocaleString();
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return this.charts[canvasId];
+  },
+
+  // Simple horizontal bar chart - takes labels array and data array directly
+  createSimpleHorizontalBarChart: function (canvasId, labels, data, color) {
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+
+    if (this.charts[canvasId]) {
+      this.charts[canvasId].destroy();
+    }
+
+    var bgColor = color || this.getColor(0);
+
+    this.charts[canvasId] = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            data: data,
+            backgroundColor: bgColor,
+            borderColor: bgColor,
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (context) {
+                return "₱" + context.parsed.x.toLocaleString();
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: {
+              callback: function (value) {
+                return "₱" + value.toLocaleString();
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return this.charts[canvasId];
+  },
+
+  // Simple area chart with multiple datasets - takes labels, datasetLabels, dataArrays, colors
+  createSimpleAreaChart: function (
+    canvasId,
+    labels,
+    datasetLabels,
+    dataArrays,
+    colors
+  ) {
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+
+    if (this.charts[canvasId]) {
+      this.charts[canvasId].destroy();
+    }
+
+    var self = this;
+    var datasets = datasetLabels.map((label, idx) => ({
+      label: label,
+      data: dataArrays[idx],
+      borderColor: (colors && colors[idx]) || self.getColor(idx),
+      backgroundColor: ((colors && colors[idx]) || self.getColor(idx)) + "40",
+      fill: true,
+      tension: 0.4,
+      borderWidth: 2,
+      pointRadius: 2,
+      pointHoverRadius: 5,
+    }));
+
+    this.charts[canvasId] = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: datasets,
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: "index",
+          intersect: false,
+        },
+        plugins: {
+          legend: { position: "top" },
+          tooltip: {
+            callbacks: {
+              label: function (context) {
+                return (
+                  context.dataset.label +
+                  ": ₱" +
+                  context.parsed.y.toLocaleString()
+                );
+              },
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function (value) {
+                return "₱" + value.toLocaleString();
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return this.charts[canvasId];
+  },
+
+  // Simple doughnut with custom colors
+  createSimpleDoughnutChart: function (canvasId, labels, data, colors) {
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+
+    if (this.charts[canvasId]) {
+      this.charts[canvasId].destroy();
+    }
+
+    var bgColors = Array.isArray(colors)
+      ? colors
+      : labels.map((_, idx) => this.getColor(idx));
+
+    this.charts[canvasId] = new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            data: data,
+            backgroundColor: bgColors,
+            borderWidth: 2,
+            borderColor: "#fff",
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "right" },
+          tooltip: {
+            callbacks: {
+              label: function (context) {
+                return context.label + ": ₱" + context.parsed.toLocaleString();
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return this.charts[canvasId];
   },
 
   // Color palette

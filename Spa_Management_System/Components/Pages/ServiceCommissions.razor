@@ -166,10 +166,16 @@ else
                     <span>Showing @(Math.Min((currentPage - 1) * pageSize + 1, filteredServices.Count))-@(Math.Min(currentPage * pageSize, filteredServices.Count)) of @filteredServices.Count entries</span>
                     <div class="pagination-buttons">
                         <button class="btn btn-sm btn-light" disabled="@(currentPage <= 1)" @onclick="PreviousPage">Previous</button>
-                        @for (int i = 1; i <= TotalPages; i++)
+                        @foreach (var pageNum in GetVisiblePages())
                         {
-                            var pageNum = i;
-                            <button class="btn btn-sm @(pageNum == currentPage ? "btn-primary" : "btn-light")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                            @if (pageNum == -1)
+                            {
+                                <span style="padding: 0.25rem 0.5rem;">…</span>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm @(pageNum == currentPage ? "btn-primary" : "btn-light")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                            }
                         }
                         <button class="btn btn-sm btn-light" disabled="@(currentPage >= TotalPages)" @onclick="NextPage">Next</button>
                     </div>
@@ -321,6 +327,25 @@ else
     private void GoToPage(int page)
     {
         currentPage = page;
+    }
+
+    private List<int> GetVisiblePages()
+    {
+        var pages = new List<int>();
+        if (TotalPages <= 7)
+        {
+            for (int i = 1; i <= TotalPages; i++) pages.Add(i);
+        }
+        else
+        {
+            pages.Add(1);
+            if (currentPage > 3) pages.Add(-1);
+            for (int i = Math.Max(2, currentPage - 1); i <= Math.Min(TotalPages - 1, currentPage + 1); i++)
+                pages.Add(i);
+            if (currentPage < TotalPages - 2) pages.Add(-1);
+            pages.Add(TotalPages);
+        }
+        return pages;
     }
 
     private decimal CalculateEarnings(Service service)

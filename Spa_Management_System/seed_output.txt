@@ -1,0 +1,14 @@
+Msg 1046, Level 15, State 1, Server Nikola\SQLEXPRESS, Line 453
+Subqueries are not allowed in this context. Only scalar expressions are allowed.
+Msg 1046, Level 15, State 1, Server Nikola\SQLEXPRESS, Line 454
+Subqueries are not allowed in this context. Only scalar expressions are allowed.
+Msg 1046, Level 15, State 1, Server Nikola\SQLEXPRESS, Line 455
+Subqueries are not allowed in this context. Only scalar expressions are allowed.
+Msg 1046, Level 15, State 1, Server Nikola\SQLEXPRESS, Line 456
+Subqueries are not allowed in this context. Only scalar expressions are allowed.
+Msg 1046, Level 15, State 1, Server Nikola\SQLEXPRESS, Line 457
+Subqueries are not allowed in this context. Only scalar expressions are allowed.
+Msg 1046, Level 15, State 1, Server Nikola\SQLEXPRESS, Line 459
+Subqueries are not allowed in this context. Only scalar expressions are allowed.
+Msg 1046, Level 15, State 1, Server Nikola\SQLEXPRESS, Line 460
+Subqueries are not allowed in this context. Only scalar expressions are allowed.

@@ -75,7 +75,7 @@ else
                                         }
                                         <div class="item-icon"><span class="bi bi-box"></span></div>
                                         <div class="item-name">@product.Name</div>
-                                        <div class="item-price">₱@product.UnitPrice.ToString("N0")</div>
+                                        <div class="item-price">₱@product.UnitPrice.ToString("N2")</div>
                                         @if (isOutOfStock)
                                         {
                                             <div class="stock-warning">Out of Stock</div>
@@ -118,7 +118,7 @@ else
                                             }
                                         </div>
                                         <div class="appt-total">
-                                            ₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N0"))
+                                            ₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N2"))
                                         </div>
                                     </div>
                                 }
@@ -177,7 +177,7 @@ else
                         <div class="cart-badge">@cartItems.Sum(i => i.Quantity)</div>
                         <span class="bi bi-cart3"></span>
                         <span class="view-cart-text">View Cart</span>
-                        <span class="cart-total-preview">₱@subtotal.ToString("N0")</span>
+                        <span class="cart-total-preview">₱@subtotal.ToString("N2")</span>
                     </button>
                 }
             </div>
@@ -347,11 +347,12 @@ else
                 
                 <div class="receipt-info">
                     <div>Receipt #: @lastSale.SaleNumber</div>
-                    <div>@DateTime.Now.ToString("MMM dd, yyyy h:mm tt")</div>
+                    <div>@lastSale.CreatedAt.ToString("MMM dd, yyyy h:mm tt")</div>
                     @if (lastSale.Customer?.Person != null)
                     {
                         <div>Customer: @lastSale.Customer.Person.FirstName @lastSale.Customer.Person.LastName</div>
                     }
+                    <div>Cashier: @(lastSale.CreatedByUser?.Username ?? "System")</div>
                 </div>
 
                 <div class="receipt-items">
@@ -409,14 +410,14 @@ else
                         <div class="cart-modal-item">
                             <div class="cart-modal-item-info">
                                 <div class="cart-modal-item-name">@item.Name</div>
-                                <div class="cart-modal-item-price">₱@item.UnitPrice.ToString("N0") each</div>
+                                <div class="cart-modal-item-price">₱@item.UnitPrice.ToString("N2") each</div>
                             </div>
                             <div class="cart-modal-item-controls">
                                 <button class="qty-btn" @onclick="() => UpdateQty(item, -1)">−</button>
                                 <span class="qty">@item.Quantity</span>
                                 <button class="qty-btn" @onclick="() => UpdateQty(item, 1)">+</button>
                             </div>
-                            <div class="cart-modal-item-total">₱@item.LineTotal.ToString("N0")</div>
+                            <div class="cart-modal-item-total">₱@item.LineTotal.ToString("N2")</div>
                             <button class="remove-btn" @onclick="() => RemoveItem(item)"><span class="bi bi-trash"></span></button>
                         </div>
                     }
@@ -531,6 +532,7 @@ else
             services = await DbContext.Services.Where(s => s.Active).OrderBy(s => s.Name).ToListAsync();
             
             var today = DateTime.Today;
+            // Only show 'completed' appointments (ready to pay), not 'paid' (already processed)
             pendingAppointments = await DbContext.Appointments
                 .Include(a => a.Customer).ThenInclude(c => c.Person)
                 .Include(a => a.AppointmentServices).ThenInclude(s => s.Service)
@@ -875,6 +877,7 @@ else
                 .Include(s => s.SaleItems).ThenInclude(si => si.Service)
                 .Include(s => s.SaleItems).ThenInclude(si => si.Product)
                 .Include(s => s.Payments)
+                .Include(s => s.CreatedByUser)
                 .FirstOrDefaultAsync(s => s.SaleId == sale.SaleId);
 
             showReceipt = true;
@@ -1711,12 +1714,16 @@ else
         background: white;
         border-radius: 12px;
         width: 350px;
+        max-height: 90vh;
         padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
     }
 
     .receipt-header {
         text-align: center;
         margin-bottom: 1rem;
+        flex-shrink: 0;
     }
 
     .receipt-logo {
@@ -1738,10 +1745,15 @@ else
         margin-bottom: 1rem;
         padding-bottom: 1rem;
         border-bottom: 1px dashed #ddd;
+        flex-shrink: 0;
     }
 
     .receipt-items {
         margin-bottom: 1rem;
+        overflow-y: auto;
+        max-height: 35vh;
+        flex: 1;
+        min-height: 0;
     }
 
     .receipt-item {
@@ -1754,6 +1766,7 @@ else
         border-top: 1px dashed #ddd;
         padding-top: 0.5rem;
         margin-bottom: 0.5rem;
+        flex-shrink: 0;
     }
 
     .receipt-row {
@@ -1771,6 +1784,7 @@ else
         font-size: 1.2rem;
         padding-top: 0.75rem;
         border-top: 2px solid #333;
+        flex-shrink: 0;
     }
 
     .receipt-footer {
@@ -1780,6 +1794,7 @@ else
         text-align: center;
         font-size: 0.9rem;
         color: #666;
+        flex-shrink: 0;
     }
 
     .receipt-thanks {
@@ -1797,6 +1812,7 @@ else
         border-radius: 8px;
         font-size: 1rem;
         cursor: pointer;
+        flex-shrink: 0;
     }
 
     /* Compact Cart Summary */

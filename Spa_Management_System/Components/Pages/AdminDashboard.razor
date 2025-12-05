@@ -6,6 +6,7 @@
 @inject IAuthStateService AuthState
 @inject NavigationManager Navigation
 @inject AppDbContext DbContext
+@inject IJSRuntime JS
 
 <PageTitle>Super Admin Dashboard - Kaye Spa</PageTitle>
 
@@ -55,7 +56,7 @@ else
             <a href="/financial-reports" class="metric-card revenue clickable-card">
                 <div class="metric-icon"><span class="bi bi-cash-stack"></span></div>
                 <div class="metric-content">
-                    <span class="metric-value">₱@todayRevenue.ToString("N0")</span>
+                    <span class="metric-value">₱@todayRevenue.ToString("N2")</span>
                     <span class="metric-label">Today's Revenue</span>
                 </div>
             </a>
@@ -134,22 +135,43 @@ else
                     <div class="financial-grid">
                         <div class="financial-item">
                             <span class="fin-label">This Week</span>
-                            <span class="fin-value">₱@weekRevenue.ToString("N0")</span>
+                            <span class="fin-value">₱@weekRevenue.ToString("N2")</span>
                         </div>
                         <div class="financial-item">
                             <span class="fin-label">This Month</span>
-                            <span class="fin-value">₱@monthRevenue.ToString("N0")</span>
+                            <span class="fin-value">₱@monthRevenue.ToString("N2")</span>
                         </div>
                         <div class="financial-item">
                             <span class="fin-label">Expenses (Month)</span>
-                            <span class="fin-value expense">₱@monthExpenses.ToString("N0")</span>
+                            <span class="fin-value expense">₱@monthExpenses.ToString("N2")</span>
                         </div>
                         <div class="financial-item">
                             <span class="fin-label">Net Income</span>
                             <span class="fin-value @(monthRevenue - monthExpenses >= 0 ? "positive" : "negative")">
-                                ₱@((monthRevenue - monthExpenses).ToString("N0"))
+                                ₱@((monthRevenue - monthExpenses).ToString("N2"))
                             </span>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Revenue vs Commission Trend Chart -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3><span class="bi bi-graph-up-arrow"></span> Revenue Trend (30 Days)</h3>
+                        <a href="/reports" class="view-link">Full Report <span class="bi bi-arrow-right"></span></a>
+                    </div>
+                    <div style="height: 280px; position: relative;">
+                        <canvas id="adminRevenueChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Service Category Chart -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3><span class="bi bi-pie-chart-fill"></span> Service Popularity</h3>
+                    </div>
+                    <div style="height: 280px; position: relative;">
+                        <canvas id="adminServiceChart"></canvas>
                     </div>
                 </div>
 
@@ -168,7 +190,7 @@ else
                                         <span class="service-name">@svc.ServiceName</span>
                                         <span class="service-count">@svc.Count bookings</span>
                                     </div>
-                                    <span class="service-revenue">₱@svc.Revenue.ToString("N0")</span>
+                                    <span class="service-revenue">₱@svc.Revenue.ToString("N2")</span>
                                 </div>
                             }
                         }
@@ -337,7 +359,7 @@ else
                                         <span class="staff-name">@staff.Name</span>
                                         <span class="staff-services">@staff.ServicesCount services</span>
                                     </div>
-                                    <span class="staff-commission">₱@staff.Commission.ToString("N0")</span>
+                                    <span class="staff-commission">₱@staff.Commission.ToString("N2")</span>
                                 </div>
                             }
                         }
@@ -880,6 +902,12 @@ else
 
     private List<TopServiceDto> topServices = new();
     private List<StaffPerformanceDto> staffPerformance = new();
+    
+    // Chart data
+    private List<DailyRevenueDto> dailyRevenue = new();
+    private Dictionary<string, int> serviceCategoryBreakdown = new();
+    private bool dataLoaded = false;
+    private bool chartsRendered = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -895,6 +923,18 @@ else
         }
 
         await LoadDashboardData();
+        dataLoaded = true;
+        StateHasChanged(); // Trigger re-render so OnAfterRenderAsync can run charts
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Render charts only after data has been loaded
+        if (dataLoaded && !chartsRendered && IsAuthorized())
+        {
+            chartsRendered = true;
+            await RenderCharts();
+        }
     }
 
     private bool IsAuthorized()
@@ -911,7 +951,7 @@ else
             var startOfWeek = today.AddDays(-(int)today.DayOfWeek);
             var startOfMonth = new DateTime(today.Year, today.Month, 1);
 
-            // Revenue
+            // Revenue - use database aggregation
             todayRevenue = await DbContext.Payments
                 .Where(p => p.PaidAt.Date == today)
                 .SumAsync(p => p.Amount);
@@ -929,20 +969,21 @@ else
                 .Where(e => e.ExpenseDate >= startOfMonth)
                 .SumAsync(e => e.Amount);
 
-            // Appointments
-            var todayAppointmentsList = await DbContext.Appointments
+            // Appointments - use database aggregation for counts
+            var appointmentCounts = await DbContext.Appointments
                 .Where(a => a.ScheduledStart.Date == today)
+                .GroupBy(a => a.Status)
+                .Select(g => new { Status = g.Key, Count = g.Count() })
                 .ToListAsync();
 
-            todayAppointments = todayAppointmentsList.Count(a => a.Status != "cancelled");
-            scheduledCount = todayAppointmentsList.Count(a => a.Status == "scheduled" || a.Status == "confirmed");
-            inProgressCount = todayAppointmentsList.Count(a => a.Status == "in-progress");
-            completedCount = todayAppointmentsList.Count(a => a.Status == "completed");
-            paidCount = todayAppointmentsList.Count(a => a.Status == "paid");
-            todayCancelledCount = todayAppointmentsList.Count(a => a.Status == "cancelled");
+            todayAppointments = appointmentCounts.Where(a => a.Status != "cancelled").Sum(a => a.Count);
+            scheduledCount = appointmentCounts.Where(a => a.Status == "scheduled" || a.Status == "confirmed").Sum(a => a.Count);
+            inProgressCount = appointmentCounts.FirstOrDefault(a => a.Status == "in-progress")?.Count ?? 0;
+            completedCount = appointmentCounts.FirstOrDefault(a => a.Status == "completed")?.Count ?? 0;
+            paidCount = appointmentCounts.FirstOrDefault(a => a.Status == "paid")?.Count ?? 0;
+            todayCancelledCount = appointmentCounts.FirstOrDefault(a => a.Status == "cancelled")?.Count ?? 0;
 
             servicesCompletedToday = await DbContext.AppointmentServices
-                .Include(a => a.Appointment)
                 .Where(a => a.Appointment.ScheduledStart.Date == today &&
                            (a.Appointment.Status == "completed" || a.Appointment.Status == "paid"))
                 .CountAsync();
@@ -954,6 +995,7 @@ else
 
             // Employees
             activeEmployees = await DbContext.Employees
+                .AsNoTracking()
                 .Include(e => e.Person)
                 .Include(e => e.Role)
                 .Where(e => e.Status == "active")
@@ -1003,10 +1045,87 @@ else
                 .OrderByDescending(x => x.ServicesCount)
                 .Take(5)
                 .ToListAsync();
+            
+            // Load chart data - Daily Revenue (last 30 days)
+            var thirtyDaysAgo = today.AddDays(-29);
+            var revenueData = await DbContext.Payments
+                .Where(p => p.PaidAt.Date >= thirtyDaysAgo && p.PaidAt.Date <= today)
+                .GroupBy(p => p.PaidAt.Date)
+                .Select(g => new { Date = g.Key, Revenue = g.Sum(p => p.Amount) })
+                .ToListAsync();
+            
+            var commissionData = await DbContext.AppointmentServices
+                .Include(a => a.Appointment)
+                .Where(a => a.Appointment.ScheduledStart.Date >= thirtyDaysAgo && 
+                           a.Appointment.ScheduledStart.Date <= today &&
+                           (a.Appointment.Status == "paid" || a.Appointment.Status == "completed"))
+                .GroupBy(a => a.Appointment.ScheduledStart.Date)
+                .Select(g => new { Date = g.Key, Commission = g.Sum(a => a.CommissionAmount) })
+                .ToListAsync();
+            
+            dailyRevenue = Enumerable.Range(0, 30)
+                .Select(i => thirtyDaysAgo.AddDays(i))
+                .Select(date => new DailyRevenueDto
+                {
+                    Date = date,
+                    Revenue = revenueData.FirstOrDefault(r => r.Date == date)?.Revenue ?? 0,
+                    Commission = commissionData.FirstOrDefault(c => c.Date == date)?.Commission ?? 0
+                })
+                .ToList();
+            
+            // Service category breakdown
+            var categoryData = await DbContext.AppointmentServices
+                .Include(a => a.Service).ThenInclude(s => s!.ServiceCategory)
+                .Include(a => a.Appointment)
+                .Where(a => a.Appointment.ScheduledStart >= startOfMonth)
+                .Where(a => a.Service != null && a.Service.ServiceCategory != null)
+                .GroupBy(a => a.Service!.ServiceCategory!.Name)
+                .Select(g => new { Category = g.Key, Count = g.Count() })
+                .ToListAsync();
+            
+            serviceCategoryBreakdown = categoryData.ToDictionary(c => c.Category, c => c.Count);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error loading admin dashboard: {ex.Message}");
+        }
+    }
+    
+    private async Task RenderCharts()
+    {
+        try
+        {
+            // Revenue vs Commission Trend Chart
+            var revenueLabels = dailyRevenue.Select(d => d.Date.ToString("MMM dd")).ToArray();
+            var revenueValues = dailyRevenue.Select(d => (double)d.Revenue).ToArray();
+            var commissionValues = dailyRevenue.Select(d => (double)d.Commission).ToArray();
+            
+            // If no data, show a message or use sample data for visual testing
+            var hasData = revenueValues.Any(v => v > 0) || commissionValues.Any(v => v > 0);
+            
+            await JS.InvokeVoidAsync("chartUtils.createStackedBarChart", "adminRevenueChart", revenueLabels,
+                new[] { 
+                    new { label = "Revenue", data = revenueValues, color = "#454F4A" },
+                    new { label = "Commission", data = commissionValues, color = "#AA9478" }
+                }, null);
+            
+            // Service Category Popularity Pie Chart
+            if (serviceCategoryBreakdown.Any())
+            {
+                var categoryLabels = serviceCategoryBreakdown.Keys.ToArray();
+                var categoryData = serviceCategoryBreakdown.Values.Select(v => (double)v).ToArray();
+                await JS.InvokeVoidAsync("chartUtils.createPieChart", "adminServiceChart", categoryLabels, categoryData, null);
+            }
+            else
+            {
+                // Show placeholder message when no data
+                await JS.InvokeVoidAsync("chartUtils.createPieChart", "adminServiceChart", 
+                    new[] { "No Data" }, new[] { 1.0 }, null);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error rendering charts: {ex.Message}");
         }
     }
 
@@ -1021,6 +1140,13 @@ else
     {
         public string Name { get; set; } = "";
         public int ServicesCount { get; set; }
+        public decimal Commission { get; set; }
+    }
+    
+    private class DailyRevenueDto
+    {
+        public DateTime Date { get; set; }
+        public decimal Revenue { get; set; }
         public decimal Commission { get; set; }
     }
 }

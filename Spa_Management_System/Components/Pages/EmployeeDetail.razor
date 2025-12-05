@@ -156,7 +156,7 @@ else
             else
             {
                 <div class="table-container">
-                    <table>
+                    <table class="data-table">
                         <thead>
                             <tr>
                                 <th>Service</th>
@@ -167,7 +167,7 @@ else
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var q in qualifiedServices.Where(s => !s.IsArchived && s.Service != null))
+                            @foreach (var q in GetPagedQualifiedServices())
                             {
                                 var svc = q.Service;
                                 var earnings = svc.CommissionType == "percentage" 
@@ -197,6 +197,30 @@ else
                         </tbody>
                     </table>
                 </div>
+                
+                @if (QualifiedServicesTotalPages > 1)
+                {
+                    <div class="table-pagination">
+                        <div class="pagination-info">
+                            Showing @(Math.Min((qualifiedServicesPage - 1) * qualifiedServicesPageSize + 1, qualifiedServices.Where(s => !s.IsArchived && s.Service != null).Count())) to @(Math.Min(qualifiedServicesPage * qualifiedServicesPageSize, qualifiedServices.Where(s => !s.IsArchived && s.Service != null).Count())) of @qualifiedServices.Where(s => !s.IsArchived && s.Service != null).Count() entries
+                        </div>
+                        <div class="pagination-controls">
+                            <button class="page-btn" @onclick="QualifiedServicesPreviousPage" disabled="@(qualifiedServicesPage <= 1)">‹ Prev</button>
+                            @foreach (var pageNum in GetQualifiedServicesVisiblePages())
+                            {
+                                @if (pageNum == -1)
+                                {
+                                    <span class="page-ellipsis">...</span>
+                                }
+                                else
+                                {
+                                    <button class="page-btn @(qualifiedServicesPage == pageNum ? "active" : "")" @onclick="() => QualifiedServicesGoToPage(pageNum)">@pageNum</button>
+                                }
+                            }
+                            <button class="page-btn" @onclick="QualifiedServicesNextPage" disabled="@(qualifiedServicesPage >= QualifiedServicesTotalPages)">Next ›</button>
+                        </div>
+                    </div>
+                }
             }
         </div>
 
@@ -214,7 +238,7 @@ else
             else
             {
                 <div class="table-container">
-                    <table>
+                    <table class="data-table">
                         <thead>
                             <tr>
                                 <th>Date</th>
@@ -225,7 +249,7 @@ else
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var cs in commissionServices.OrderByDescending(c => c.Appointment.ScheduledStart))
+                            @foreach (var cs in GetPagedCommissionHistory())
                             {
                                 <tr>
                                     <td>@cs.Appointment.ScheduledStart.ToString("MMM dd, yyyy")</td>
@@ -238,6 +262,30 @@ else
                         </tbody>
                     </table>
                 </div>
+                
+                @if (CommissionHistoryTotalPages > 1)
+                {
+                    <div class="table-pagination">
+                        <div class="pagination-info">
+                            Showing @(Math.Min((commissionHistoryPage - 1) * commissionHistoryPageSize + 1, commissionServices.Count)) to @(Math.Min(commissionHistoryPage * commissionHistoryPageSize, commissionServices.Count)) of @commissionServices.Count entries
+                        </div>
+                        <div class="pagination-controls">
+                            <button class="page-btn" @onclick="CommissionHistoryPreviousPage" disabled="@(commissionHistoryPage <= 1)">‹ Prev</button>
+                            @foreach (var pageNum in GetCommissionHistoryVisiblePages())
+                            {
+                                @if (pageNum == -1)
+                                {
+                                    <span class="page-ellipsis">...</span>
+                                }
+                                else
+                                {
+                                    <button class="page-btn @(commissionHistoryPage == pageNum ? "active" : "")" @onclick="() => CommissionHistoryGoToPage(pageNum)">@pageNum</button>
+                                }
+                            }
+                            <button class="page-btn" @onclick="CommissionHistoryNextPage" disabled="@(commissionHistoryPage >= CommissionHistoryTotalPages)">Next ›</button>
+                        </div>
+                    </div>
+                }
 
                 <!-- Summary Footer -->
                 <div style="margin-top: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
@@ -400,7 +448,7 @@ else
                                             <div class="d-flex justify-content-between align-items-center">
                                                 <div>
                                                     <strong>@service.Name</strong>
-                                                    <div class="small text-muted">₱@service.Price.ToString("N0") • @service.DurationMinutes min</div>
+                                                    <div class="small text-muted">₱@service.Price.ToString("N2") • @service.DurationMinutes min</div>
                                                 </div>
                                                 <span class="badge bg-success">
                                                     @(service.CommissionType == "percentage" ? $"{service.CommissionValue}%" : $"₱{service.CommissionValue:N0}")
@@ -452,6 +500,16 @@ else
     private List<EmployeeServiceCommission> qualifiedServices = new();
     private decimal totalCommissions = 0;
     
+    // Pagination for Qualified Services
+    private int qualifiedServicesPage = 1;
+    private int qualifiedServicesPageSize = 10;
+    private int QualifiedServicesTotalPages => (int)Math.Ceiling((double)qualifiedServices.Where(s => !s.IsArchived && s.Service != null).Count() / qualifiedServicesPageSize);
+    
+    // Pagination for Commission History
+    private int commissionHistoryPage = 1;
+    private int commissionHistoryPageSize = 10;
+    private int CommissionHistoryTotalPages => (int)Math.Ceiling((double)commissionServices.Count / commissionHistoryPageSize);
+    
     // Manage Services Modal
     private bool showManageServicesModal = false;
     private List<Service> allServices = new();
@@ -463,6 +521,122 @@ else
     protected override async Task OnInitializedAsync()
     {
         await LoadEmployeeData();
+    }
+    
+    // Pagination methods for Qualified Services
+    private List<EmployeeServiceCommission> GetPagedQualifiedServices()
+    {
+        return qualifiedServices
+            .Where(s => !s.IsArchived && s.Service != null)
+            .Skip((qualifiedServicesPage - 1) * qualifiedServicesPageSize)
+            .Take(qualifiedServicesPageSize)
+            .ToList();
+    }
+    
+    private void QualifiedServicesPreviousPage()
+    {
+        if (qualifiedServicesPage > 1) qualifiedServicesPage--;
+    }
+    
+    private void QualifiedServicesNextPage()
+    {
+        if (qualifiedServicesPage < QualifiedServicesTotalPages) qualifiedServicesPage++;
+    }
+    
+    private void QualifiedServicesGoToPage(int page)
+    {
+        qualifiedServicesPage = page;
+    }
+    
+    // Pagination methods for Commission History
+    private List<AppointmentService> GetPagedCommissionHistory()
+    {
+        return commissionServices
+            .OrderByDescending(c => c.Appointment.ScheduledStart)
+            .Skip((commissionHistoryPage - 1) * commissionHistoryPageSize)
+            .Take(commissionHistoryPageSize)
+            .ToList();
+    }
+    
+    private void CommissionHistoryPreviousPage()
+    {
+        if (commissionHistoryPage > 1) commissionHistoryPage--;
+    }
+    
+    private void CommissionHistoryNextPage()
+    {
+        if (commissionHistoryPage < CommissionHistoryTotalPages) commissionHistoryPage++;
+    }
+    
+    private void CommissionHistoryGoToPage(int page)
+    {
+        commissionHistoryPage = page;
+    }
+    
+    // Get visible page numbers for Qualified Services (max 5 pages shown)
+    private List<int> GetQualifiedServicesVisiblePages()
+    {
+        return GetVisiblePages(qualifiedServicesPage, QualifiedServicesTotalPages);
+    }
+    
+    // Get visible page numbers for Commission History (max 5 pages shown)
+    private List<int> GetCommissionHistoryVisiblePages()
+    {
+        return GetVisiblePages(commissionHistoryPage, CommissionHistoryTotalPages);
+    }
+    
+    // Helper method to calculate visible page numbers with ellipsis
+    private List<int> GetVisiblePages(int currentPage, int totalPages)
+    {
+        var pages = new List<int>();
+        
+        if (totalPages <= 7)
+        {
+            // Show all pages if 7 or fewer
+            for (int i = 1; i <= totalPages; i++)
+                pages.Add(i);
+        }
+        else
+        {
+            // Always show first page
+            pages.Add(1);
+            
+            if (currentPage > 3)
+            {
+                pages.Add(-1); // Ellipsis
+            }
+            
+            // Show pages around current
+            int start = Math.Max(2, currentPage - 1);
+            int end = Math.Min(totalPages - 1, currentPage + 1);
+            
+            // Adjust if at the beginning
+            if (currentPage <= 3)
+            {
+                start = 2;
+                end = 5;
+            }
+            
+            // Adjust if at the end
+            if (currentPage >= totalPages - 2)
+            {
+                start = totalPages - 4;
+                end = totalPages - 1;
+            }
+            
+            for (int i = start; i <= end; i++)
+                pages.Add(i);
+            
+            if (currentPage < totalPages - 2)
+            {
+                pages.Add(-1); // Ellipsis
+            }
+            
+            // Always show last page
+            pages.Add(totalPages);
+        }
+        
+        return pages;
     }
 
     private async Task LoadEmployeeData()
@@ -482,13 +656,13 @@ else
                 
                 if (isTherapist)
                 {
-                    // Load commission data for therapists
+                    // Load commission data for therapists (include both completed and paid appointments)
                     commissionServices = await DbContext.AppointmentServices
                         .Include(aps => aps.Appointment)
                             .ThenInclude(a => a.Customer)
                                 .ThenInclude(c => c!.Person)
                         .Include(aps => aps.Service)
-                        .Where(aps => aps.TherapistEmployeeId == EmployeeId && aps.Appointment.Status == "completed")
+                        .Where(aps => aps.TherapistEmployeeId == EmployeeId && (aps.Appointment.Status == "completed" || aps.Appointment.Status == "paid"))
                         .OrderByDescending(aps => aps.Appointment.ScheduledStart)
                         .ToListAsync();
                     

@@ -26,14 +26,27 @@ else
 
         <!-- Filters -->
         <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: end;">
-            <div style="flex: 1; min-width: 200px;">
-                <label class="form-label">From Date</label>
-                <input type="date" class="form-control" @bind="filterFromDate" @bind:event="onchange" @bind:after="LoadEntries" />
+            <div style="min-width: 150px;">
+                <label class="form-label">Period</label>
+                <select class="form-control" @bind="selectedPeriod" @bind:after="OnPeriodChanged">
+                    <option value="month">Current Month</option>
+                    <option value="quarter">Current Quarter</option>
+                    <option value="year">Current Year</option>
+                    <option value="ytd">Year to Date</option>
+                    <option value="custom">Custom Range</option>
+                </select>
             </div>
-            <div style="flex: 1; min-width: 200px;">
-                <label class="form-label">To Date</label>
-                <input type="date" class="form-control" @bind="filterToDate" @bind:event="onchange" @bind:after="LoadEntries" />
-            </div>
+            @if (selectedPeriod == "custom")
+            {
+                <div style="min-width: 150px;">
+                    <label class="form-label">From Date</label>
+                    <input type="date" class="form-control" @bind="filterFromDate" @bind:event="onchange" @bind:after="LoadEntries" />
+                </div>
+                <div style="min-width: 150px;">
+                    <label class="form-label">To Date</label>
+                    <input type="date" class="form-control" @bind="filterToDate" @bind:event="onchange" @bind:after="LoadEntries" />
+                </div>
+            }
             <div style="flex: 2; min-width: 200px;">
                 <label class="form-label">Search</label>
                 <input type="text" class="form-control" placeholder="Search by journal # or description..." @bind="searchTerm" @bind:event="oninput" @bind:after="LoadEntries" />
@@ -100,10 +113,16 @@ else
                 <span>Showing @(Math.Min((currentPage - 1) * pageSize + 1, journalEntries.Count))-@(Math.Min(currentPage * pageSize, journalEntries.Count)) of @journalEntries.Count entries</span>
                 <div class="pagination-buttons">
                     <button class="btn btn-sm btn-light" disabled="@(currentPage <= 1)" @onclick="PreviousPage">Previous</button>
-                    @for (int i = 1; i <= TotalPages; i++)
+                    @foreach (var pageNum in GetVisiblePages())
                     {
-                        var pageNum = i;
-                        <button class="btn btn-sm @(pageNum == currentPage ? "btn-primary" : "btn-light")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                        @if (pageNum == -1)
+                        {
+                            <span style="padding: 0.25rem 0.5rem;">…</span>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm @(pageNum == currentPage ? "btn-primary" : "btn-light")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                        }
                     }
                     <button class="btn btn-sm btn-light" disabled="@(currentPage >= TotalPages)" @onclick="NextPage">Next</button>
                 </div>
@@ -357,6 +376,7 @@ else
     private JournalEntry? deletingEntry;
     
     // Filters
+    private string selectedPeriod = "month";
     private DateTime? filterFromDate;
     private DateTime? filterToDate;
     private string searchTerm = "";
@@ -384,13 +404,43 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // Set default date range to current month
-        var now = DateTime.Today;
-        filterFromDate = new DateTime(now.Year, now.Month, 1);
-        filterToDate = now;
-        
+        SetPeriodDates();
         await LoadLedgerAccounts();
         await LoadEntries();
+    }
+
+    private async Task OnPeriodChanged()
+    {
+        SetPeriodDates();
+        await LoadEntries();
+    }
+
+    private void SetPeriodDates()
+    {
+        var today = DateTime.Today;
+        switch (selectedPeriod)
+        {
+            case "month":
+                filterFromDate = new DateTime(today.Year, today.Month, 1);
+                filterToDate = today;
+                break;
+            case "quarter":
+                int quarter = (today.Month - 1) / 3;
+                filterFromDate = new DateTime(today.Year, quarter * 3 + 1, 1);
+                filterToDate = today;
+                break;
+            case "year":
+                filterFromDate = new DateTime(today.Year, 1, 1);
+                filterToDate = new DateTime(today.Year, 12, 31);
+                break;
+            case "ytd":
+                filterFromDate = new DateTime(today.Year, 1, 1);
+                filterToDate = today;
+                break;
+            case "custom":
+                // Keep current custom dates
+                break;
+        }
     }
 
     private async Task LoadLedgerAccounts()
@@ -413,6 +463,7 @@ else
         try
         {
             var query = DbContext.JournalEntries
+                .AsNoTracking()
                 .Include(j => j.JournalEntryLines)
                     .ThenInclude(l => l.LedgerAccount)
                 .Include(j => j.CreatedByUser)
@@ -527,6 +578,25 @@ else
     private void GoToPage(int page)
     {
         currentPage = page;
+    }
+
+    private List<int> GetVisiblePages()
+    {
+        var pages = new List<int>();
+        if (TotalPages <= 7)
+        {
+            for (int i = 1; i <= TotalPages; i++) pages.Add(i);
+        }
+        else
+        {
+            pages.Add(1);
+            if (currentPage > 3) pages.Add(-1);
+            for (int i = Math.Max(2, currentPage - 1); i <= Math.Min(TotalPages - 1, currentPage + 1); i++)
+                pages.Add(i);
+            if (currentPage < TotalPages - 2) pages.Add(-1);
+            pages.Add(TotalPages);
+        }
+        return pages;
     }
 
     private void ShowNewEntryDialog()

@@ -24,37 +24,27 @@ else
                 <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">Balance Sheet & Income Statement</p>
             </div>
             <div style="display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap;">
-                @if (activeTab == "balance" || activeTab == "trial")
+                <!-- Period Selection - applies to all tabs -->
+                <div class="form-group" style="margin: 0;">
+                    <label class="form-label" style="font-size: 0.85rem;">Period</label>
+                    <select class="form-control" @bind="selectedPeriod" @bind:after="OnPeriodChanged" style="min-width: 150px;">
+                        <option value="month">Current Month</option>
+                        <option value="quarter">Current Quarter</option>
+                        <option value="year">Current Year</option>
+                        <option value="ytd">Year to Date</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+                </div>
+                @if (selectedPeriod == "custom")
                 {
                     <div class="form-group" style="margin: 0;">
-                        <label class="form-label" style="font-size: 0.85rem;">As of Date</label>
-                        <input type="date" class="form-control" @bind="asOfDate" @bind:after="LoadStatements" />
+                        <label class="form-label" style="font-size: 0.85rem;">From</label>
+                        <input type="date" class="form-control" @bind="incomeStartDate" @bind:after="LoadStatements" />
                     </div>
-                }
-                else
-                {
-                    <!-- Income Statement Period Selection -->
                     <div class="form-group" style="margin: 0;">
-                        <label class="form-label" style="font-size: 0.85rem;">Period</label>
-                        <select class="form-control" @bind="selectedPeriod" @bind:after="OnPeriodChanged" style="min-width: 150px;">
-                            <option value="month">Current Month</option>
-                            <option value="quarter">Current Quarter</option>
-                            <option value="year">Current Year</option>
-                            <option value="ytd">Year to Date</option>
-                            <option value="custom">Custom Range</option>
-                        </select>
+                        <label class="form-label" style="font-size: 0.85rem;">To</label>
+                        <input type="date" class="form-control" @bind="incomeEndDate" @bind:after="LoadStatements" />
                     </div>
-                    @if (selectedPeriod == "custom")
-                    {
-                        <div class="form-group" style="margin: 0;">
-                            <label class="form-label" style="font-size: 0.85rem;">From</label>
-                            <input type="date" class="form-control" @bind="incomeStartDate" @bind:after="LoadStatements" />
-                        </div>
-                        <div class="form-group" style="margin: 0;">
-                            <label class="form-label" style="font-size: 0.85rem;">To</label>
-                            <input type="date" class="form-control" @bind="incomeEndDate" @bind:after="LoadStatements" />
-                        </div>
-                    }
                 }
                 <button class="btn btn-outline" @onclick="ExportToPdf" disabled="@isExporting">
                     <span class="bi bi-file-earmark-pdf"></span> @(isExporting ? "Exporting..." : "PDF")
@@ -106,7 +96,7 @@ else
                     <div style="text-align: center; margin-bottom: 2rem;">
                         <h2 style="color: var(--spa-primary); margin: 0;">Kaye Spa</h2>
                         <h4 style="color: var(--spa-text-light); margin: 0.25rem 0;">Balance Sheet</h4>
-                        <p style="color: var(--spa-text-light); margin: 0;">As of @asOfDate.ToString("MMMM d, yyyy")</p>
+                        <p style="color: var(--spa-text-light); margin: 0;">As of @incomeEndDate.ToString("MMMM d, yyyy") (@GetPeriodDescription())</p>
                     </div>
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
@@ -205,8 +195,8 @@ else
                                         </tr>
                                     }
                                     <tr>
-                                        <td style="padding: 0.5rem 0; font-style: italic;">Retained Earnings (Current Period)</td>
-                                        <td style="text-align: right; padding: 0.5rem 0; color: @(netIncome >= 0 ? "#28a745" : "#dc3545");">₱@netIncome.ToString("N2")</td>
+                                        <td style="padding: 0.5rem 0; font-style: italic;">Retained Earnings (Cumulative)</td>
+                                        <td style="text-align: right; padding: 0.5rem 0; color: @(cumulativeNetIncome >= 0 ? "#28a745" : "#dc3545");">₱@cumulativeNetIncome.ToString("N2")</td>
                                     </tr>
                                     <tr style="font-weight: 600; border-top: 1px solid var(--spa-secondary);">
                                         <td style="padding: 0.5rem 0;">Total Equity</td>
@@ -359,7 +349,7 @@ else
                     <div style="text-align: center; margin-bottom: 2rem;">
                         <h2 style="color: var(--spa-primary); margin: 0;">Kaye Spa</h2>
                         <h4 style="color: var(--spa-text-light); margin: 0.25rem 0;">Trial Balance</h4>
-                        <p style="color: var(--spa-text-light); margin: 0;">As of @asOfDate.ToString("MMMM d, yyyy")</p>
+                        <p style="color: var(--spa-text-light); margin: 0;">As of @incomeEndDate.ToString("MMMM d, yyyy") (@GetPeriodDescription())</p>
                     </div>
 
                     <!-- Search and Filter Controls -->
@@ -399,6 +389,13 @@ else
                                 var balance = GetAccountBalance(account);
                                 var isDebitAccount = account.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase);
                                 var hasBalance = balance != 0;
+                                // Determine which column to show based on actual balance sign
+                                // Positive balance for debit account = Debit column
+                                // Negative balance for debit account = Credit column (contra)
+                                // Positive balance for credit account = Credit column
+                                // Negative balance for credit account = Debit column (contra)
+                                var showInDebitColumn = (isDebitAccount && balance > 0) || (!isDebitAccount && balance < 0);
+                                var showInCreditColumn = (!isDebitAccount && balance > 0) || (isDebitAccount && balance < 0);
                                 <tr style="@(!hasBalance ? "opacity: 0.6;" : "")">
                                     <td><strong style="font-family: monospace;">@account.Code</strong></td>
                                     <td>@account.Name</td>
@@ -406,21 +403,21 @@ else
                                         <span class="badge @GetAccountTypeBadge(account.AccountType)">@account.AccountType.ToUpper()</span>
                                     </td>
                                     <td style="text-align: right;">
-                                        @if (isDebitAccount && hasBalance)
+                                        @if (showInDebitColumn)
                                         {
                                             <span>₱@Math.Abs(balance).ToString("N2")</span>
                                         }
-                                        else if (isDebitAccount)
+                                        else if (!showInCreditColumn)
                                         {
                                             <span style="color: var(--spa-text-light);">₱0.00</span>
                                         }
                                     </td>
                                     <td style="text-align: right;">
-                                        @if (!isDebitAccount && hasBalance)
+                                        @if (showInCreditColumn)
                                         {
                                             <span>₱@Math.Abs(balance).ToString("N2")</span>
                                         }
-                                        else if (!isDebitAccount)
+                                        else if (!showInDebitColumn)
                                         {
                                             <span style="color: var(--spa-text-light);">₱0.00</span>
                                         }
@@ -523,6 +520,7 @@ else
     private decimal totalRevenue = 0;
     private decimal totalExpenses = 0;
     private decimal netIncome = 0;
+    private decimal cumulativeNetIncome = 0; // For Balance Sheet - cumulative retained earnings
     private decimal profitMargin = 0;
     private decimal expenseRatio = 0;
     private int transactionCount = 0;
@@ -625,50 +623,54 @@ else
             revenueAccounts = allAccounts.Where(a => a.AccountType.Equals("revenue", StringComparison.OrdinalIgnoreCase)).ToList();
             expenseAccounts = allAccounts.Where(a => a.AccountType.Equals("expense", StringComparison.OrdinalIgnoreCase)).ToList();
 
-            // Calculate CUMULATIVE account balances (for Balance Sheet & Trial Balance)
-            var allJournalLines = await DbContext.JournalEntryLines
+            // Calculate CUMULATIVE account balances using database aggregation (much faster)
+            var cumulativeBalances = await DbContext.JournalEntryLines
                 .AsNoTracking()
-                .Include(j => j.JournalEntry)
-                .Where(j => j.JournalEntry.Date <= asOfDate)
+                .Where(j => j.JournalEntry.Date <= incomeEndDate)
+                .GroupBy(j => j.LedgerAccountId)
+                .Select(g => new { AccountId = g.Key, TotalDebit = g.Sum(l => l.Debit), TotalCredit = g.Sum(l => l.Credit) })
                 .ToListAsync();
 
             accountBalances.Clear();
             foreach (var account in allAccounts)
             {
-                var lines = allJournalLines.Where(l => l.LedgerAccountId == account.LedgerAccountId);
-                var totalDebit = lines.Sum(l => l.Debit);
-                var totalCredit = lines.Sum(l => l.Credit);
-
-                decimal balance;
-                if (account.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase))
-                    balance = totalDebit - totalCredit;
+                var bal = cumulativeBalances.FirstOrDefault(b => b.AccountId == account.LedgerAccountId);
+                if (bal != null)
+                {
+                    decimal balance = account.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase)
+                        ? bal.TotalDebit - bal.TotalCredit
+                        : bal.TotalCredit - bal.TotalDebit;
+                    accountBalances[account.LedgerAccountId] = balance;
+                }
                 else
-                    balance = totalCredit - totalDebit;
-
-                accountBalances[account.LedgerAccountId] = balance;
+                {
+                    accountBalances[account.LedgerAccountId] = 0;
+                }
             }
 
-            // Calculate PERIOD-SPECIFIC account balances (for Income Statement)
-            var periodJournalLines = await DbContext.JournalEntryLines
+            // Calculate PERIOD-SPECIFIC account balances using database aggregation
+            var periodBalances = await DbContext.JournalEntryLines
                 .AsNoTracking()
-                .Include(j => j.JournalEntry)
                 .Where(j => j.JournalEntry.Date >= incomeStartDate && j.JournalEntry.Date <= incomeEndDate)
+                .GroupBy(j => j.LedgerAccountId)
+                .Select(g => new { AccountId = g.Key, TotalDebit = g.Sum(l => l.Debit), TotalCredit = g.Sum(l => l.Credit) })
                 .ToListAsync();
 
             incomeAccountBalances.Clear();
             foreach (var account in allAccounts.Where(a => a.AccountType.Equals("revenue", StringComparison.OrdinalIgnoreCase) || a.AccountType.Equals("expense", StringComparison.OrdinalIgnoreCase)))
             {
-                var lines = periodJournalLines.Where(l => l.LedgerAccountId == account.LedgerAccountId);
-                var totalDebit = lines.Sum(l => l.Debit);
-                var totalCredit = lines.Sum(l => l.Credit);
-
-                decimal balance;
-                if (account.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase))
-                    balance = totalDebit - totalCredit;
+                var bal = periodBalances.FirstOrDefault(b => b.AccountId == account.LedgerAccountId);
+                if (bal != null)
+                {
+                    decimal balance = account.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase)
+                        ? bal.TotalDebit - bal.TotalCredit
+                        : bal.TotalCredit - bal.TotalDebit;
+                    incomeAccountBalances[account.LedgerAccountId] = balance;
+                }
                 else
-                    balance = totalCredit - totalDebit;
-
-                incomeAccountBalances[account.LedgerAccountId] = balance;
+                {
+                    incomeAccountBalances[account.LedgerAccountId] = 0;
+                }
             }
 
             // Calculate Balance Sheet totals (using cumulative balances)
@@ -682,13 +684,30 @@ else
 
             totalEquityAccounts = equityAccounts.Sum(a => GetAccountBalance(a));
 
+            // Calculate CUMULATIVE net income for Balance Sheet (all revenue - expenses up to end date)
+            // Contra-revenue accounts (debit normal balance) reduce revenue
+            var cumulativeRevenue = revenueAccounts
+                .Where(a => a.NormalBalance.Equals("credit", StringComparison.OrdinalIgnoreCase))
+                .Sum(a => GetAccountBalance(a))
+                - revenueAccounts
+                .Where(a => a.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase))
+                .Sum(a => GetAccountBalance(a));
+            var cumulativeExpenses = expenseAccounts.Sum(a => GetAccountBalance(a));
+            cumulativeNetIncome = cumulativeRevenue - cumulativeExpenses;
+
             // Calculate Income Statement totals (using period-specific balances)
-            totalRevenue = revenueAccounts.Sum(a => GetIncomeAccountBalance(a));
+            // Contra-revenue accounts (debit normal balance) reduce revenue
+            totalRevenue = revenueAccounts
+                .Where(a => a.NormalBalance.Equals("credit", StringComparison.OrdinalIgnoreCase))
+                .Sum(a => GetIncomeAccountBalance(a))
+                - revenueAccounts
+                .Where(a => a.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase))
+                .Sum(a => GetIncomeAccountBalance(a));
             totalExpenses = expenseAccounts.Sum(a => GetIncomeAccountBalance(a));
             netIncome = totalRevenue - totalExpenses;
 
-            // Equity includes retained earnings (net income for this period)
-            totalEquity = totalEquityAccounts + netIncome;
+            // Equity includes retained earnings (CUMULATIVE net income for Balance Sheet to balance)
+            totalEquity = totalEquityAccounts + cumulativeNetIncome;
             totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
 
             // Key ratios
@@ -700,14 +719,18 @@ else
                 .CountAsync();
 
             // Trial Balance totals (using cumulative balances)
+            // Properly handle negative balances - they go to opposite column
             totalDebits = 0;
             totalCredits = 0;
             foreach (var account in allAccounts)
             {
                 var balance = GetAccountBalance(account);
-                if (account.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase))
+                var isDebitAccount = account.NormalBalance.Equals("debit", StringComparison.OrdinalIgnoreCase);
+                
+                // Positive balance goes to normal column, negative goes to opposite
+                if ((isDebitAccount && balance > 0) || (!isDebitAccount && balance < 0))
                     totalDebits += Math.Abs(balance);
-                else
+                else if ((!isDebitAccount && balance > 0) || (isDebitAccount && balance < 0))
                     totalCredits += Math.Abs(balance);
             }
 
@@ -818,23 +841,24 @@ else
                         Balance = GetAccountBalance(a)
                     }).ToList();
                     
-                    // Add retained earnings
+                    // Add retained earnings (cumulative for Balance Sheet)
                     bsEquity.Add(new AccountBalance
                     {
                         Code = "RE",
-                        Name = "Retained Earnings (Current Period)",
-                        Balance = netIncome
+                        Name = "Retained Earnings (Cumulative)",
+                        Balance = cumulativeNetIncome
                     });
 
                     pdfBytes = PdfService.GenerateBalanceSheet(
-                        asOfDate,
+                        incomeEndDate,
                         bsAssets,
                         bsLiabilities,
                         bsEquity,
                         totalAssets,
                         totalLiabilities,
-                        totalEquity);
-                    filename = $"BalanceSheet_{asOfDate:yyyyMMdd}.pdf";
+                        totalEquity,
+                        AuthState.CurrentUser?.Username ?? "");
+                    filename = $"BalanceSheet_{incomeEndDate:yyyyMMdd}.pdf";
                     break;
 
                 case "income":
@@ -860,7 +884,8 @@ else
                         isExpenses,
                         totalRevenue,
                         totalExpenses,
-                        netIncome);
+                        netIncome,
+                        AuthState.CurrentUser?.Username ?? "");
                     filename = $"IncomeStatement_{incomeStartDate:yyyyMMdd}_{incomeEndDate:yyyyMMdd}.pdf";
                     break;
 
@@ -881,11 +906,12 @@ else
                     }).Where(e => e.Debit != 0 || e.Credit != 0).ToList();
 
                     pdfBytes = PdfService.GenerateTrialBalance(
-                        asOfDate,
+                        incomeEndDate,
                         tbEntries,
                         totalDebits,
-                        totalCredits);
-                    filename = $"TrialBalance_{asOfDate:yyyyMMdd}.pdf";
+                        totalCredits,
+                        AuthState.CurrentUser?.Username ?? "");
+                    filename = $"TrialBalance_{incomeEndDate:yyyyMMdd}.pdf";
                     break;
             }
 

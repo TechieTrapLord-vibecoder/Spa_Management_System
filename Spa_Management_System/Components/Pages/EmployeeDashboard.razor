@@ -36,7 +36,7 @@ else
                     <span class="stat-label">Active</span>
                 </div>
                 <div class="stat-box revenue">
-                    <span class="stat-number">₱@todayRevenue.ToString("N0")</span>
+                    <span class="stat-number">₱@todayRevenue.ToString("N2")</span>
                     <span class="stat-label">Revenue</span>
                 </div>
             </div>
@@ -62,7 +62,7 @@ else
                                     <div class="notif-content">
                                         <div class="notif-title">@appt.Customer?.Person?.FirstName @appt.Customer?.Person?.LastName</div>
                                         <div class="notif-sub">
-                                            @(appt.AppointmentServices?.Count ?? 0) service(s) • ₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N0"))
+                                            @(appt.AppointmentServices?.Count ?? 0) service(s) • ₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N2"))
                                         </div>
                                     </div>
                                     <button class="action-btn primary" @onclick="() => GoToCheckout(appt.AppointmentId)">
@@ -617,7 +617,7 @@ else
 
             // Ready for checkout - completed but not paid
             readyForCheckout = allAppointments
-                .Where(a => a.Status == "completed")
+                .Where(a => a.Status == "completed" || a.Status == "paid")
                 .ToList();
 
             // In progress

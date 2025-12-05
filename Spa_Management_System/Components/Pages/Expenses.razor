@@ -57,14 +57,27 @@ else
 
         <!-- Filters -->
         <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: end;">
-            <div style="flex: 1; min-width: 150px;">
-                <label class="form-label">From</label>
-                <input type="date" class="form-control" @bind="filterFromDate" @bind:after="LoadExpenses" />
+            <div style="min-width: 150px;">
+                <label class="form-label">Period</label>
+                <select class="form-control" @bind="selectedPeriod" @bind:after="OnPeriodChanged">
+                    <option value="month">Current Month</option>
+                    <option value="quarter">Current Quarter</option>
+                    <option value="year">Current Year</option>
+                    <option value="ytd">Year to Date</option>
+                    <option value="custom">Custom Range</option>
+                </select>
             </div>
-            <div style="flex: 1; min-width: 150px;">
-                <label class="form-label">To</label>
-                <input type="date" class="form-control" @bind="filterToDate" @bind:after="LoadExpenses" />
-            </div>
+            @if (selectedPeriod == "custom")
+            {
+                <div style="min-width: 150px;">
+                    <label class="form-label">From</label>
+                    <input type="date" class="form-control" @bind="filterFromDate" @bind:after="LoadExpenses" />
+                </div>
+                <div style="min-width: 150px;">
+                    <label class="form-label">To</label>
+                    <input type="date" class="form-control" @bind="filterToDate" @bind:after="LoadExpenses" />
+                </div>
+            }
             <div style="flex: 1; min-width: 150px;">
                 <label class="form-label">Category</label>
                 <select class="form-control" @bind="filterCategory" @bind:after="LoadExpenses">
@@ -145,9 +158,18 @@ else
                                 </td>
                                 <td>
                                     <div style="display: flex; gap: 0.35rem; justify-content: center; flex-wrap: nowrap;">
-                                        <button class="btn btn-outline btn-sm" @onclick="() => EditExpense(expense)" title="Edit" style="white-space: nowrap;">
-                                            <span class="bi bi-pencil"></span> Edit
-                                        </button>
+                                        @if (expense.Status?.ToLower() == "paid")
+                                        {
+                                            <button class="btn btn-outline btn-sm" disabled title="Paid expenses cannot be edited" style="white-space: nowrap; opacity: 0.5; cursor: not-allowed;">
+                                                <span class="bi bi-lock"></span> Locked
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-outline btn-sm" @onclick="() => EditExpense(expense)" title="Edit" style="white-space: nowrap;">
+                                                <span class="bi bi-pencil"></span> Edit
+                                            </button>
+                                        }
                                         @if (!string.IsNullOrEmpty(expense.JournalId?.ToString()))
                                         {
                                             <button class="btn btn-sm" style="background: #d1fae5; color: #059669; border: 1px solid #a7f3d0; white-space: nowrap;" @onclick='() => Navigation.NavigateTo($"/journal-entries?search={expense.JournalEntry?.JournalNo}")' title="View Journal Entry">
@@ -311,6 +333,7 @@ else
     private Expense? expenseToDelete;
 
     // Filters
+    private string selectedPeriod = "month";
     private DateTime filterFromDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     private DateTime filterToDate = DateTime.Today;
     private string filterCategory = "";
@@ -332,8 +355,43 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        SetPeriodDates();
         await LoadExpenses();
         await LoadExpenseAccounts();
+    }
+
+    private async Task OnPeriodChanged()
+    {
+        SetPeriodDates();
+        await LoadExpenses();
+    }
+
+    private void SetPeriodDates()
+    {
+        var today = DateTime.Today;
+        switch (selectedPeriod)
+        {
+            case "month":
+                filterFromDate = new DateTime(today.Year, today.Month, 1);
+                filterToDate = today;
+                break;
+            case "quarter":
+                int quarter = (today.Month - 1) / 3;
+                filterFromDate = new DateTime(today.Year, quarter * 3 + 1, 1);
+                filterToDate = today;
+                break;
+            case "year":
+                filterFromDate = new DateTime(today.Year, 1, 1);
+                filterToDate = new DateTime(today.Year, 12, 31);
+                break;
+            case "ytd":
+                filterFromDate = new DateTime(today.Year, 1, 1);
+                filterToDate = today;
+                break;
+            case "custom":
+                // Keep current custom dates
+                break;
+        }
     }
 
     private async Task LoadExpenses()
@@ -407,6 +465,13 @@ else
 
     private void EditExpense(Expense expense)
     {
+        // Prevent editing paid expenses
+        if (expense.Status?.ToLower() == "paid")
+        {
+            Toast.ShowError("Paid expenses cannot be edited.");
+            return;
+        }
+        
         currentExpense = new Expense
         {
             ExpenseId = expense.ExpenseId,
@@ -581,7 +646,7 @@ else
                 Status = e.Status ?? "paid"
             }).ToList();
 
-            var pdfBytes = PdfService.GenerateExpenseReport(filterFromDate, filterToDate, expenseData, totalExpenses);
+            var pdfBytes = PdfService.GenerateExpenseReport(filterFromDate, filterToDate, expenseData, totalExpenses, AuthState.CurrentUser?.Username ?? "");
             var base64 = Convert.ToBase64String(pdfBytes);
             await JS.InvokeVoidAsync("exportUtils.downloadFile", base64, $"Expenses_{filterFromDate:yyyyMMdd}_{filterToDate:yyyyMMdd}.pdf", "application/pdf");
         }

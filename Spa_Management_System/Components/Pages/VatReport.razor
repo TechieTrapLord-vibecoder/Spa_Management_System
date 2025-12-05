@@ -450,7 +450,8 @@ else
                 inputVat,
                 netVatPayable,
                 salesVatDetails,
-                purchaseVatDetails);
+                purchaseVatDetails,
+                AuthState.CurrentUser?.Username ?? "");
 
             var base64 = Convert.ToBase64String(pdfBytes);
             await JS.InvokeVoidAsync("exportUtils.downloadFile", base64, $"VatReport_Q{selectedQuarter}_{selectedYear}.pdf", "application/pdf");

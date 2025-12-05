@@ -25,9 +25,14 @@ else
                 <h3 class="card-title" style="margin: 0;"><span class="bi bi-calendar-check"></span> Appointment Management</h3>
                 <p style="color: var(--spa-text-light); margin: 0.5rem 0 0 0;">Schedule and manage customer appointments</p>
             </div>
-            <button class="btn btn-primary" @onclick="OpenBookingDialog">
-                <span class="bi bi-plus-circle"></span> Book Appointment
-            </button>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-outline" @onclick="OpenHistoryModal">
+                    <span class="bi bi-clock-history"></span> History
+                </button>
+                <button class="btn btn-primary" @onclick="OpenBookingDialog">
+                    <span class="bi bi-plus-circle"></span> Book Appointment
+                </button>
+            </div>
         </div>
 
         <!-- Date Filter -->
@@ -59,7 +64,8 @@ else
                 </div>
             </div>
         }
-        else
+
+        @if (appointments.Any())
         {
             <!-- Kanban Board View -->
             <div class="kanban-board">
@@ -86,7 +92,7 @@ else
                                         <span class="more-badge">+@((appt.AppointmentServices?.Count ?? 0) - 2)</span>
                                     }
                                 </div>
-                                <div class="card-total">₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N0"))</div>
+                                <div class="card-total">₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N2"))</div>
                                 <div class="card-actions">
                                     @if (appt.Status == "scheduled")
                                     {
@@ -169,7 +175,7 @@ else
                                         <span class="service-badge">@svc.Service?.Name</span>
                                     }
                                 </div>
-                                <div class="card-total">₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N0"))</div>
+                                <div class="card-total">₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N2"))</div>
                                 <div class="card-actions">
                                     <button class="action-btn checkout" @onclick="() => GoToCheckout(appt.AppointmentId)">
                                         <span class="bi bi-credit-card"></span> Checkout
@@ -203,7 +209,7 @@ else
                                         <span class="service-badge">@svc.Service?.Name</span>
                                     }
                                 </div>
-                                <div class="card-total">₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N0")) <span class="bi bi-check"></span></div>
+                                <div class="card-total">₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N2")) <span class="bi bi-check"></span></div>
                             </div>
                         }
                         @if (!appointments.Any(a => a.Status == "paid"))
@@ -475,6 +481,7 @@ else
             }
         }
     </style>
+
     <!-- Booking Dialog -->
     @if (showBookingDialog)
     {
@@ -735,6 +742,160 @@ else
             </div>
         </div>
     }
+
+    <!-- History Modal -->
+    @if (showHistoryModal)
+    {
+        <div class="modal-overlay" @onclick="CloseHistoryModal">
+            <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 1000px; max-height: 90vh; overflow-y: auto;">
+                <div class="modal-header">
+                    <h4 style="margin: 0; color: var(--spa-primary);"><span class="bi bi-clock-history"></span> Appointment History</h4>
+                    <button class="btn-close" @onclick="CloseHistoryModal">
+                        <span class="bi bi-x-lg"></span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <!-- Filters -->
+                    <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: end;">
+                        <div>
+                            <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem;">Period</label>
+                            <select class="form-control" @bind="historySelectedPeriod" @bind:after="OnHistoryPeriodChanged" style="width: 160px;">
+                                <option value="month">Current Month</option>
+                                <option value="quarter">Current Quarter</option>
+                                <option value="year">Current Year</option>
+                                <option value="ytd">Year to Date</option>
+                                <option value="custom">Custom Range</option>
+                            </select>
+                        </div>
+                        @if (historySelectedPeriod == "custom")
+                        {
+                            <div>
+                                <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem;">From Date</label>
+                                <input type="date" class="form-control" @bind="historyFromDate" style="width: 160px;" />
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem;">To Date</label>
+                                <input type="date" class="form-control" @bind="historyToDate" style="width: 160px;" />
+                            </div>
+                        }
+                        <div>
+                            <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem;">Status</label>
+                            <select class="form-control" @bind="historyStatusFilter" style="width: 140px;">
+                                <option value="">All</option>
+                                <option value="scheduled">Scheduled</option>
+                                <option value="confirmed">Confirmed</option>
+                                <option value="in-progress">In Progress</option>
+                                <option value="completed">Completed</option>
+                                <option value="paid">Paid</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem;">Search</label>
+                            <input type="text" class="form-control" placeholder="Customer name..." @bind="historySearchTerm" @bind:event="oninput" style="width: 180px;" />
+                        </div>
+                    </div>
+
+                    <!-- Data Table -->
+                    @if (isLoadingHistory)
+                    {
+                        <div style="padding: 2rem; text-align: center;">
+                            <div class="loading"></div>
+                        </div>
+                    }
+                    else if (!filteredHistoryAppointments.Any())
+                    {
+                        <div class="alert alert-info">
+                            <span class="bi bi-info-circle-fill"></span>
+                            <div>No appointments found for the selected filters.</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="data-table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Time</th>
+                                        <th>Customer</th>
+                                        <th>Services</th>
+                                        <th>Therapist</th>
+                                        <th>Amount</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var appt in GetPaginatedHistoryAppointments())
+                                    {
+                                        <tr>
+                                            <td>@appt.ScheduledStart.ToString("MMM dd, yyyy")</td>
+                                            <td>@appt.ScheduledStart.ToString("h:mm tt")</td>
+                                            <td>@appt.Customer?.Person?.FirstName @appt.Customer?.Person?.LastName</td>
+                                            <td>
+                                                @{
+                                                    var serviceNames = appt.AppointmentServices?.Select(s => s.Service?.Name).Take(2).ToList() ?? new List<string?>();
+                                                    var moreCount = (appt.AppointmentServices?.Count ?? 0) - 2;
+                                                }
+                                                @string.Join(", ", serviceNames)
+                                                @if (moreCount > 0)
+                                                {
+                                                    <span style="color: var(--spa-text-light);"> +@moreCount</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @{
+                                                    var therapists = appt.AppointmentServices?
+                                                        .Where(s => s.TherapistEmployee?.Person != null)
+                                                        .Select(s => s.TherapistEmployee!.Person!.FirstName)
+                                                        .Distinct().Take(2).ToList() ?? new List<string?>();
+                                                }
+                                                @(therapists.Any() ? string.Join(", ", therapists) : "—")
+                                            </td>
+                                            <td style="font-weight: 500;">₱@((appt.AppointmentServices?.Sum(s => s.Price) ?? 0).ToString("N2"))</td>
+                                            <td>@appt.Status?.ToUpper()</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination -->
+                        <div class="table-pagination">
+                            <span class="pagination-info">
+                                Showing @(((historyCurrentPage - 1) * historyPageSize) + 1) to @Math.Min(historyCurrentPage * historyPageSize, filteredHistoryAppointments.Count) of @filteredHistoryAppointments.Count entries
+                            </span>
+                            <div class="pagination-buttons">
+                                <button class="btn btn-outline btn-sm" disabled="@(historyCurrentPage <= 1)" @onclick="HistoryPreviousPage">
+                                    <span class="bi bi-chevron-left"></span>
+                                </button>
+                                @foreach (var pageNum in GetHistoryVisiblePages())
+                                {
+                                    if (pageNum == -1)
+                                    {
+                                        <span class="page-ellipsis">...</span>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm @(pageNum == historyCurrentPage ? "btn-primary" : "btn-outline")" 
+                                                @onclick="() => HistoryGoToPage(pageNum)">@pageNum</button>
+                                    }
+                                }
+                                <button class="btn btn-outline btn-sm" disabled="@(historyCurrentPage >= historyTotalPages)" @onclick="HistoryNextPage">
+                                    <span class="bi bi-chevron-right"></span>
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseHistoryModal">Close</button>
+                </div>
+            </div>
+        </div>
+    }
 }
 
 @code {
@@ -773,6 +934,18 @@ else
     // View Details Dialog
     private bool showDetailsDialog = false;
     private Appointment? viewingAppointment;
+
+    // Appointment History
+    private List<Appointment> historyAppointments = new();
+    private bool isLoadingHistory = false;
+    private bool showHistoryModal = false;
+    private string historySearchTerm = "";
+    private string historyStatusFilter = "";
+    private string historySelectedPeriod = "month";
+    private DateTime historyFromDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime historyToDate = DateTime.Today;
+    private int historyCurrentPage = 1;
+    private int historyPageSize = 10;
 
     // Query parameter for pre-selecting customer
     [SupplyParameterFromQuery]
@@ -850,6 +1023,156 @@ else
         {
             isLoading = false;
         }
+
+        // Load appointment history separately
+        await LoadHistoryData();
+    }
+
+    private async Task LoadHistoryData()
+    {
+        isLoadingHistory = true;
+        try
+        {
+            // Load appointments filtered by date range for better performance
+            historyAppointments = await DbContext.Appointments
+                .AsNoTracking()
+                .Include(a => a.Customer)
+                    .ThenInclude(c => c.Person)
+                .Include(a => a.AppointmentServices)
+                    .ThenInclude(s => s.Service)
+                .Include(a => a.AppointmentServices)
+                    .ThenInclude(s => s.TherapistEmployee)
+                        .ThenInclude(e => e!.Person)
+                .Where(a => a.ScheduledStart.Date >= historyFromDate.Date && a.ScheduledStart.Date <= historyToDate.Date)
+                .OrderByDescending(a => a.ScheduledStart)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"Error loading history: {ex.Message}");
+        }
+        finally
+        {
+            isLoadingHistory = false;
+        }
+    }
+
+    private List<Appointment> filteredHistoryAppointments => historyAppointments
+        .Where(a => 
+            (string.IsNullOrEmpty(historySearchTerm) || 
+             (a.Customer?.Person?.FirstName?.Contains(historySearchTerm, StringComparison.OrdinalIgnoreCase) == true) ||
+             (a.Customer?.Person?.LastName?.Contains(historySearchTerm, StringComparison.OrdinalIgnoreCase) == true) ||
+             (a.Customer?.Person?.Phone?.Contains(historySearchTerm, StringComparison.OrdinalIgnoreCase) == true)) &&
+            (string.IsNullOrEmpty(historyStatusFilter) || a.Status == historyStatusFilter))
+        .ToList();
+
+    private int historyTotalPages => (int)Math.Ceiling((double)filteredHistoryAppointments.Count / historyPageSize);
+
+    private List<Appointment> GetPaginatedHistoryAppointments()
+    {
+        return filteredHistoryAppointments
+            .Skip((historyCurrentPage - 1) * historyPageSize)
+            .Take(historyPageSize)
+            .ToList();
+    }
+
+    private List<int> GetHistoryVisiblePages()
+    {
+        var pages = new List<int>();
+        var total = historyTotalPages;
+        var current = historyCurrentPage;
+
+        if (total <= 7)
+        {
+            for (int i = 1; i <= total; i++) pages.Add(i);
+        }
+        else
+        {
+            pages.Add(1);
+            if (current > 3) pages.Add(-1); // ellipsis
+
+            var start = Math.Max(2, current - 1);
+            var end = Math.Min(total - 1, current + 1);
+
+            for (int i = start; i <= end; i++) pages.Add(i);
+
+            if (current < total - 2) pages.Add(-1); // ellipsis
+            pages.Add(total);
+        }
+        return pages;
+    }
+
+    private void HistoryPreviousPage()
+    {
+        if (historyCurrentPage > 1)
+        {
+            historyCurrentPage--;
+        }
+    }
+
+    private void HistoryNextPage()
+    {
+        if (historyCurrentPage < historyTotalPages)
+        {
+            historyCurrentPage++;
+        }
+    }
+
+    private void HistoryGoToPage(int page)
+    {
+        if (page >= 1 && page <= historyTotalPages)
+        {
+            historyCurrentPage = page;
+        }
+    }
+
+    private async Task OpenHistoryModal()
+    {
+        showHistoryModal = true;
+        historyCurrentPage = 1;
+        historySelectedPeriod = "month";
+        SetHistoryPeriodDates();
+        historyStatusFilter = "";
+        historySearchTerm = "";
+        await LoadHistoryData();
+    }
+
+    private void CloseHistoryModal()
+    {
+        showHistoryModal = false;
+    }
+
+    private void SetHistoryPeriodDates()
+    {
+        var today = DateTime.Today;
+        switch (historySelectedPeriod)
+        {
+            case "month":
+                historyFromDate = new DateTime(today.Year, today.Month, 1);
+                historyToDate = today;
+                break;
+            case "quarter":
+                var quarterMonth = ((today.Month - 1) / 3) * 3 + 1;
+                historyFromDate = new DateTime(today.Year, quarterMonth, 1);
+                historyToDate = today;
+                break;
+            case "year":
+                historyFromDate = new DateTime(today.Year, 1, 1);
+                historyToDate = new DateTime(today.Year, 12, 31);
+                break;
+            case "ytd":
+                historyFromDate = new DateTime(today.Year, 1, 1);
+                historyToDate = today;
+                break;
+            // custom: keep existing dates
+        }
+    }
+
+    private async Task OnHistoryPeriodChanged()
+    {
+        SetHistoryPeriodDates();
+        historyCurrentPage = 1;
+        await LoadHistoryData();
     }
 
     private async Task OnDateChanged(ChangeEventArgs e)

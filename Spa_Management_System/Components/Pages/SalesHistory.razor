@@ -22,8 +22,18 @@ else
                 <p style="color: var(--spa-text-light); margin: 0.25rem 0 0 0;">View all past transactions</p>
             </div>
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-                <input type="date" @bind="startDate" class="form-control" style="width: auto;" />
-                <input type="date" @bind="endDate" class="form-control" style="width: auto;" />
+                <select class="form-control" @bind="selectedPeriod" @bind:after="OnPeriodChanged" style="width: auto;">
+                    <option value="month">Current Month</option>
+                    <option value="quarter">Current Quarter</option>
+                    <option value="year">Current Year</option>
+                    <option value="ytd">Year to Date</option>
+                    <option value="custom">Custom Range</option>
+                </select>
+                @if (selectedPeriod == "custom")
+                {
+                    <input type="date" @bind="startDate" class="form-control" style="width: auto;" />
+                    <input type="date" @bind="endDate" class="form-control" style="width: auto;" />
+                }
                 <select @bind="statusFilter" class="form-control" style="width: auto;">
                     <option value="">All Status</option>
                     <option value="paid">Paid</option>
@@ -53,11 +63,11 @@ else
                 </div>
                 <div style="padding: 1rem; background: #DCD8CE; border-radius: 10px; color: #454F4A;">
                     <p style="margin: 0; opacity: 0.9; font-size: 0.8rem;">Total Revenue</p>
-                    <h3 style="margin: 0.25rem 0 0 0;">₱@sales.Sum(s => s.TotalAmount).ToString("N0")</h3>
+                    <h3 style="margin: 0.25rem 0 0 0;">₱@sales.Sum(s => s.TotalAmount).ToString("N2")</h3>
                 </div>
                 <div style="padding: 1rem; background: #DCD8CE; border-radius: 10px; color: #454F4A;">
                     <p style="margin: 0; opacity: 0.9; font-size: 0.8rem;">VAT Collected</p>
-                    <h3 style="margin: 0.25rem 0 0 0;">₱@sales.Sum(s => s.TaxAmount).ToString("N0")</h3>
+                    <h3 style="margin: 0.25rem 0 0 0;">₱@sales.Sum(s => s.TaxAmount).ToString("N2")</h3>
                 </div>
                 <div style="padding: 1rem; background: #DCD8CE; border-radius: 10px; color: #454F4A;">
                     <p style="margin: 0; opacity: 0.9; font-size: 0.8rem;">Paid</p>
@@ -149,10 +159,16 @@ else
                     </div>
                     <div class="pagination-controls">
                         <button class="page-btn" @onclick="PreviousPage" disabled="@(currentPage <= 1)">‹ Prev</button>
-                        @for (int i = 1; i <= TotalPages; i++)
+                        @foreach (var pageNum in GetVisiblePages())
                         {
-                            var pageNum = i;
-                            <button class="page-btn @(currentPage == pageNum ? "active" : "")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                            if (pageNum == -1)
+                            {
+                                <span class="page-ellipsis">...</span>
+                            }
+                            else
+                            {
+                                <button class="page-btn @(currentPage == pageNum ? "active" : "")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                            }
                         }
                         <button class="page-btn" @onclick="NextPage" disabled="@(currentPage >= TotalPages)">Next ›</button>
                     </div>
@@ -395,8 +411,9 @@ else
     private bool isLoading = true;
     private bool showModal = false;
 
-    private DateTime startDate = DateTime.Now.AddMonths(-1);
-    private DateTime endDate = DateTime.Now;
+    private string selectedPeriod = "month";
+    private DateTime startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime endDate = DateTime.Today;
     private string statusFilter = "";
     private string searchTerm = "";
     private string sortColumn = "date";
@@ -406,9 +423,66 @@ else
     private int pageSize = 10;
     private int TotalPages => (int)Math.Ceiling((double)filteredSales.Count / pageSize);
 
+    private List<int> GetVisiblePages()
+    {
+        var pages = new List<int>();
+        var total = TotalPages;
+        var current = currentPage;
+        if (total <= 7)
+        {
+            for (int i = 1; i <= total; i++) pages.Add(i);
+        }
+        else
+        {
+            pages.Add(1);
+            if (current > 3) pages.Add(-1);
+            var start = Math.Max(2, current - 1);
+            var end = Math.Min(total - 1, current + 1);
+            for (int i = start; i <= end; i++) pages.Add(i);
+            if (current < total - 2) pages.Add(-1);
+            pages.Add(total);
+        }
+        return pages;
+    }
+
     protected override async Task OnInitializedAsync()
     {
+        SetPeriodDates();
         await LoadSales();
+    }
+
+    private async Task OnPeriodChanged()
+    {
+        SetPeriodDates();
+        await LoadSales();
+    }
+
+    private void SetPeriodDates()
+    {
+        var today = DateTime.Today;
+        switch (selectedPeriod)
+        {
+            case "month":
+                startDate = new DateTime(today.Year, today.Month, 1);
+                endDate = today;
+                break;
+            case "quarter":
+                int quarter = (today.Month - 1) / 3;
+                startDate = new DateTime(today.Year, quarter * 3 + 1, 1);
+                endDate = today;
+                break;
+            case "year":
+                startDate = new DateTime(today.Year, 1, 1);
+                endDate = new DateTime(today.Year, 12, 31);
+                break;
+            case "ytd":
+                startDate = new DateTime(today.Year, 1, 1);
+                endDate = today;
+                break;
+            case "custom":
+                // Keep current custom dates
+                break;
+        }
     }
 
     private async Task LoadSales()
@@ -419,9 +493,13 @@ else
         try
         {
             var query = DbContext.Sales
+                .AsNoTracking()
                 .Include(s => s.Customer)
                     .ThenInclude(c => c!.Person)
                 .Include(s => s.SaleItems)
+                    .ThenInclude(si => si.Service)
+                .Include(s => s.SaleItems)
+                    .ThenInclude(si => si.Product)
                 .Include(s => s.Payments)
                 .Where(s => s.CreatedAt.Date >= startDate.Date && s.CreatedAt.Date <= endDate.Date);
 
@@ -431,22 +509,6 @@ else
             }
 
             sales = await query.OrderByDescending(s => s.CreatedAt).ToListAsync();
-            
-            // Load related Service and Product data for SaleItems
-            foreach (var sale in sales)
-            {
-                foreach (var item in sale.SaleItems)
-                {
-                    if (item.ServiceId.HasValue)
-                    {
-                        item.Service = await DbContext.Services.FindAsync(item.ServiceId.Value);
-                    }
-                    if (item.ProductId.HasValue)
-                    {
-                        item.Product = await DbContext.Products.FindAsync(item.ProductId.Value);
-                    }
-                }
-            }
             
             ApplyFilter();
             currentPage = 1;

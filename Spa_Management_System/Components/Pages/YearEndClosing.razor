@@ -321,7 +321,7 @@ else
     private int expensePageSize = 10;
     private string expenseSortColumn = "Code";
     private bool expenseSortAsc = true;
-    private List<LedgerAccount> expenseAccountsWithBalance => expenseAccounts.Where(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0) != 0).ToList();
+    private List<LedgerAccount> expenseAccountsWithBalance = new();
     private int ExpenseTotalPages => (int)Math.Ceiling(expenseAccountsWithBalance.Count / (double)expensePageSize);
 
     private List<LedgerAccount> GetPagedExpenseAccounts()
@@ -437,6 +437,9 @@ else
 
             totalRevenue = revenueAccounts.Sum(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0));
             totalExpenses = expenseAccounts.Sum(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0));
+
+            // Build filtered list of expense accounts with non-zero balance
+            expenseAccountsWithBalance = expenseAccounts.Where(a => accountBalances.GetValueOrDefault(a.LedgerAccountId, 0) != 0).ToList();
 
             // Check if year is already closed (look for closing entry)
             isYearClosed = await context.JournalEntries

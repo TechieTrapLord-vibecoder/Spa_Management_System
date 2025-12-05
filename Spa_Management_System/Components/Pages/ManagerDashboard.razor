@@ -52,7 +52,7 @@ else
             <div class="metric-card revenue">
                 <div class="metric-icon"><span class="bi bi-cash-stack"></span></div>
                 <div class="metric-content">
-                    <span class="metric-value">₱@todayRevenue.ToString("N0")</span>
+                    <span class="metric-value">₱@todayRevenue.ToString("N2")</span>
                     <span class="metric-label">Today's Revenue</span>
                 </div>
             </div>
@@ -131,20 +131,20 @@ else
                     <div class="financial-grid">
                         <div class="financial-item">
                             <span class="fin-label">This Week</span>
-                            <span class="fin-value">₱@weekRevenue.ToString("N0")</span>
+                            <span class="fin-value">₱@weekRevenue.ToString("N2")</span>
                         </div>
                         <div class="financial-item">
                             <span class="fin-label">This Month</span>
-                            <span class="fin-value">₱@monthRevenue.ToString("N0")</span>
+                            <span class="fin-value">₱@monthRevenue.ToString("N2")</span>
                         </div>
                         <div class="financial-item">
                             <span class="fin-label">Expenses (Month)</span>
-                            <span class="fin-value expense">₱@monthExpenses.ToString("N0")</span>
+                            <span class="fin-value expense">₱@monthExpenses.ToString("N2")</span>
                         </div>
                         <div class="financial-item">
                             <span class="fin-label">Net Income</span>
                             <span class="fin-value @(monthRevenue - monthExpenses >= 0 ? "positive" : "negative")">
-                                ₱@((monthRevenue - monthExpenses).ToString("N0"))
+                                ₱@((monthRevenue - monthExpenses).ToString("N2"))
                             </span>
                         </div>
                     </div>
@@ -165,7 +165,7 @@ else
                                         <span class="service-name">@svc.ServiceName</span>
                                         <span class="service-count">@svc.Count bookings</span>
                                     </div>
-                                    <span class="service-revenue">₱@svc.Revenue.ToString("N0")</span>
+                                    <span class="service-revenue">₱@svc.Revenue.ToString("N2")</span>
                                 </div>
                             }
                         }
@@ -313,7 +313,7 @@ else
                                         <span class="staff-name">@staff.Name</span>
                                         <span class="staff-services">@staff.ServicesCount services</span>
                                     </div>
-                                    <span class="staff-commission">₱@staff.Commission.ToString("N0")</span>
+                                    <span class="staff-commission">₱@staff.Commission.ToString("N2")</span>
                                 </div>
                             }
                         }
@@ -892,7 +892,7 @@ else
             todayAppointments = todayAppointmentsList.Count(a => a.Status != "cancelled");
             scheduledCount = todayAppointmentsList.Count(a => a.Status == "scheduled" || a.Status == "confirmed");
             inProgressCount = todayAppointmentsList.Count(a => a.Status == "in-progress");
-            completedCount = todayAppointmentsList.Count(a => a.Status == "completed");
+            completedCount = todayAppointmentsList.Count(a => a.Status == "completed" || a.Status == "paid");
             paidCount = todayAppointmentsList.Count(a => a.Status == "paid");
             todayCancelledCount = todayAppointmentsList.Count(a => a.Status == "cancelled");
 

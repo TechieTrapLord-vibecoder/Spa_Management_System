@@ -41,7 +41,7 @@ else
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
         <div class="card" style="padding: 1.25rem; background: #DCD8CE; color: #454F4A; margin-bottom: 0;">
             <div style="font-size: 0.85rem;">Total Revenue</div>
-            <div style="font-size: 2rem; font-weight: 700;">₱@totalRevenue.ToString("N0")</div>
+            <div style="font-size: 2rem; font-weight: 700;">₱@totalRevenue.ToString("N2")</div>
             <div style="font-size: 0.8rem; color: var(--spa-success);">
                 @if (revenueGrowth >= 0)
                 {
@@ -65,8 +65,8 @@ else
         </div>
         <div class="card" style="padding: 1.25rem; background: #DCD8CE; color: #454F4A; margin-bottom: 0;">
             <div style="font-size: 0.85rem;">Expenses</div>
-            <div style="font-size: 2rem; font-weight: 700;">₱@totalExpenses.ToString("N0")</div>
-            <div style="font-size: 0.8rem;">Net: ₱@(totalRevenue - totalExpenses).ToString("N0")</div>
+            <div style="font-size: 2rem; font-weight: 700;">₱@totalExpenses.ToString("N2")</div>
+            <div style="font-size: 0.8rem;">Net: ₱@(totalRevenue - totalExpenses).ToString("N2")</div>
         </div>
     </div>
 
@@ -136,7 +136,7 @@ else
                         <tr>
                             <td><strong>@therapist.Name</strong></td>
                             <td style="text-align: center;">@therapist.ServiceCount</td>
-                            <td style="text-align: right; font-weight: 600; color: var(--spa-success);">₱@therapist.Revenue.ToString("N0")</td>
+                            <td style="text-align: right; font-weight: 600; color: var(--spa-success);">₱@therapist.Revenue.ToString("N2")</td>
                         </tr>
                     }
                 </tbody>
@@ -158,7 +158,7 @@ else
                         <tr>
                             <td><strong>@customer.Name</strong></td>
                             <td style="text-align: center;">@customer.Visits</td>
-                            <td style="text-align: right; font-weight: 600; color: var(--spa-accent);">₱@customer.TotalSpent.ToString("N0")</td>
+                            <td style="text-align: right; font-weight: 600; color: var(--spa-accent);">₱@customer.TotalSpent.ToString("N2")</td>
                         </tr>
                     }
                 </tbody>
@@ -278,7 +278,7 @@ else
                 .Where(a => a.ScheduledStart >= startDate && a.ScheduledStart < endDate)
                 .ToListAsync();
             totalAppointments = appointments.Count;
-            completedAppointments = appointments.Count(a => a.Status == "completed");
+            completedAppointments = appointments.Count(a => a.Status == "completed" || a.Status == "paid");
 
             appointmentStatus = appointments
                 .GroupBy(a => a.Status)
@@ -309,7 +309,7 @@ else
             var appointmentServices = await DbContext.AppointmentServices
                 .Include(a => a.Service)
                 .Include(a => a.Appointment)
-                .Where(a => a.Appointment.ScheduledStart >= startDate && a.Appointment.ScheduledStart < endDate && a.Appointment.Status == "completed")
+                .Where(a => a.Appointment.ScheduledStart >= startDate && a.Appointment.ScheduledStart < endDate && (a.Appointment.Status == "completed" || a.Appointment.Status == "paid"))
                 .ToListAsync();
 
             topServices = appointmentServices
@@ -333,7 +333,7 @@ else
             var customerAppointments = await DbContext.Appointments
                 .Include(a => a.Customer).ThenInclude(c => c!.Person)
                 .Include(a => a.AppointmentServices)
-                .Where(a => a.ScheduledStart >= startDate && a.ScheduledStart < endDate && a.Status == "completed" && a.CustomerId > 0)
+                .Where(a => a.ScheduledStart >= startDate && a.ScheduledStart < endDate && (a.Status == "completed" || a.Status == "paid") && a.CustomerId > 0)
                 .ToListAsync();
 
             topCustomers = customerAppointments

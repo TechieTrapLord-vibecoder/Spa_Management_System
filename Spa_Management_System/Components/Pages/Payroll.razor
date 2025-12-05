@@ -45,22 +45,22 @@ else
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
             <div style="padding: 1.25rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
                 <div style="font-size: 0.85rem; opacity: 0.9;">Total Payroll</div>
-                <div style="font-size: 1.75rem; font-weight: bold;">₱@totalPayroll.ToString("N0")</div>
+                <div style="font-size: 1.75rem; font-weight: bold;">₱@totalPayroll.ToString("N2")</div>
                 <div style="font-size: 0.8rem; opacity: 0.8;">@payrolls.Count records</div>
             </div>
             <div style="padding: 1.25rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
                 <div style="font-size: 0.85rem; opacity: 0.9;"><span class="bi bi-check-circle"></span> Paid</div>
-                <div style="font-size: 1.75rem; font-weight: bold;">₱@paidAmount.ToString("N0")</div>
+                <div style="font-size: 1.75rem; font-weight: bold;">₱@paidAmount.ToString("N2")</div>
                 <div style="font-size: 0.8rem; opacity: 0.8;">Posted to journal</div>
             </div>
             <div style="padding: 1.25rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
                 <div style="font-size: 0.85rem; opacity: 0.9;"><span class="bi bi-hourglass-split"></span> Pending</div>
-                <div style="font-size: 1.75rem; font-weight: bold;">₱@pendingAmount.ToString("N0")</div>
+                <div style="font-size: 1.75rem; font-weight: bold;">₱@pendingAmount.ToString("N2")</div>
                 <div style="font-size: 0.8rem; opacity: 0.8;">@pendingCount to pay</div>
             </div>
             <div style="padding: 1.25rem; background: #DCD8CE; border-radius: 12px; color: #454F4A;">
                 <div style="font-size: 0.85rem; opacity: 0.9;">Total Deductions</div>
-                <div style="font-size: 1.75rem; font-weight: bold;">₱@totalDeductions.ToString("N0")</div>
+                <div style="font-size: 1.75rem; font-weight: bold;">₱@totalDeductions.ToString("N2")</div>
                 <div style="font-size: 0.8rem; opacity: 0.8;">SSS/PhilHealth/etc</div>
             </div>
         </div>
@@ -120,7 +120,7 @@ else
                 <!-- Live Calculation -->
                 <div style="background: white; padding: 1rem; border-radius: 8px; margin-top: 1rem; border: 1px solid var(--spa-secondary);">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                        <span>Gross Pay (@daysWorked days × ₱@dailyRate.ToString("N0"))</span>
+                        <span>Gross Pay (@daysWorked days × ₱@dailyRate.ToString("N2"))</span>
                         <strong>₱@grossPay.ToString("N2")</strong>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; color: #dc3545;">
@@ -205,10 +205,10 @@ else
                             <td>@p.Employee?.Role?.Name</td>
                             <td style="font-size: 0.9rem;">@p.PeriodStart.ToString("MMM dd") - @p.PeriodEnd.ToString("MMM dd, yyyy")</td>
                             <td style="text-align: center;">@p.DaysWorked</td>
-                            <td style="text-align: right;">₱@p.DailyRate.ToString("N0")</td>
-                            <td style="text-align: right;">₱@p.GrossPay.ToString("N0")</td>
-                            <td style="text-align: right; color: #dc3545;">₱@p.Deductions.ToString("N0")</td>
-                            <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">₱@p.NetPay.ToString("N0")</td>
+                            <td style="text-align: right;">₱@p.DailyRate.ToString("N2")</td>
+                            <td style="text-align: right;">₱@p.GrossPay.ToString("N2")</td>
+                            <td style="text-align: right; color: #dc3545;">₱@p.Deductions.ToString("N2")</td>
+                            <td style="text-align: right; font-weight: 600; color: var(--spa-primary);">₱@p.NetPay.ToString("N2")</td>
                             <td>
                                 @if (p.Status == "paid")
                                 {
@@ -255,9 +255,9 @@ else
                     <tr style="font-weight: 600; background: var(--spa-background);">
                         <td colspan="4">TOTAL</td>
                         <td></td>
-                        <td style="text-align: right;">₱@payrolls.Sum(p => p.GrossPay).ToString("N0")</td>
-                        <td style="text-align: right; color: #dc3545;">₱@payrolls.Sum(p => p.Deductions).ToString("N0")</td>
-                        <td style="text-align: right; color: var(--spa-primary);">₱@payrolls.Sum(p => p.NetPay).ToString("N0")</td>
+                        <td style="text-align: right;">₱@payrolls.Sum(p => p.GrossPay).ToString("N2")</td>
+                        <td style="text-align: right; color: #dc3545;">₱@payrolls.Sum(p => p.Deductions).ToString("N2")</td>
+                        <td style="text-align: right; color: var(--spa-primary);">₱@payrolls.Sum(p => p.NetPay).ToString("N2")</td>
                         <td colspan="2"></td>
                     </tr>
                 </tfoot>
@@ -270,10 +270,16 @@ else
                     <span>Showing @(((currentPage - 1) * pageSize) + 1)-@(Math.Min(currentPage * pageSize, payrolls.Count)) of @payrolls.Count entries</span>
                     <div style="display: flex; gap: 0.25rem;">
                         <button class="btn btn-sm btn-outline" @onclick="PreviousPage" disabled="@(currentPage == 1)">‹ Prev</button>
-                        @for (int i = 1; i <= TotalPages; i++)
+                        @foreach (var pageNum in GetVisiblePages())
                         {
-                            var pageNum = i;
-                            <button class="btn btn-sm @(currentPage == pageNum ? "btn-primary" : "btn-outline")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                            @if (pageNum == -1)
+                            {
+                                <span style="padding: 0.25rem 0.5rem;">…</span>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm @(currentPage == pageNum ? "btn-primary" : "btn-outline")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                            }
                         }
                         <button class="btn btn-sm btn-outline" @onclick="NextPage" disabled="@(currentPage == TotalPages)">Next ›</button>
                     </div>
@@ -329,6 +335,25 @@ else
     private void PreviousPage() { if (currentPage > 1) currentPage--; }
     private void NextPage() { if (currentPage < TotalPages) currentPage++; }
     private void GoToPage(int page) { currentPage = page; }
+
+    private List<int> GetVisiblePages()
+    {
+        var pages = new List<int>();
+        if (TotalPages <= 7)
+        {
+            for (int i = 1; i <= TotalPages; i++) pages.Add(i);
+        }
+        else
+        {
+            pages.Add(1);
+            if (currentPage > 3) pages.Add(-1);
+            for (int i = Math.Max(2, currentPage - 1); i <= Math.Min(TotalPages - 1, currentPage + 1); i++)
+                pages.Add(i);
+            if (currentPage < TotalPages - 2) pages.Add(-1);
+            pages.Add(TotalPages);
+        }
+        return pages;
+    }
 
     private List<Employee> employees = new();
     private List<PayrollModel> payrolls = new();

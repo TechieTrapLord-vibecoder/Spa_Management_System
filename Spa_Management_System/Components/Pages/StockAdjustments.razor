@@ -183,10 +183,16 @@ else
                         <span>Showing @(((currentPage - 1) * pageSize) + 1)-@(Math.Min(currentPage * pageSize, filteredTransactions.Count())) of @filteredTransactions.Count() entries</span>
                         <div style="display: flex; gap: 0.25rem;">
                             <button class="btn btn-sm btn-outline" @onclick="PreviousPage" disabled="@(currentPage == 1)">‹ Prev</button>
-                            @for (int i = 1; i <= TotalPages; i++)
+                            @foreach (var pageNum in GetVisiblePages())
                             {
-                                var pageNum = i;
-                                <button class="btn btn-sm @(currentPage == pageNum ? "btn-primary" : "btn-outline")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                                @if (pageNum == -1)
+                                {
+                                    <span style="padding: 0.25rem 0.5rem;">…</span>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm @(currentPage == pageNum ? "btn-primary" : "btn-outline")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                                }
                             }
                             <button class="btn btn-sm btn-outline" @onclick="NextPage" disabled="@(currentPage == TotalPages)">Next ›</button>
                         </div>
@@ -339,6 +345,25 @@ else
     private void PreviousPage() { if (currentPage > 1) currentPage--; }
     private void NextPage() { if (currentPage < TotalPages) currentPage++; }
     private void GoToPage(int page) { currentPage = page; }
+
+    private List<int> GetVisiblePages()
+    {
+        var pages = new List<int>();
+        if (TotalPages <= 7)
+        {
+            for (int i = 1; i <= TotalPages; i++) pages.Add(i);
+        }
+        else
+        {
+            pages.Add(1);
+            if (currentPage > 3) pages.Add(-1);
+            for (int i = Math.Max(2, currentPage - 1); i <= Math.Min(TotalPages - 1, currentPage + 1); i++)
+                pages.Add(i);
+            if (currentPage < TotalPages - 2) pages.Add(-1);
+            pages.Add(TotalPages);
+        }
+        return pages;
+    }
 
     // Stats
     private int totalAdjustments = 0;

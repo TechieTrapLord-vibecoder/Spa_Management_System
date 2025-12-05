@@ -1029,6 +1029,12 @@ table.dataTable thead .sorting_desc:after {
   border-color: #5a7a6b;
 }
 
+.table-pagination .page-ellipsis {
+  padding: 0.4rem 0.6rem;
+  color: #666;
+  font-weight: bold;
+}
+
 /* Table Search Box */
 .table-search {
   margin-bottom: 1rem;
